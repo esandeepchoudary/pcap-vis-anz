@@ -791,7 +791,10 @@ def parse_dnp3(payload_bytes):
             }
             func_name = FC_NAMES.get(func_code, f"Unknown FC {func_code}")
             is_write = func_code in (2, 3, 4, 5, 6, 13, 14)
-            is_error = func_code == 129 and len(payload_bytes) >= 14 and bool(payload_bytes[12] & 0x80)
+            # is_error: IIN2 carries true error/exception bits (0x80=event overflow,
+            # 0x20=param error, 0x10=already executing, etc.).
+            # IIN1 (payload_bytes[12]) bit 0x80 is "Device Restart", not an error.
+            is_error = func_code == 129 and len(payload_bytes) >= 14 and bool(payload_bytes[13] & 0x30)
 
         role = "master" if (ctrl & 0x80) else "outstation"
         data_object_group = None
@@ -851,8 +854,12 @@ def parse_s7comm(payload_bytes):
         func_code = None
         func_name = "N/A"
         is_write = False
-        if rosctr in (1, 3) and param_len > 0 and len(s7) >= 11:
-            func_code = s7[10]
+        # ROSCTR 1/7 (Job/Userdata) have a 10-byte header; params start at offset 10.
+        # ROSCTR 2/3 (Ack/Ack-Data) have a 12-byte header (error_class[10] + error_code[11]);
+        # params (and therefore func_code) start at offset 12.
+        param_hdr = 12 if rosctr in (2, 3) else 10
+        if rosctr in (1, 3) and param_len > 0 and len(s7) >= param_hdr + 1:
+            func_code = s7[param_hdr]
             FUNC_NAMES = {
                 0xF0: "Setup Communication",
                 0x04: "Read Variable", 0x05: "Write Variable",
@@ -998,7 +1005,8 @@ def parse_iec104(payload_bytes):
             cot_val = cot_raw & 0x3F
             is_test = bool(cot_raw & 0x40)
             is_error = bool(cot_raw & 0x80)
-            common_address = int.from_bytes(payload_bytes[11:13], "little")
+            # ASDU layout (IEC-104 I-frame): type_id[6], VSQ[7], COT[8:10], CA[10:12]
+            common_address = int.from_bytes(payload_bytes[10:12], "little")
 
             TYPE_NAMES = {
                 1: "M_SP_NA_1 (Single Point)", 3: "M_DP_NA_1 (Double Point)",

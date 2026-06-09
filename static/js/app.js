@@ -697,6 +697,8 @@ function loadGraph(data) {
   graphData = data;
   packetData = data.packets || {};
   _otLogRendered = false;
+  _otLogActiveProtoF = null;
+  _otLogActiveDirF   = null;
   _vlanRendered  = false;
   _tlVisibleIps  = null;
   document.getElementById("vlan-tab-btn").classList.add("hidden");
@@ -2087,6 +2089,9 @@ document.querySelectorAll(".layout-btn").forEach(btn => {
     const cx = svg.node().clientWidth / 2;
     const cy = svg.node().clientHeight / 2;
     simulation = buildSimulation(nodes, links, cx, cy, currentLayout);
+    // Mirror the canonical renderGraph tick: update edge lines, edge labels, nodes, minimap.
+    // Previously this was missing edge-label repositioning, the minimap sync, and the
+    // on("end") zoom-fit — all of which are present in the original simulation setup below.
     simulation.on("tick", () => {
       if (useCanvasEdges) {
         drawCanvasEdges();
@@ -2094,9 +2099,15 @@ document.querySelectorAll(".layout-btn").forEach(btn => {
         linkSel
           .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
           .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+        linksGroup.selectAll(".edge-label")
+          .attr("x", d => ((d.source.x || 0) + (d.target.x || 0)) / 2)
+          .attr("y", d => ((d.source.y || 0) + (d.target.y || 0)) / 2);
       }
       nodeSel.attr("transform", d => `translate(${d.x},${d.y})`);
+      if (_minimapInitialized && (++_minimapTickCount % 5 === 0)) updateMinimap();
     });
+    simulation.on("end", () => { clearTimeout(_zoomFitTimer); zoomFit(); });
+    _zoomFitTimer = setTimeout(() => zoomFit(), 2500);
     simulation.alpha(0.8).restart();
   });
 });
@@ -2705,10 +2716,12 @@ document.getElementById("btn-color-vlan").addEventListener("click", () => {
   colorByVlan = !colorByVlan;
   const btn = document.getElementById("btn-color-vlan");
   btn.classList.toggle("active", colorByVlan);
-  // Re-apply fill colors to all nodes in the current graph
+  // Re-apply fill colors to all nodes in the current graph.
+  // The anomaly ring is appended first and has a class ("anomaly-ring-*"), so
+  // querySelector("circle") returns it for anomalous nodes instead of the main fill
+  // circle. Target unambiguously: the main circle has no class attribute.
   nodesGroup.selectAll(".node circle").filter(function() {
-    // Only the first circle child (the main circle, not anomaly ring or risk badge)
-    return this.parentNode.querySelector("circle") === this;
+    return !this.getAttribute("class");
   }).attr("fill", d => colorByVlan
     ? vlanColor((d.vlans && d.vlans.length) ? String(d.vlans[0]) : (d.vlan_untagged ? "untagged" : null))
     : hostColor(d.host_type)
@@ -3014,6 +3027,8 @@ function openPktInspectorForHost(ip) {
   renderPktTable(allPkts);
   const hasOT = allPkts.some(p => OT_PKT_FIELDS.some(f => p[f]));
   document.getElementById("pkt-tab-cmds").style.display = hasOT ? "" : "none";
+  const hasPayloadHost = allPkts.some(p => p.payload_hex && p.payload_hex.length > 0);
+  document.getElementById("pkt-tab-stream").style.display = hasPayloadHost ? "" : "none";
   pktInspector.classList.remove("hidden");
   graphWrap.classList.add("pkt-open");
 }
@@ -3489,6 +3504,10 @@ function escHtml(s) {
   const handle = document.getElementById("pkt-resize-handle");
   let dragging = false, startY = 0, startH = 0;
   handle.addEventListener("mousedown", e => {
+    // When floating, the separate floating-mode drag handler (bound in setFloating)
+    // handles repositioning.  Let it run exclusively to avoid the panel simultaneously
+    // resizing and moving when the user grabs the handle while detached.
+    if (pktInspector.classList.contains("pkt-floating")) return;
     dragging = true; startY = e.clientY; startH = pktInspector.offsetHeight;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "ns-resize";
@@ -3549,7 +3568,7 @@ function _buildConnRows() {
   return _getSortedEdges()
     .map(e => {
       const srcNode = nodeMap[e.source], dstNode = nodeMap[e.target];
-      const protoOk  = e.protocols.some(p => activeProtos.has(p));
+      const protoOk  = (e.protocols || []).some(p => activeProtos.has(p));
       const typeOk   = (!srcNode || activeTypes.has(srcNode.host_type)) &&
                        (!dstNode || activeTypes.has(dstNode.host_type));
       const ipVerFilterActive = (graphData.stats.ip_versions || []).length > 1 &&
@@ -4798,7 +4817,11 @@ function renderOTMatrix(data) {
   });
 
   const nodeZone = (n) => {
-    const lvl = (otOverrides && otOverrides[n.id] !== undefined) ? otOverrides[n.id] : n.purdue_level;
+    // Use the manual override first, then the stored purdue_level, then fall back to
+    // purdueLevel() inference — matching the OT map's nodeLevel computation so nodes
+    // without a pre-computed purdue_level are still zoned correctly.
+    let lvl = (otOverrides && otOverrides[n.id] !== undefined) ? otOverrides[n.id] : n.purdue_level;
+    if (lvl === undefined || lvl === null) lvl = purdueLevel(n);
     if (lvl === 6) return "Internet";
     if (lvl >= 4)  return "IT";
     if (lvl === 3.5) return "DMZ";
@@ -4848,8 +4871,9 @@ function renderOTMatrix(data) {
   const OT_PROTO_ORDER = ["Modbus","DNP3","S7comm","EtherNet/IP","IEC-104","BACnet","CoAP","MQTT"];
   const dominantProto = (e) => {
     if (!e) return null;
-    for (const p of OT_PROTO_ORDER) if (e.protocols.includes(p)) return p;
-    return e.protocols[0] || null;
+    const protos = e.protocols || [];
+    for (const p of OT_PROTO_ORDER) if (protos.includes(p)) return p;
+    return protos[0] || null;
   };
 
   // ── Column headers SVG ──────────────────────────────────────────────────────
@@ -4976,7 +5000,7 @@ function renderOTMatrix(data) {
           tooltip.innerHTML = `
             <div class="tip-ip" style="font-size:11px">${escHtml(rowNode.ip)} ↔ ${escHtml(colNode.ip)}</div>
             <div class="tip-type">${fmtNum(edge.packet_count)} pkts · ${fmtBytes(edge.bytes)}</div>
-            <div class="tip-proto">${edge.protocols.slice(0, 5).map(escHtml).join(" · ")}</div>
+            <div class="tip-proto">${(edge.protocols || []).slice(0, 5).map(escHtml).join(" · ")}</div>
             ${otR || otW ? `<div class="tip-type">OT reads: ${otR} · writes: ${otW}</div>` : ""}
             ${isCrossZone ? `<div style="color:#ff8c00;font-size:10px">⚠ Cross-zone</div>` : ""}
             ${isAnomaly   ? `<div style="color:#f85149;font-size:10px">⚠ Anomaly detected</div>` : ""}
@@ -6283,6 +6307,12 @@ function _renderDiffVlansCol(id, newVlans, goneVlans, movedHosts) {
 
 /* ── OT Log view ─────────────────────────────────────────────────────────── */
 let _otLogRendered = false;   // render once per dataset load
+// Persist filter Sets at module scope so that button click-handlers created during the
+// first render and rebuildTable() called on subsequent view revisits share the same
+// objects.  Previously these were local consts, so returning to the view re-created
+// all-active Sets while the buttons still closed over the first call's stale Sets.
+let _otLogActiveProtoF = null;
+let _otLogActiveDirF   = null;
 
 function renderOtLog(cmds) {
   const tbody       = document.getElementById("otlog-tbody");
@@ -6298,11 +6328,6 @@ function renderOtLog(cmds) {
     return;
   }
   emptyEl.classList.add("hidden");
-
-  const protos = [...new Set(cmds.map(c => c.protocol))].sort();
-  const dirs   = [...new Set(cmds.map(c => c.direction))].sort();
-  const activeProtoF = new Set(protos);
-  const activeDirF   = new Set(dirs);
 
   function _dirClass(d) {
     if (d === "write")      return "otlog-dir-write";
@@ -6322,7 +6347,7 @@ function renderOtLog(cmds) {
   }
 
   function rebuildTable() {
-    const visible = cmds.filter(c => activeProtoF.has(c.protocol) && activeDirF.has(c.direction));
+    const visible = cmds.filter(c => _otLogActiveProtoF.has(c.protocol) && _otLogActiveDirF.has(c.direction));
     countLabel.textContent = `${visible.length.toLocaleString()} / ${cmds.length.toLocaleString()} commands`;
     tbody.innerHTML = "";
     const frag = document.createDocumentFragment();
@@ -6341,8 +6366,14 @@ function renderOtLog(cmds) {
     tbody.appendChild(frag);
   }
 
-  // Build filter buttons only once per dataset
+  // Build filter buttons only once per dataset; also initialise the persistent Sets here
+  // so they share the same object references as the button click-handlers.
   if (!_otLogRendered) {
+    const protos = [...new Set(cmds.map(c => c.protocol))].sort();
+    const dirs   = [...new Set(cmds.map(c => c.direction))].sort();
+    _otLogActiveProtoF = new Set(protos);
+    _otLogActiveDirF   = new Set(dirs);
+
     protoBar.innerHTML = '<span style="font-size:11px;color:var(--text2);margin-right:4px">Protocol:</span>';
     dirBar.innerHTML   = '<span style="font-size:11px;color:var(--text2);margin-right:4px">Direction:</span>';
 
@@ -6351,8 +6382,8 @@ function renderOtLog(cmds) {
       btn.className = "otlog-filter-btn active";
       btn.textContent = proto;
       btn.addEventListener("click", () => {
-        if (activeProtoF.has(proto)) { activeProtoF.delete(proto); btn.classList.remove("active"); }
-        else { activeProtoF.add(proto); btn.classList.add("active"); }
+        if (_otLogActiveProtoF.has(proto)) { _otLogActiveProtoF.delete(proto); btn.classList.remove("active"); }
+        else { _otLogActiveProtoF.add(proto); btn.classList.add("active"); }
         rebuildTable();
       });
       protoBar.appendChild(btn);
@@ -6363,8 +6394,8 @@ function renderOtLog(cmds) {
       btn.className = "otlog-filter-btn active";
       btn.textContent = dir;
       btn.addEventListener("click", () => {
-        if (activeDirF.has(dir)) { activeDirF.delete(dir); btn.classList.remove("active"); }
-        else { activeDirF.add(dir); btn.classList.add("active"); }
+        if (_otLogActiveDirF.has(dir)) { _otLogActiveDirF.delete(dir); btn.classList.remove("active"); }
+        else { _otLogActiveDirF.add(dir); btn.classList.add("active"); }
         rebuildTable();
       });
       dirBar.appendChild(btn);
@@ -7795,11 +7826,22 @@ function applyPktSearch() {
   const countEl = document.getElementById("pkt-search-count");
   if (!input || !pktTbody) return;
   const term = input.value.trim().toLowerCase();
+
+  // When a search term is active, render all packets first so results beyond the
+  // first page (PKT_PAGE_SIZE) are not silently excluded and the N/M badge is correct.
+  if (term) {
+    const moreCell = pktTbody.querySelector("tr td[colspan]");
+    if (moreCell) {
+      // Trigger the "Load more" <tr>'s own click handler to expand and remove it.
+      moreCell.parentElement.click();
+    }
+  }
+
   const rows = pktTbody.querySelectorAll("tr");
   let visible = 0;
   let total = 0;
   rows.forEach(row => {
-    if (row.querySelector("td[colspan]")) return; // "Load more" row
+    if (row.querySelector("td[colspan]")) return; // "Load more" row (only present when no term)
     total++;
     // Use cached lowercase text (set at row build time) to avoid re-materialising textContent
     const text = row.dataset.searchText || row.textContent.toLowerCase();
@@ -8007,11 +8049,14 @@ function renderPresetList() {
 
 /* ── E3: Colour-blind safe palette ───────────────────────────────────────── */
 function updateNodeColors() {
-  // Only repaint the main (first) circle in each node group.
+  // Only repaint the main fill circle in each node group.
   // Anomaly rings (.anomaly-ring-*) must keep their severity colors.
+  // The anomaly ring is appended before the main circle in appendNodeDecorations, so
+  // querySelector("circle") returns the ring for anomalous nodes — select by the absence
+  // of a class attribute instead (the main circle has none; the ring has "anomaly-ring-*").
   // If VLAN coloring is active, keep that scheme instead of reverting to host-type.
   nodesGroup.selectAll(".node circle").filter(function() {
-    return this === this.parentNode.querySelector("circle");
+    return !this.getAttribute("class");
   }).attr("fill", d => {
     if (colorByVlan) {
       // Mirror the VLAN-color handler logic (see btn-color-vlan click at ~2604)
@@ -8174,7 +8219,8 @@ function applyClusterCollapse() {
       inspector.style.top  = "";
       inspector.style.width = "";
       inspector.style.height = "";
-      if (inspector.classList.contains("open")) graphWrap.classList.add("pkt-open");
+      // Open state is tracked via the "hidden" class (removed when open), not "open".
+      if (!inspector.classList.contains("hidden")) graphWrap.classList.add("pkt-open");
     }
   }
 

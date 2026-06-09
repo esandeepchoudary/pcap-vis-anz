@@ -127,6 +127,22 @@
 
 - [x] Exports: country info ("Name (CC)" format) added to all IP-bearing exports — Connections CSV (source/dest country), Anomalies CSV (source/dest country), Credentials CSV (source/dest country), VLAN Inventory CSV (per-host country), VLAN Traffic CSV (source/dest country); Hosts Inventory CSV geo column upgraded from bare ISO code to "Name (CC)"; Audit Report gains a "Geographic Distribution" section grouping external endpoints by country with flag emoji and host count
 
+## Bug Fixes (2026-06-09, iteration 2)
+
+- [x] **FE-HIGH** — Color-by-VLAN and colour-blind toggles painted the anomaly ring instead of the main fill circle (anomaly ring is appended first in `appendNodeDecorations` so `querySelector("circle")` returned it). Fixed: both `btn-color-vlan` handler and `updateNodeColors()` now filter on `!this.getAttribute("class")` (main circle has no class; anomaly ring has `"anomaly-ring-*"`).
+- [x] **FE-MED** — Layout-switch tick was missing edge-label repositioning, minimap sync, and the `on("end")` zoom-fit present in the main `renderGraph` tick. Fixed: layout-switch tick now mirrors the canonical tick body exactly.
+- [x] **FE-MED** — Packet search (`applyPktSearch`) only scanned loaded DOM rows; matches beyond the first page (PKT_PAGE_SIZE=20) were silently ignored and the N/M denominator was wrong. Fixed: when a search term is active, the "Load more" row is programmatically clicked to expand the full packet list before searching.
+- [x] **FE-MED** — Floating inspector re-dock checked `inspector.classList.contains("open")` but open/closed state is tracked via the `hidden` class, so `graphWrap` never re-reserved space after docking. Fixed: check `!inspector.classList.contains("hidden")` instead.
+- [x] **FE-MED** — Docked `#pkt-resize-handle` mousedown handler had no floating guard; both the docked handler and the floating-reposition handler fired while floating, causing the panel to simultaneously move and resize. Fixed: guard the docked handler with `if (pktInspector.classList.contains("pkt-floating")) return;`.
+- [x] **FE-MED** — OT-Log filter Sets were re-created all-active on every view visit while buttons were built only once; button visuals and filter state desynchronised after leaving and returning to the view. Fixed: `_otLogActiveProtoF`/`_otLogActiveDirF` hoisted to module scope and built once under the `_otLogRendered` guard so all closures share the same objects.
+- [x] **BE-MED** — `parse_iec104` read `common_address` from `payload_bytes[11:13]`; correct ASDU offset is `[10:12]` (one byte too far). Fixed: corrected slice; added test asserting `common_address == 1`.
+- [x] **BE-MED** — `parse_s7comm` read `func_code = s7[10]` for ROSCTR=3 (Ack-Data); Ack-Data has a 12-byte header so params start at offset 12, not 10 — every S7 response was mis-decoded. Fixed: compute `param_hdr = 12 if rosctr in (2,3) else 10` and read `s7[param_hdr]`; added ROSCTR=3 test.
+- [x] **FE-LOW** — `e.protocols.some/includes/slice` unguarded in three sites (`_buildConnRows`, `dominantProto`, OT matrix tooltip); added `|| []` guards matching the pattern used everywhere else.
+- [x] **FE-LOW** — OT-matrix `nodeZone()` read `n.purdue_level` directly with no `purdueLevel(n)` fallback; every other site uses the fallback. Fixed.
+- [x] **FE-LOW** — `openPktInspectorForHost` set `#pkt-tab-cmds` visibility but never set `#pkt-tab-stream`; stream tab visibility leaked from the previous connection. Fixed: set stream tab from `hasPayloadHost`.
+- [x] **BE-LOW** — DNP3 `is_error` checked `payload_bytes[12] & 0x80` which is the IIN1 "Device Restart" bit, not an error indicator. True errors are in IIN2 (`payload_bytes[13]`). Fixed: re-pointed to `payload_bytes[13] & 0x30` (Parameter Error | Already Executing).
+- 2 new tests added: `test_s7_ack_data_rosctr3`, `test_iec104_i_frame_with_asdu` now asserts `common_address == 1`. Total: 333 passing.
+
 ## Bug Fixes (2026-06-09)
 
 - [x] FE: `purdueLevel()` called with string `n.host_type` instead of the node object at `app.js:1845` — cross-zone edge highlighting broken in canvas mode (graphs >150 nodes); fix: pass `n`

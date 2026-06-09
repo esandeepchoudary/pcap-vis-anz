@@ -161,6 +161,28 @@ def test_s7_too_short():
     assert parse_s7comm(None) is None
 
 
+def test_s7_ack_data_rosctr3():
+    # ROSCTR=3 (Ack-Data) has a 12-byte S7 header: the two extra bytes at [10],[11]
+    # are error_class / error_code.  Parameters (and func_code) start at offset 12.
+    # Previously the code read s7[10] for ROSCTR in (1,3) which returned the
+    # error_class byte instead of the function code, mis-decoding every S7 response.
+    tpkt   = bytes([0x03, 0x00, 0x00, 0x00])   # length placeholder, not validated
+    cotp   = bytes([0x02, 0xF0, 0x80])
+    # 12-byte header: magic, rosctr=3, reserved*2, pdu_ref*2, param_len=1, _, data_len=0, _,
+    #                 error_class=0, error_code=0
+    s7hdr  = bytes([0x32, 3, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0])
+    params = bytes([0x04])                      # func_code = Read Variable
+    pkt    = tpkt + cotp + s7hdr + params
+    r = parse_s7comm(pkt)
+    assert r is not None
+    assert r["rosctr"] == 3
+    assert r["function_code"] == 0x04, (
+        f"Expected func_code=0x04 (Read Variable) for ROSCTR=3, got {r['function_code']!r}"
+    )
+    assert r["function_name"] == "Read Variable"
+    assert r["is_write"] is False
+
+
 # ── IEC-104 ──────────────────────────────────────────────────────────────────
 
 def _iec104_pkt(ctrl1, ctrl2=0, ctrl3=0, ctrl4=0, body=b""):
@@ -179,7 +201,8 @@ def test_iec104_u_frame_startdt():
 
 def test_iec104_i_frame_with_asdu():
     # I-frame: ctrl1 bit 0 = 0
-    # ASDU: type_id=45 (Single Command), VSQ=1, COT=6 (Activation), CA=1, IOA=1
+    # ASDU layout: type_id[6]=45, VSQ[7]=1, COT[8:10]=[6,0], CA[10:12]=[1,0], IOA[12:15]=[1,0,0]
+    # CA little-endian = 1.  The old code read [11:13] which would yield 256.
     asdu = bytes([45, 1, 6, 0, 1, 0, 1, 0, 0])
     pkt = _iec104_pkt(0x00, 0x00, 0x00, 0x00, asdu)
     r = parse_iec104(pkt)
@@ -187,6 +210,10 @@ def test_iec104_i_frame_with_asdu():
     assert r["frame_type"] == "I"
     assert r["type_id"] == 45
     assert r["is_write"] is True  # type_id 45-50 with COT=6
+    assert r["common_address"] == 1, (
+        f"Expected common_address=1 but got {r['common_address']!r} — "
+        "check ASDU offset: CA is at payload_bytes[10:12], not [11:13]"
+    )
 
 
 def test_iec104_invalid_start():
