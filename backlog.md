@@ -123,6 +123,14 @@
 - [x] DNS view: DNS tunnel suspect badges — hosts flagged by `dns_tunneling` anomaly now show an amber "DNS Tunnel?" badge in the DNS host list
 - [x] Code: Packet inspector tab label parsing refactored — `_pktsForCurrentConn()` helper replaces three identical regex blocks in pkt-tab-pkts / pkt-tab-cmds / pkt-tab-stream click handlers
 
+## Bug Fixes (2026-06-09)
+
+- [x] FE: `purdueLevel()` called with string `n.host_type` instead of the node object at `app.js:1845` — cross-zone edge highlighting broken in canvas mode (graphs >150 nodes); fix: pass `n`
+- [x] FE: Audit report DNS Tunneling section matched wrong anomaly type `dns_tunneling_suspected` (backend emits `dns_tunneling`); section was always empty; fix: corrected filter string
+- [x] FE: `exportCredentialsCsv()` defined but never wired — no menu item, no event handler; fix: added `exp-credentials` item to Export dropdown and click handler
+- [x] FE: Audit report Capture Summary rows used `s.hosts`/`s.connections` (undefined) instead of `s.total_hosts`/`s.total_connections`; always fell back to `.length` silently; fix: correct stat key names
+- [x] FE: Modbus command-table direction arrows used lexicographic IP comparison instead of `modbus.is_response`; fix: `p.modbus.is_response ? "←" : "→"`
+
 ## Known Issues
 
 - OT Map: PNG export exports the current zoom/pan view; consider a "fit-to-full" export option

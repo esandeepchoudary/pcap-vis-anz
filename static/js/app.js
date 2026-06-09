@@ -1842,7 +1842,7 @@ function renderGraph(data) {
   // ── Links ──
   // Build Purdue level lookup for cross-zone highlighting
   const _pLevel = {};
-  nodes.forEach(n => { _pLevel[n.id] = purdueLevel(n.host_type); });
+  nodes.forEach(n => { _pLevel[n.id] = purdueLevel(n); });
   _canvasPLevel = _pLevel;
   // (cross-zone count is used only for edge class assignment below — no sidebar badge)
 
@@ -2875,7 +2875,7 @@ function renderCmdLog(pkts) {
     const isW_cls = p.modbus?.is_write || p.dnp3?.is_write || p.s7comm?.is_write || p.enip?.is_write || p.iec104?.is_write || p.bacnet?.is_write;
     if (p.modbus) {
       proto = "Modbus";
-      dir = p.src < p.dst ? "→" : "←";
+      dir = p.modbus.is_response ? "←" : "→";
       fn = `FC${p.modbus.function_code} ${p.modbus.function_name}`;
       if (p.modbus.register_address != null) detail = `@${p.modbus.register_address}`;
       if (p.modbus.quantity != null) detail += ` ×${p.modbus.quantity}`;
@@ -6509,6 +6509,10 @@ document.getElementById("exp-anomalies").addEventListener("click", () => {
   exportAnomalies();
   document.getElementById("export-menu").classList.add("hidden");
 });
+document.getElementById("exp-credentials").addEventListener("click", () => {
+  exportCredentialsCsv();
+  document.getElementById("export-menu").classList.add("hidden");
+});
 document.getElementById("exp-report").addEventListener("click", () => {
   generateAuditReport();
   document.getElementById("export-menu").classList.add("hidden");
@@ -6831,8 +6835,8 @@ function generateAuditReport() {
   h(2, "Capture Summary");
   p(`| Metric | Value |`);
   p(`|--------|-------|`);
-  p(`| Hosts | ${s.hosts ?? nodes.length} |`);
-  p(`| Connections | ${s.connections ?? edges.length} |`);
+  p(`| Hosts | ${s.total_hosts ?? nodes.length} |`);
+  p(`| Connections | ${s.total_connections ?? edges.length} |`);
   p(`| Packets | ${s.total_packets != null ? fmtNum(s.total_packets) : "—"} |`);
   const _totalBytes = edges.reduce((a, e) => a + (e.bytes || 0), 0);
   p(`| Bytes | ${_totalBytes > 0 ? (_totalBytes / 1e6).toFixed(2) + " MB" : "—"} |`);
@@ -6938,7 +6942,7 @@ function generateAuditReport() {
   }
 
   // DNS tunneling suspects
-  const dnsTunnel = anomalies.filter(a => a.type === "dns_tunneling_suspected");
+  const dnsTunnel = anomalies.filter(a => a.type === "dns_tunneling");
   if (dnsTunnel.length) {
     h(2, "DNS Tunneling Suspects");
     dnsTunnel.forEach(a => p(`- **${a.src || "—"}** — ${a.description}`));
