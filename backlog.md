@@ -123,6 +123,10 @@
 - [x] DNS view: DNS tunnel suspect badges — hosts flagged by `dns_tunneling` anomaly now show an amber "DNS Tunnel?" badge in the DNS host list
 - [x] Code: Packet inspector tab label parsing refactored — `_pktsForCurrentConn()` helper replaces three identical regex blocks in pkt-tab-pkts / pkt-tab-cmds / pkt-tab-stream click handlers
 
+## Enhancements (2026-06-09)
+
+- [x] Exports: country info ("Name (CC)" format) added to all IP-bearing exports — Connections CSV (source/dest country), Anomalies CSV (source/dest country), Credentials CSV (source/dest country), VLAN Inventory CSV (per-host country), VLAN Traffic CSV (source/dest country); Hosts Inventory CSV geo column upgraded from bare ISO code to "Name (CC)"; Audit Report gains a "Geographic Distribution" section grouping external endpoints by country with flag emoji and host count
+
 ## Bug Fixes (2026-06-09)
 
 - [x] FE: `purdueLevel()` called with string `n.host_type` instead of the node object at `app.js:1845` — cross-zone edge highlighting broken in canvas mode (graphs >150 nodes); fix: pass `n`

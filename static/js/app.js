@@ -471,6 +471,14 @@ function countryFlag(code) {
   return String.fromCodePoint(...[...code.toUpperCase()].map(c => c.charCodeAt(0) + offset));
 }
 
+/** Return "Name (CC)" for a node's geo data, or "" if unavailable. */
+function geoCountryStr(node) {
+  if (!node || !node.geo) return "";
+  const name = node.geo.country, code = node.geo.country_code;
+  if (name && code) return `${name} (${code})`;
+  return name || code || "";
+}
+
 /* ── State ───────────────────────────────────────────────────────────────── */
 let graphData    = null;
 let simulation   = null;
@@ -6609,14 +6617,18 @@ function exportPng() {
 
 function exportCsv() {
   if (!graphData) return;
-  const rows = [["Source IP", "Destination IP", "Protocols", "Packets", "Bytes", "Ports", "Duration"]];
+  const nodeMap = {};
+  (graphData.nodes || []).forEach(n => { nodeMap[n.ip || n.id] = n; });
+  const rows = [["Source IP", "Source Country", "Destination IP", "Dest Country", "Protocols", "Packets", "Bytes", "Ports", "Duration"]];
   graphData.edges.forEach(e => {
     const duration = (e.first_seen != null && e.last_seen != null)
       ? (e.last_seen - e.first_seen).toFixed(3)
       : "";
     rows.push([
       e.source,
+      geoCountryStr(nodeMap[e.source]),
       e.target,
+      geoCountryStr(nodeMap[e.target]),
       (e.protocols || []).join(";"),
       e.packet_count,
       e.bytes,
@@ -6632,9 +6644,16 @@ function exportAnomalies() {
     showToast("No anomalies to export.", "info");
     return;
   }
-  const rows = [["Type", "Severity", "Source", "Destination", "Description"]];
+  const nodeMap = {};
+  (graphData.nodes || []).forEach(n => { nodeMap[n.ip || n.id] = n; });
+  const rows = [["Type", "Severity", "Source", "Source Country", "Destination", "Dest Country", "Description"]];
   graphData.anomalies.forEach(a => {
-    rows.push([a.type, a.severity, a.src || "", a.dst || "", a.description]);
+    rows.push([
+      a.type, a.severity,
+      a.src || "", geoCountryStr(nodeMap[a.src]),
+      a.dst || "", geoCountryStr(nodeMap[a.dst]),
+      a.description,
+    ]);
   });
   downloadCsv(rows, "anomalies.csv");
 }
@@ -6644,14 +6663,18 @@ function exportCredentialsCsv() {
     showToast("No credentials to export.", "info");
     return;
   }
-  const rows = [["Time", "Protocol", "Type", "Source", "Destination", "Port", "Username", "Password"]];
+  const nodeMap = {};
+  (graphData.nodes || []).forEach(n => { nodeMap[n.ip || n.id] = n; });
+  const rows = [["Time", "Protocol", "Type", "Source", "Source Country", "Destination", "Dest Country", "Port", "Username", "Password"]];
   graphData.credentials.forEach(c => {
     rows.push([
       c.rel_time != null ? `+${c.rel_time}s` : (c.time || ""),
       c.protocol || "",
       c.type || "",
       c.src || "",
+      geoCountryStr(nodeMap[c.src]),
       c.dst || "",
+      geoCountryStr(nodeMap[c.dst]),
       c.dport || "",
       c.username || "",
       c.password || "",
@@ -6664,7 +6687,7 @@ function exportVlanInventoryCsv() {
   if (!graphData || !((graphData.stats?.vlans?.length) || (graphData.nodes || []).some(n => n.vlan_untagged))) {
     showToast("No VLAN data to export.", "info"); return;
   }
-  const rows = [["VLAN ID", "IP Address", "Hostname", "Host Type", "IP Version",
+  const rows = [["VLAN ID", "IP Address", "Country", "Hostname", "Host Type", "IP Version",
                   "Protocols", "Packet Count", "Bytes Sent", "Bytes Recv",
                   "PCP Values", "QinQ", "Untagged Frames", "Outer VLAN IDs", "Risk Score"]];
   const allVlans   = (graphData.stats.vlans || []).map(String);
@@ -6678,6 +6701,7 @@ function exportVlanInventoryCsv() {
     members.forEach(n => rows.push([
       vid,
       n.ip,
+      geoCountryStr(n),
       n.hostname || "",
       n.host_type || "",
       n.ip_version || 4,
@@ -6718,7 +6742,7 @@ function exportHostsCsv() {
     n.purdue_level != null ? n.purdue_level : "",
     n.risk_score || 0,
     n.is_private ? "Yes" : "No",
-    (n.geo && (n.geo.country_code || n.geo.country)) || "",
+    geoCountryStr(n),
   ]));
   downloadCsv(rows, "hosts-inventory.csv");
 }
@@ -6730,7 +6754,7 @@ function exportVlanTrafficCsv() {
   const nodeMap = {};
   (graphData.nodes || []).forEach(n => { nodeMap[n.ip] = n; });
 
-  const rows = [["VLAN(s)", "Source IP", "Source VLAN", "Destination IP", "Dest VLAN",
+  const rows = [["VLAN(s)", "Source IP", "Source Country", "Source VLAN", "Destination IP", "Dest Country", "Dest VLAN",
                   "Cross-VLAN", "Protocols", "Packet Count", "Bytes", "Ports", "Duration (s)"]];
 
   (graphData.edges || []).forEach(e => {
@@ -6745,8 +6769,8 @@ function exportVlanTrafficCsv() {
       ? (e.last_seen - e.first_seen).toFixed(3) : "";
     rows.push([
       (e.vlans || []).join(";"),
-      e.source, srcVlan,
-      e.target, dstVlan,
+      e.source, geoCountryStr(src), srcVlan,
+      e.target, geoCountryStr(dst), dstVlan,
       crossVlan,
       (e.protocols || []).join(";"),
       e.packet_count || 0,
@@ -6862,6 +6886,31 @@ function generateAuditReport() {
       const risk = n.risk_score ?? 0;
       const aCount = anomalies.filter(a => a.src === n.id || a.dst === n.id).length;
       p(`| ${mdCell(n.id)} | ${mdCell(host)} | ${mdCell(n.host_type || "—")} | ${risk} | ${aCount} |`);
+    });
+    br();
+  }
+
+  // Geographic Distribution — external endpoints grouped by country
+  const geoNodes = nodes.filter(n => n.geo && (n.geo.country_code || n.geo.country));
+  if (geoNodes.length) {
+    h(2, "Geographic Distribution (External Endpoints)");
+    // Group by country
+    const byCountry = {};
+    geoNodes.forEach(n => {
+      const key = geoCountryStr(n);
+      if (!byCountry[key]) byCountry[key] = { code: n.geo.country_code || "", ips: [] };
+      byCountry[key].ips.push(n.ip || n.id);
+    });
+    // Sort by host count desc
+    const countryEntries = Object.entries(byCountry)
+      .sort((a, b) => b[1].ips.length - a[1].ips.length);
+    p(`| Country | Hosts | IPs |`);
+    p(`|---------|-------|-----|`);
+    countryEntries.forEach(([label, info]) => {
+      const flag = countryFlag(info.code);
+      const ipList = info.ips.slice(0, 10).join(", ");
+      const overflow = info.ips.length > 10 ? ` +${info.ips.length - 10} more` : "";
+      p(`| ${mdCell((flag ? flag + " " : "") + label)} | ${info.ips.length} | ${mdCell(ipList + overflow)} |`);
     });
     br();
   }
