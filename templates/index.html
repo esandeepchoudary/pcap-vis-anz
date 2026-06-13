@@ -38,6 +38,22 @@
 <!-- ── Toast container ──────────────────────────────────────────────────── -->
 <div id="toast-container"></div>
 
+<!-- Generic text modal used for notes and labels -->
+<div id="text-modal" class="text-modal hidden" role="dialog" aria-modal="true" aria-labelledby="text-modal-title">
+  <div class="text-modal-box">
+    <div class="text-modal-header">
+      <h3 id="text-modal-title">Edit Text</h3>
+      <button id="text-modal-close" class="text-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <textarea id="text-modal-input" rows="5"></textarea>
+    <div class="text-modal-actions">
+      <button id="text-modal-clear" class="text-modal-secondary">Clear</button>
+      <button id="text-modal-cancel" class="text-modal-secondary">Cancel</button>
+      <button id="text-modal-save" class="text-modal-primary">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Node context menu ────────────────────────────────────────────────── -->
 <div id="ctx-menu" class="hidden">
   <div id="ctx-add-note">✎ Add Note</div>
@@ -53,7 +69,7 @@
     <h3>Keyboard Shortcuts</h3>
     <table class="sc-table">
       <tr><td>?</td><td>Show / hide this panel</td></tr>
-      <tr><td>1 – 8</td><td>Switch views</td></tr>
+      <tr><td>1 – 9</td><td>Switch views</td></tr>
       <tr><td>F</td><td>Fit graph to window</td></tr>
       <tr><td>/</td><td>Focus search box</td></tr>
       <tr><td>Space</td><td>Play / pause timeline</td></tr>
@@ -88,6 +104,7 @@
       <button class="vt-btn hidden" data-view="vlangraph" id="vlan-tab-btn">VLAN</button>
       <button class="vt-btn hidden" data-view="diff" id="diff-tab-btn">⊕ Diff</button>
       <button class="vt-btn hidden" data-view="dashboard" id="dashboard-tab-btn">⊛ Dashboard</button>
+      <button class="vt-btn hidden" data-view="findings" id="findings-tab-btn">Findings</button>
     </div>
 
     <!-- Active-filters chip — visible on all tabs when any filter is narrowed -->
@@ -493,6 +510,9 @@
 
     <!-- Dashboard view -->
     <div id="dashboard-view" class="hidden"></div>
+
+    <!-- Findings workspace -->
+    <div id="findings-view" class="hidden"></div>
 
     <!-- VLAN Graph view -->
     <div id="vlan-view" class="hidden">

@@ -223,8 +223,8 @@ Items surfaced in the 2026-05-17 robustness review (`REVIEW.md`) that were not a
 - [x] **D1** — `geoip2>=4.0.0,<5` pinned in requirements.txt
 - [ ] **PF3** — `openPktInspectorForHost` concatenates all packets and sorts in main thread (150k packets → jank)
 - [ ] **S2** — No CSRF protection on `/upload` POST (low risk on localhost; medium when `--public`)
-- [ ] **H3** — README does not warn that `--public` exposes a Werkzeug dev server
-- [ ] **General** — No `prompt()` modal replacement (blocks page, disabled by Firefox after 2 dialogs); affects OT risk note input and annotation input
+- [x] **H3** — README does not warn that `--public` exposes a Werkzeug dev server
+- [x] **General** — No `prompt()` modal replacement (blocks page, disabled by Firefox after 2 dialogs); affects OT risk note input and annotation input
 
 ## Bug-Sweep Fixes (2026-06-07)
 
@@ -268,6 +268,23 @@ Items surfaced in the 2026-05-17 robustness review (`REVIEW.md`) that were not a
 
 - [x] VLAN Graph host nodes now show the same host-type emoji icons as the main Graph view — `hostIcon(d.host_type)` appended as `<text class="node-icon">` after the host circle; reuses the existing `hostIcon()` function and `.node-icon` CSS (emoji font stack); `text-anchor: middle` and `pointer-events: none` set for correct centering and click-through.
 - [x] **Bug fix**: VLAN graph host-type icons were invisible — `.node-icon` base rule sets `fill: transparent`; main-graph icons are rescued by the more-specific `.node text { fill: var(--text) }` rule, but VLAN node groups use class `vhost` (not `node`) so that rule never applied. Fixed by adding `.attr("fill", "var(--text)")` inline on the VLAN icon text element.
+
+## Analyst Workflow Improvements (2026-06-13, feature/analyst-workflow-improvements)
+
+- [x] **AGENTS.md** — Added repo-root agent instructions mirroring `CLAUDE.md` workflow, branch, test, run, commit, and push guidance.
+- [x] **Findings workspace** — Added a ninth view for analyst triage; derives findings from anomalies, credentials, file transfers, grouped OT write/error commands, and high-risk hosts.
+- [x] **Triage state** — Findings support status, severity override, analyst notes, report include/exclude, evidence-copy bundles, and graph/packet navigation.
+- [x] **Persistence** — Finding edits persist in `localStorage` per capture fingerprint and are included in session save/load JSON.
+- [x] **Report curation** — Markdown audit reports now include a Curated Findings section and suppress anomaly findings marked false positive or excluded from report.
+- [x] **Prompt replacement** — Host notes, context-menu notes, VLAN labels, and finding notes now use an in-app text modal instead of blocking `prompt()`.
+- [ ] **Search/query mode** — Global query terms such as `risk>70`, `protocol:modbus`, `vlan:10`, `external:true`, `creds:true`, and `status:open`.
+- [ ] **Evidence-first details** — "Why" sections for risk score, host type, Purdue level, VLAN classification, JA3/SNI findings, and anomaly rules.
+- [ ] **Timeline investigation mode** — Clickable markers for anomalies, credentials, file transfers, OT writes, and first/last seen host activity.
+- [ ] **Persistent baseline projects** — Named baselines and comparisons that survive browser reloads.
+- [ ] **Packet inspector scalability** — Paginate or workerize host packet aggregation to address `openPktInspectorForHost` main-thread jank.
+- [ ] **Classification confidence** — Confidence/evidence fields for host type, OS hint, vendor, and Purdue level.
+- [ ] **Custom rule packs** — JSON rules for suspicious ports, approved domains, known-good VLAN flows, asset metadata, and JA3 allow/block lists.
+- [ ] **Dashboard v2** — Analyst queues for changed assets, risky paths, external exposure, cleartext secrets, OT writes, and segmentation violations.
 
 ## Bundled GeoIP (2026-06-08, feature/bundled-geoip)
 

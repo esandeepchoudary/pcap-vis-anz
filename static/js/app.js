@@ -465,6 +465,60 @@ function showToast(msg, type = "info", duration = 4000) {
   if (duration > 0) setTimeout(remove, duration);
 }
 
+function openTextModal({ title, value = "", placeholder = "", clearLabel = "Clear" }) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById("text-modal");
+    const titleEl = document.getElementById("text-modal-title");
+    const input = document.getElementById("text-modal-input");
+    const closeBtn = document.getElementById("text-modal-close");
+    const cancelBtn = document.getElementById("text-modal-cancel");
+    const clearBtn = document.getElementById("text-modal-clear");
+    const saveBtn = document.getElementById("text-modal-save");
+    if (!overlay || !titleEl || !input || !closeBtn || !cancelBtn || !clearBtn || !saveBtn) {
+      resolve(null);
+      return;
+    }
+
+    let done = false;
+    const cleanup = (result) => {
+      if (done) return;
+      done = true;
+      overlay.classList.add("hidden");
+      closeBtn.removeEventListener("click", onCancel);
+      cancelBtn.removeEventListener("click", onCancel);
+      clearBtn.removeEventListener("click", onClear);
+      saveBtn.removeEventListener("click", onSave);
+      overlay.removeEventListener("click", onOverlay);
+      input.removeEventListener("keydown", onKeydown);
+      resolve(result);
+    };
+    const onCancel = () => cleanup(null);
+    const onClear = () => cleanup("");
+    const onSave = () => cleanup(input.value);
+    const onOverlay = (e) => { if (e.target === overlay) cleanup(null); };
+    const onKeydown = (e) => {
+      if (e.key === "Escape") cleanup(null);
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") cleanup(input.value);
+    };
+
+    titleEl.textContent = title || "Edit Text";
+    input.value = value || "";
+    input.placeholder = placeholder || "";
+    clearBtn.textContent = clearLabel || "Clear";
+    overlay.classList.remove("hidden");
+    closeBtn.addEventListener("click", onCancel);
+    cancelBtn.addEventListener("click", onCancel);
+    clearBtn.addEventListener("click", onClear);
+    saveBtn.addEventListener("click", onSave);
+    overlay.addEventListener("click", onOverlay);
+    input.addEventListener("keydown", onKeydown);
+    setTimeout(() => {
+      input.focus();
+      input.selectionStart = input.selectionEnd = input.value.length;
+    }, 0);
+  });
+}
+
 function countryFlag(code) {
   if (!code || code.length !== 2) return "";
   const offset = 127397;
@@ -489,12 +543,16 @@ let activeVlans      = new Set();
 let activeIpVersions = new Set();
 let searchTerm       = "";
 let packetData   = {};
-let currentView  = "graph";  // "graph" | "table" | "dns" | "ot" | "otlog" | "vlangraph" | "diff"
+let currentView  = "graph";  // "graph" | "table" | "dns" | "ot" | "otlog" | "vlangraph" | "diff" | "dashboard" | "findings"
 let vlanSimulation   = null;
 let _vlanRendered    = false;
 let _vlanLayout      = "force";
 let vlanSelectedNode = null;  // separate from main selectedNode — no cross-view leakage
 let baselineData = null;
+let findings = [];
+let findingsById = new Map();
+let currentCaptureKey = "";
+let findingFilters = { status: "active", severity: "all", source: "all" };
 let currentLayout  = "force"; // "force" | "radial" | "cluster"
 let colorByVlan    = false;   // when true, main graph nodes are colored by VLAN not host type
 let _tlVisibleIps  = null;    // Set of IPs in the current timeline window, null = no filter
@@ -560,6 +618,7 @@ const otLogView      = document.getElementById("otlog-view");
 const diffView       = document.getElementById("diff-view");
 const vlanView       = document.getElementById("vlan-view");
 const dashboardView  = document.getElementById("dashboard-view");
+const findingsView   = document.getElementById("findings-view");
 const ctxMenu        = document.getElementById("ctx-menu");
 
 /* ── SVG setup ───────────────────────────────────────────────────────────── */
@@ -703,6 +762,7 @@ function loadGraph(data) {
   _tlVisibleIps  = null;
   document.getElementById("vlan-tab-btn").classList.add("hidden");
   document.getElementById("dashboard-tab-btn").classList.add("hidden");
+  document.getElementById("findings-tab-btn").classList.add("hidden");
   document.getElementById("vlan-filters-section").style.display = "none";
   document.getElementById("stat-vlans-wrap").style.display = "none";
   document.getElementById("stat-ipver-wrap").style.display = "none";
@@ -844,6 +904,7 @@ function loadGraph(data) {
   buildAnomalySidebar(data.anomalies || []);
   buildCredentialsSidebar(data.credentials || []);
   buildFilesSidebar(data.files || []);
+  initializeFindings(data);
   buildTimeline(data);
   renderPresetList();
   // setView("graph") before renderGraph so graphWrap is visible when renderGraph
@@ -855,6 +916,7 @@ function loadGraph(data) {
   document.getElementById("baseline-btn").style.display = "";
   // Dashboard is always available once data is loaded
   document.getElementById("dashboard-tab-btn").classList.remove("hidden");
+  document.getElementById("findings-tab-btn").classList.remove("hidden");
   // If a baseline was already set, show the diff tab
   if (baselineData) {
     document.getElementById("diff-tab-btn").classList.remove("hidden");
@@ -902,6 +964,7 @@ function setView(view) {
     otLogView.classList.add("hidden");
     diffView.classList.add("hidden");
     vlanView.classList.add("hidden");
+    findingsView.classList.add("hidden");
     document.getElementById("graph-controls").style.display = "";
     document.getElementById("legend").style.display = "";
   } else if (view === "table") {
@@ -914,6 +977,8 @@ function setView(view) {
     otMapView.classList.add("hidden");
     otLogView.classList.add("hidden");
     diffView.classList.add("hidden");
+    vlanView.classList.add("hidden");
+    findingsView.classList.add("hidden");
     renderConnTable();
   } else if (view === "dns") {
     graphWrap.style.display = "none";
@@ -924,6 +989,8 @@ function setView(view) {
     otMapView.classList.add("hidden");
     otLogView.classList.add("hidden");
     diffView.classList.add("hidden");
+    vlanView.classList.add("hidden");
+    findingsView.classList.add("hidden");
     renderDnsMap();
   } else if (view === "ot") {
     graphWrap.style.display = "none";
@@ -934,6 +1001,8 @@ function setView(view) {
     otMapView.classList.remove("hidden");
     otLogView.classList.add("hidden");
     diffView.classList.add("hidden");
+    vlanView.classList.add("hidden");
+    findingsView.classList.add("hidden");
     renderOTMap(graphData);
     renderOTTimeline();
   } else if (view === "otlog") {
@@ -945,6 +1014,8 @@ function setView(view) {
     otMapView.classList.add("hidden");
     otLogView.classList.remove("hidden");
     diffView.classList.add("hidden");
+    vlanView.classList.add("hidden");
+    findingsView.classList.add("hidden");
     renderOtLog(graphData.ot_commands || []);
   } else if (view === "vlangraph") {
     graphWrap.style.display = "none";
@@ -956,6 +1027,7 @@ function setView(view) {
     otLogView.classList.add("hidden");
     diffView.classList.add("hidden");
     vlanView.classList.remove("hidden");
+    findingsView.classList.add("hidden");
     if (!_vlanRendered) renderVlanGraph(graphData);
   } else if (view === "diff") {
     graphWrap.style.display = "none";
@@ -967,6 +1039,7 @@ function setView(view) {
     otLogView.classList.add("hidden");
     diffView.classList.remove("hidden");
     vlanView.classList.add("hidden");
+    findingsView.classList.add("hidden");
     renderDiff();
   } else if (view === "dashboard") {
     graphWrap.style.display = "none";
@@ -978,12 +1051,27 @@ function setView(view) {
     otLogView.classList.add("hidden");
     diffView.classList.add("hidden");
     vlanView.classList.add("hidden");
+    findingsView.classList.add("hidden");
     dashboardView.classList.remove("hidden");
     renderDashboard();
+  } else if (view === "findings") {
+    graphWrap.style.display = "none";
+    tlBar.classList.add("hidden");
+    pktIns.classList.add("hidden");
+    tableView.classList.add("hidden");
+    dnsView.classList.add("hidden");
+    otMapView.classList.add("hidden");
+    otLogView.classList.add("hidden");
+    diffView.classList.add("hidden");
+    vlanView.classList.add("hidden");
+    dashboardView.classList.add("hidden");
+    findingsView.classList.remove("hidden");
+    renderFindingsWorkspace();
   }
 
   if (view !== "vlangraph")  vlanView.classList.add("hidden");
   if (view !== "dashboard") dashboardView.classList.add("hidden");
+  if (view !== "findings") findingsView.classList.add("hidden");
 }
 
 /* ── VLAN health summary card ────────────────────────────────────────────── */
@@ -1469,6 +1557,7 @@ function _renderTypeGroup(rep, items) {
       <span class="ab-sev ${rep.severity}">${rep.severity}</span>
       <span class="ab-desc">${escHtml(summary)}</span>
       <button class="ab-expand" aria-label="Expand">▾ ${count}</button>
+      <button class="ab-review" aria-label="Review finding">Review</button>
     `;
     div.appendChild(infoBtn);
     const expandBtn = div.querySelector(".ab-expand");
@@ -1493,8 +1582,18 @@ function _renderTypeGroup(rep, items) {
     div.innerHTML = `
       <span class="ab-sev ${rep.severity}">${rep.severity}</span>
       <span class="ab-desc">${escHtml(summary)}</span>
+      <button class="ab-review" aria-label="Review finding">Review</button>
     `;
     div.appendChild(infoBtn);
+  }
+
+  const reviewBtn = div.querySelector(".ab-review");
+  if (reviewBtn) {
+    reviewBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      const findingId = _findingId("anom", [rep.type || "", rep.src || "", rep.dst || "", rep.description || ""]);
+      openFindingById(findingId);
+    });
   }
 
   // Explanation panel (C1)
@@ -1712,6 +1811,498 @@ function _anomalySummary(type, src, count, items) {
     default:
       return `${type.replace(/_/g, " ")} — ${count} instance${count > 1 ? "s" : ""}`;
   }
+}
+
+const FINDING_STATUSES = ["Open", "Investigating", "False Positive", "Accepted Risk", "Resolved"];
+const FINDING_SEVERITIES = ["critical", "high", "medium", "low", "info"];
+const FINDING_SOURCE_LABELS = {
+  anomaly: "Anomaly",
+  credential: "Credential",
+  file_transfer: "File",
+  ot_command: "OT Command",
+  risk_host: "Risk Host",
+};
+
+function _hashString(str) {
+  let h = 2166136261;
+  const s = String(str == null ? "" : str);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function _normalizeSeverity(sev) {
+  const s = String(sev || "info").toLowerCase();
+  return FINDING_SEVERITIES.includes(s) ? s : "info";
+}
+
+function _severityRank(sev) {
+  return { critical: 5, high: 4, medium: 3, low: 2, info: 1 }[_normalizeSeverity(sev)] || 0;
+}
+
+function _captureFingerprint(data) {
+  const s = data?.stats || {};
+  const nodes = data?.nodes || [];
+  const edges = data?.edges || [];
+  const anoms = data?.anomalies || [];
+  const sampleNodes = nodes.slice(0, 12).map(n => n.id || n.ip || "").join(",");
+  const sampleEdges = edges.slice(0, 8).map(e => `${e.source || ""}>${e.target || ""}:${e.packet_count || 0}`).join(",");
+  return _hashString([
+    s.total_packets || 0,
+    s.total_hosts || nodes.length,
+    s.total_connections || edges.length,
+    anoms.length,
+    sampleNodes,
+    sampleEdges,
+  ].join("|"));
+}
+
+function _findingStorageKey() {
+  return currentCaptureKey ? `pv_findings:${currentCaptureKey}` : "";
+}
+
+function _findingId(prefix, parts) {
+  return `${prefix}:${_hashString(parts.join("|"))}`;
+}
+
+function _findingTitleFromAnomaly(a) {
+  return _anomalySummary(a.type || "anomaly", a.src || a.dst || "", 1, [a]);
+}
+
+function _routeText(src, dst) {
+  return [src, dst].filter(Boolean).join(" -> ");
+}
+
+function _baseFinding(fields) {
+  const severity = _normalizeSeverity(fields.severity);
+  return Object.assign({
+    id: "",
+    source_type: "anomaly",
+    title: "Finding",
+    severity,
+    source_severity: severity,
+    status: "Open",
+    analyst_note: "",
+    evidence_refs: [],
+    include_in_report: true,
+    description: "",
+    route: "",
+    created_from: {},
+  }, fields);
+}
+
+function _deriveAnomalyFindings(data) {
+  return (data.anomalies || []).map(a => _baseFinding({
+    id: _findingId("anom", [a.type || "", a.src || "", a.dst || "", a.description || ""]),
+    source_type: "anomaly",
+    title: _findingTitleFromAnomaly(a),
+    severity: a.severity || "low",
+    source_severity: a.severity || "low",
+    description: a.description || "",
+    route: _routeText(a.src, a.dst),
+    evidence_refs: [
+      { type: "anomaly", label: a.type || "anomaly", description: a.description || "" },
+      ...(a.src ? [{ type: "host", label: `Source ${a.src}`, ip: a.src }] : []),
+      ...(a.dst ? [{ type: "host", label: `Destination ${a.dst}`, ip: a.dst }] : []),
+    ],
+    created_from: { type: "anomaly", anomaly: a },
+  }));
+}
+
+function _deriveCredentialFindings(data) {
+  return (data.credentials || []).map(c => _baseFinding({
+    id: _findingId("cred", [c.protocol || "", c.type || "", c.src || "", c.dst || "", c.dport || "", c.username || "", c.password || ""]),
+    source_type: "credential",
+    title: `${c.protocol || "Cleartext"} credential captured${c.username ? " for " + c.username : ""}`,
+    severity: "high",
+    source_severity: "high",
+    description: `${c.type || "Credential"} observed in cleartext traffic.`,
+    route: _routeText(c.src, c.dst),
+    evidence_refs: [
+      { type: "credential", label: `${c.protocol || "Credential"} ${c.username || "(no user)"}`, username: c.username || "", protocol: c.protocol || "" },
+      ...(c.src ? [{ type: "host", label: `Source ${c.src}`, ip: c.src }] : []),
+      ...(c.dst ? [{ type: "host", label: `Destination ${c.dst}`, ip: c.dst }] : []),
+    ],
+    created_from: { type: "credential", credential: c },
+  }));
+}
+
+function _deriveFileFindings(data) {
+  return (data.files || []).map(f => _baseFinding({
+    id: _findingId("file", [f.sha256 || "", f.filename || "", f.src || "", f.dst || ""]),
+    source_type: "file_transfer",
+    title: `File transfer: ${f.filename || "unnamed file"}`,
+    severity: "medium",
+    source_severity: "medium",
+    description: `${f.mime_type || "application/octet-stream"} transfer, ${_fmtBytes(f.size)}.`,
+    route: _routeText(f.src, f.dst),
+    evidence_refs: [
+      { type: "file", label: f.filename || "file", sha256: f.sha256 || "", mime_type: f.mime_type || "" },
+      ...(f.src ? [{ type: "host", label: `Source ${f.src}`, ip: f.src }] : []),
+      ...(f.dst ? [{ type: "host", label: `Destination ${f.dst}`, ip: f.dst }] : []),
+    ],
+    created_from: { type: "file_transfer", file: f },
+  }));
+}
+
+function _deriveOtCommandFindings(data) {
+  const groups = new Map();
+  (data.ot_commands || [])
+    .filter(c => c.direction === "write" || c.direction === "error")
+    .forEach(c => {
+      const key = [c.protocol || "", c.direction || "", c.src || "", c.dst || "", c.function_name || c.function_code || ""].join("|");
+      if (!groups.has(key)) {
+        groups.set(key, { sample: c, count: 0, first: c.rel_time, last: c.rel_time });
+      }
+      const g = groups.get(key);
+      g.count += 1;
+      if (c.rel_time != null) {
+        if (g.first == null || c.rel_time < g.first) g.first = c.rel_time;
+        if (g.last == null || c.rel_time > g.last) g.last = c.rel_time;
+      }
+    });
+
+  return [...groups.values()].map(g => {
+    const c = g.sample;
+    const fn = c.function_name || (c.function_code != null ? `FC${c.function_code}` : "command");
+    return _baseFinding({
+      id: _findingId("otcmd", [c.protocol || "", c.direction || "", c.src || "", c.dst || "", fn]),
+      source_type: "ot_command",
+      title: `${c.protocol || "OT"} ${c.direction} ${fn}`,
+      severity: c.direction === "write" ? "high" : "medium",
+      source_severity: c.direction === "write" ? "high" : "medium",
+      description: `${g.count} ${c.direction} event${g.count !== 1 ? "s" : ""}${g.first != null ? ` from +${g.first}s to +${g.last}s` : ""}.`,
+      route: _routeText(c.src, c.dst),
+      evidence_refs: [
+        { type: "ot_command", label: `${c.protocol || "OT"} ${fn}`, count: g.count, direction: c.direction || "" },
+        ...(c.src ? [{ type: "host", label: `Source ${c.src}`, ip: c.src }] : []),
+        ...(c.dst ? [{ type: "host", label: `Destination ${c.dst}`, ip: c.dst }] : []),
+      ],
+      created_from: { type: "ot_command", command: c, count: g.count },
+    });
+  });
+}
+
+function _deriveRiskHostFindings(data) {
+  return (data.nodes || [])
+    .filter(n => (n.risk_score || 0) >= 70)
+    .map(n => _baseFinding({
+      id: _findingId("riskhost", [n.id || n.ip || "", n.risk_score || 0]),
+      source_type: "risk_host",
+      title: `High-risk host ${n.ip || n.id}`,
+      severity: "high",
+      source_severity: "high",
+      description: `Risk score ${n.risk_score || 0}/100 for ${n.host_type || "Unknown Host"}.`,
+      route: n.ip || n.id || "",
+      evidence_refs: [
+        { type: "risk", label: `Risk ${n.risk_score || 0}/100`, score: n.risk_score || 0 },
+        { type: "host", label: n.ip || n.id || "", ip: n.ip || n.id || "" },
+      ],
+      created_from: { type: "risk_host", node_id: n.id || n.ip || "" },
+    }));
+}
+
+function deriveFindings(data) {
+  return [
+    ..._deriveAnomalyFindings(data),
+    ..._deriveCredentialFindings(data),
+    ..._deriveFileFindings(data),
+    ..._deriveOtCommandFindings(data),
+    ..._deriveRiskHostFindings(data),
+  ].sort((a, b) => _severityRank(b.severity) - _severityRank(a.severity) || a.title.localeCompare(b.title));
+}
+
+function _loadFindingOverrides() {
+  const key = _findingStorageKey();
+  if (!key) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function _mergeFindingEdits(base, edits) {
+  const byId = new Map(base.map(f => [f.id, Object.assign({}, f)]));
+  (edits || []).forEach(edit => {
+    if (!edit || !edit.id) return;
+    const cur = byId.get(edit.id) || _baseFinding({ id: edit.id, title: edit.title || "Saved finding", source_type: edit.source_type || "anomaly" });
+    ["status", "severity", "analyst_note", "include_in_report", "title", "description", "route", "source_type", "source_severity", "evidence_refs", "created_from"].forEach(k => {
+      if (edit[k] !== undefined) cur[k] = edit[k];
+    });
+    cur.severity = _normalizeSeverity(cur.severity);
+    cur.status = FINDING_STATUSES.includes(cur.status) ? cur.status : "Open";
+    cur.include_in_report = cur.include_in_report !== false;
+    byId.set(edit.id, cur);
+  });
+  return [...byId.values()].sort((a, b) => _severityRank(b.severity) - _severityRank(a.severity) || a.title.localeCompare(b.title));
+}
+
+function initializeFindings(data) {
+  currentCaptureKey = _captureFingerprint(data);
+  const base = deriveFindings(data);
+  const sessionFindings = Array.isArray(data.findings) ? data.findings : [];
+  findings = _mergeFindingEdits(base, sessionFindings);
+  findings = _mergeFindingEdits(findings, _loadFindingOverrides());
+  findingsById = new Map(findings.map(f => [f.id, f]));
+  data.findings = findings;
+}
+
+function _findingEditableSnapshot(f) {
+  return {
+    id: f.id,
+    status: f.status,
+    severity: f.severity,
+    analyst_note: f.analyst_note || "",
+    include_in_report: f.include_in_report !== false,
+  };
+}
+
+function persistFindings() {
+  findingsById = new Map(findings.map(f => [f.id, f]));
+  if (graphData) graphData.findings = findings;
+  const key = _findingStorageKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(findings.map(_findingEditableSnapshot)));
+  } catch (_) {
+    showToast("Finding edits could not be saved in local storage.", "warn", 5000);
+  }
+}
+
+function updateFinding(id, patch) {
+  const f = findingsById.get(id);
+  if (!f) return;
+  Object.assign(f, patch);
+  f.severity = _normalizeSeverity(f.severity);
+  f.status = FINDING_STATUSES.includes(f.status) ? f.status : "Open";
+  if (f.status === "False Positive") f.include_in_report = false;
+  persistFindings();
+  if (currentView === "findings") renderFindingsWorkspace();
+}
+
+function _findingStatusVisible(f) {
+  if (findingFilters.status === "all") return true;
+  if (findingFilters.status === "active") return f.status !== "False Positive" && f.status !== "Resolved";
+  return f.status === findingFilters.status;
+}
+
+function _findingEvidenceLabel(ref) {
+  if (!ref) return "";
+  if (ref.type === "host") return ref.label || ref.ip || "Host";
+  if (ref.type === "anomaly") return `${ref.label || "Anomaly"}${ref.description ? ": " + ref.description : ""}`;
+  if (ref.type === "credential") return `${ref.label || "Credential"}${ref.protocol ? " via " + ref.protocol : ""}`;
+  if (ref.type === "file") return `${ref.label || "File"}${ref.sha256 ? " sha256=" + ref.sha256 : ""}`;
+  if (ref.type === "ot_command") return `${ref.label || "OT command"}${ref.count ? " x" + ref.count : ""}`;
+  if (ref.type === "risk") return ref.label || "Risk score";
+  return ref.label || ref.type || "Evidence";
+}
+
+function findingEvidenceBundle(f) {
+  const lines = [
+    `Finding: ${f.title}`,
+    `Severity: ${f.severity}`,
+    `Status: ${f.status}`,
+    `Source: ${FINDING_SOURCE_LABELS[f.source_type] || f.source_type}`,
+  ];
+  if (f.route) lines.push(`Route: ${f.route}`);
+  if (f.description) lines.push(`Description: ${f.description}`);
+  if (f.analyst_note) lines.push(`Analyst note: ${f.analyst_note}`);
+  if ((f.evidence_refs || []).length) {
+    lines.push("Evidence:");
+    (f.evidence_refs || []).forEach(ref => lines.push(`- ${_findingEvidenceLabel(ref)}`));
+  }
+  return lines.join("\n");
+}
+
+function _openHostEvidence(ip, label) {
+  if (!graphData || !ip) return;
+  const node = (graphData.nodes || []).find(n => n.ip === ip || n.id === ip);
+  if (!node) {
+    showToast(`Host ${ip} is not available in this capture.`, "warn");
+    return;
+  }
+  selectedNode = node;
+  showDetailPanel(node, { from: "finding", label: label || "finding" });
+  detailPanel.classList.add("open");
+  setView("graph");
+  if (_isRendered(node.id)) {
+    const linkSel = linksGroup.selectAll(".link");
+    const nodeSel = nodesGroup.selectAll(".node");
+    nodeSel.classed("selected", n => n.id === node.id);
+    highlightNode(node, linkSel, nodeSel);
+  } else {
+    showToast(`${node.ip} is outside the rendered top ${RENDER_NODE_CAP.toLocaleString()} hosts - details shown in the side panel.`, "info", 6000);
+  }
+}
+
+function openFindingEvidence(id) {
+  const f = findingsById.get(id);
+  if (!f) return;
+  const src = f.created_from || {};
+  if (src.type === "anomaly" && src.anomaly) {
+    _jumpToAnomaly(src.anomaly);
+    return;
+  }
+  if (src.type === "credential" && src.credential) {
+    _openHostEvidence(src.credential.src || src.credential.dst, "credential");
+    return;
+  }
+  if (src.type === "file_transfer" && src.file) {
+    _openHostEvidence(src.file.src || src.file.dst, "file transfer");
+    return;
+  }
+  if (src.type === "ot_command" && src.command) {
+    const c = src.command;
+    if (c.src && c.dst) {
+      setView("graph");
+      openPktInspector(c.src, c.dst);
+    }
+    _openHostEvidence(c.src || c.dst, "OT command");
+    return;
+  }
+  const hostRef = (f.evidence_refs || []).find(ref => ref.type === "host" && ref.ip);
+  if (hostRef) _openHostEvidence(hostRef.ip, f.title);
+}
+
+function openFindingById(id) {
+  if (!findingsById.has(id)) {
+    showToast("No linked finding was found for this item.", "warn");
+    return;
+  }
+  findingFilters.status = "all";
+  findingFilters.severity = "all";
+  findingFilters.source = "all";
+  setView("findings");
+  setTimeout(() => {
+    const row = document.querySelector(`[data-finding-id="${CSS.escape(id)}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    row.classList.add("finding-flash");
+    setTimeout(() => row.classList.remove("finding-flash"), 1400);
+  }, 0);
+}
+
+function _findingOptions(values, selected, labels) {
+  return values.map(v => `<option value="${escHtml(v)}"${v === selected ? " selected" : ""}>${escHtml(labels?.[v] || v)}</option>`).join("");
+}
+
+function renderFindingsWorkspace() {
+  const view = document.getElementById("findings-view");
+  if (!view) return;
+  if (!graphData) {
+    view.innerHTML = '<div class="findings-empty">No capture loaded</div>';
+    return;
+  }
+
+  const sourceTypes = [...new Set(findings.map(f => f.source_type))].sort();
+  const visible = findings.filter(f =>
+    _findingStatusVisible(f) &&
+    (findingFilters.severity === "all" || f.severity === findingFilters.severity) &&
+    (findingFilters.source === "all" || f.source_type === findingFilters.source)
+  );
+  const reportCount = findings.filter(f => f.include_in_report !== false && f.status !== "False Positive").length;
+  const openCount = findings.filter(f => f.status !== "False Positive" && f.status !== "Resolved").length;
+
+  view.innerHTML = `
+    <div id="findings-toolbar">
+      <div>
+        <div id="findings-title">Findings</div>
+        <div id="findings-summary">${fmtNum(openCount)} active / ${fmtNum(findings.length)} total / ${fmtNum(reportCount)} in report</div>
+      </div>
+      <div id="findings-filters">
+        <select id="finding-filter-status" title="Status filter">
+          ${_findingOptions(["active", "all", ...FINDING_STATUSES], findingFilters.status, { active: "Active", all: "All statuses" })}
+        </select>
+        <select id="finding-filter-severity" title="Severity filter">
+          ${_findingOptions(["all", ...FINDING_SEVERITIES], findingFilters.severity, { all: "All severities" })}
+        </select>
+        <select id="finding-filter-source" title="Source filter">
+          ${_findingOptions(["all", ...sourceTypes], findingFilters.source, Object.assign({ all: "All sources" }, FINDING_SOURCE_LABELS))}
+        </select>
+      </div>
+    </div>
+    <div id="findings-list">
+      ${visible.length ? visible.map(_renderFindingRow).join("") : '<div class="findings-empty">No findings match the current filters</div>'}
+    </div>
+  `;
+
+  document.getElementById("finding-filter-status").addEventListener("change", e => {
+    findingFilters.status = e.target.value;
+    renderFindingsWorkspace();
+  });
+  document.getElementById("finding-filter-severity").addEventListener("change", e => {
+    findingFilters.severity = e.target.value;
+    renderFindingsWorkspace();
+  });
+  document.getElementById("finding-filter-source").addEventListener("change", e => {
+    findingFilters.source = e.target.value;
+    renderFindingsWorkspace();
+  });
+
+  view.querySelectorAll("[data-finding-field]").forEach(el => {
+    el.addEventListener("change", () => {
+      const id = el.dataset.findingId;
+      const field = el.dataset.findingField;
+      const value = el.type === "checkbox" ? el.checked : el.value;
+      updateFinding(id, { [field]: value });
+    });
+  });
+  view.querySelectorAll("[data-finding-action]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.findingId;
+      const action = btn.dataset.findingAction;
+      const f = findingsById.get(id);
+      if (!f) return;
+      if (action === "open") openFindingEvidence(id);
+      if (action === "copy") copyText(findingEvidenceBundle(f));
+      if (action === "note") {
+        const note = await openTextModal({
+          title: `Analyst note: ${f.title}`,
+          value: f.analyst_note || "",
+          placeholder: "Add analyst context, remediation notes, or false-positive rationale...",
+        });
+        if (note !== null) updateFinding(id, { analyst_note: note.trim() });
+      }
+    });
+  });
+}
+
+function _renderFindingRow(f) {
+  const statusOptions = _findingOptions(FINDING_STATUSES, f.status);
+  const severityOptions = _findingOptions(FINDING_SEVERITIES, f.severity);
+  const source = FINDING_SOURCE_LABELS[f.source_type] || f.source_type || "Finding";
+  const evidence = (f.evidence_refs || []).slice(0, 4).map(ref => `<span>${escHtml(_findingEvidenceLabel(ref))}</span>`).join("");
+  const include = f.include_in_report !== false;
+  return `
+    <div class="finding-row sev-${escHtml(f.severity)} status-${escHtml(f.status.toLowerCase().replace(/\s+/g, "-"))}" data-finding-id="${escHtml(f.id)}">
+      <div class="finding-main">
+        <div class="finding-title-row">
+          <span class="finding-sev">${escHtml(f.severity)}</span>
+          <strong>${escHtml(f.title)}</strong>
+          <span class="finding-source">${escHtml(source)}</span>
+        </div>
+        <div class="finding-desc">${escHtml(f.description || "")}</div>
+        ${f.route ? `<div class="finding-route">${escHtml(f.route)}</div>` : ""}
+        ${evidence ? `<div class="finding-evidence">${evidence}</div>` : ""}
+        ${f.analyst_note ? `<div class="finding-note">${escHtml(f.analyst_note)}</div>` : ""}
+      </div>
+      <div class="finding-controls">
+        <select data-finding-field="status" data-finding-id="${escHtml(f.id)}" title="Finding status">${statusOptions}</select>
+        <select data-finding-field="severity" data-finding-id="${escHtml(f.id)}" title="Severity">${severityOptions}</select>
+        <label class="finding-report-toggle">
+          <input type="checkbox" data-finding-field="include_in_report" data-finding-id="${escHtml(f.id)}"${include ? " checked" : ""}>
+          Report
+        </label>
+        <button data-finding-action="note" data-finding-id="${escHtml(f.id)}">Note</button>
+        <button data-finding-action="copy" data-finding-id="${escHtml(f.id)}">Copy Evidence</button>
+        <button data-finding-action="open" data-finding-id="${escHtml(f.id)}">Open</button>
+      </div>
+    </div>
+  `;
 }
 
 /** Returns true when the given node ID has an SVG element in the current render. */
@@ -2624,9 +3215,13 @@ function showDetailPanel(d, navCtx) {
   // Bind annotation button
   const annBtn = body.querySelector("#ann-edit-btn");
   if (annBtn) {
-    annBtn.addEventListener("click", () => {
+    annBtn.addEventListener("click", async () => {
       const existing = getAnnotation(d.ip);
-      const input = prompt("Add a note for " + d.ip + ":", existing || "");
+      const input = await openTextModal({
+        title: "Host note: " + d.ip,
+        value: existing || "",
+        placeholder: "Add analyst notes for this host...",
+      });
       if (input !== null) {
         saveAnnotation(d.ip, input);
         showDetailPanel(d);  // re-render
@@ -5324,11 +5919,15 @@ function renderVlanGraph(data) {
         event.stopPropagation();
         showVlanDetailPanel(d);
       })
-      .on("dblclick", (event, d) => {
+      .on("dblclick", async (event, d) => {
         event.stopPropagation();
         hideTooltip();
         const current = getVlanLabel(d.vid);
-        const name = prompt(`Label for ${escHtml(d.defaultLabel)} (leave blank to clear):`, current);
+        const name = await openTextModal({
+          title: `VLAN label: ${d.defaultLabel}`,
+          value: current,
+          placeholder: "Leave blank to clear the custom label",
+        });
         if (name === null) return;  // cancelled
         saveVlanLabel(d.vid, name.trim());
         // Update the label in data and redraw the text element
@@ -6078,8 +6677,14 @@ function renderDashboard() {
       row.className = "db-anom-row";
       row.title = "Click to inspect in graph";
       row.innerHTML = `<span class="db-anom-dot ${escHtml(rep.severity)}"></span>` +
-        `<span class="db-anom-label">${escHtml(_anomalySummary(rep.type, rep.src, items.length, items))}</span>`;
+        `<span class="db-anom-label">${escHtml(_anomalySummary(rep.type, rep.src, items.length, items))}</span>` +
+        `<button class="db-anom-review" title="Review finding">Review</button>`;
       row.addEventListener("click", () => _jumpToAnomaly(rep));
+      row.querySelector(".db-anom-review").addEventListener("click", e => {
+        e.stopPropagation();
+        const findingId = _findingId("anom", [rep.type || "", rep.src || "", rep.dst || "", rep.description || ""]);
+        openFindingById(findingId);
+      });
       anomList.appendChild(row);
     });
     if (anomRemainder > 0) {
@@ -6874,6 +7479,12 @@ function generateAuditReport() {
   const creds = graphData.credentials || [];
   const xfiles = graphData.files || [];
   const otCmds = graphData.ot_commands || [];
+  const suppressedAnomalyFindingIds = new Set((findings || [])
+    .filter(f => f.source_type === "anomaly" && (f.include_in_report === false || f.status === "False Positive"))
+    .map(f => f.id));
+  const reportAnomalies = anomalies.filter(a =>
+    !suppressedAnomalyFindingIds.has(_findingId("anom", [a.type || "", a.src || "", a.dst || "", a.description || ""]))
+  );
 
   // Escape a string for use inside a markdown table cell (prevent column breaks)
   const mdCell = s => String(s == null ? "—" : s).replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
@@ -6904,6 +7515,23 @@ function generateAuditReport() {
   }
   br();
 
+  // Curated findings
+  const reportFindings = (findings || [])
+    .filter(f => f.include_in_report !== false && f.status !== "False Positive")
+    .sort((a, b) => _severityRank(b.severity) - _severityRank(a.severity) || a.title.localeCompare(b.title));
+  if (reportFindings.length) {
+    h(2, `Curated Findings (${reportFindings.length})`);
+    p(`| Severity | Status | Source | Finding | Evidence | Analyst Note |`);
+    p(`|----------|--------|--------|---------|----------|--------------|`);
+    reportFindings.forEach(f => {
+      const source = FINDING_SOURCE_LABELS[f.source_type] || f.source_type || "Finding";
+      const evidence = (f.evidence_refs || []).slice(0, 4).map(_findingEvidenceLabel).join("; ");
+      const finding = f.route ? `${f.title} (${f.route})` : f.title;
+      p(`| ${mdCell(f.severity)} | ${mdCell(f.status)} | ${mdCell(source)} | ${mdCell(finding)} | ${mdCell(evidence || f.description || "—")} | ${mdCell(f.analyst_note || "—")} |`);
+    });
+    br();
+  }
+
   // Risk Overview — top 10 hosts by risk score
   const scored = nodes.filter(n => (n.risk_score ?? 0) > 0)
                        .sort((a, b) => (b.risk_score ?? 0) - (a.risk_score ?? 0))
@@ -6915,7 +7543,7 @@ function generateAuditReport() {
     scored.forEach(n => {
       const host = (n.dns_names && n.dns_names[0]) || n.hostname || "—";
       const risk = n.risk_score ?? 0;
-      const aCount = anomalies.filter(a => a.src === n.id || a.dst === n.id).length;
+      const aCount = reportAnomalies.filter(a => a.src === n.id || a.dst === n.id).length;
       p(`| ${mdCell(n.id)} | ${mdCell(host)} | ${mdCell(n.host_type || "—")} | ${risk} | ${aCount} |`);
     });
     br();
@@ -6947,10 +7575,10 @@ function generateAuditReport() {
   }
 
   // Anomalies by severity
-  if (anomalies.length) {
+  if (reportAnomalies.length) {
     h(2, "Anomalies");
     const bySev = {};
-    anomalies.forEach(a => { (bySev[a.severity] = bySev[a.severity] || []).push(a); });
+    reportAnomalies.forEach(a => { (bySev[a.severity] = bySev[a.severity] || []).push(a); });
     ["critical", "high", "medium", "low"].forEach(sev => {
       if (!bySev[sev]) return;
       h(3, sev.charAt(0).toUpperCase() + sev.slice(1) + ` (${bySev[sev].length})`);
@@ -7022,7 +7650,7 @@ function generateAuditReport() {
   }
 
   // DNS tunneling suspects
-  const dnsTunnel = anomalies.filter(a => a.type === "dns_tunneling");
+  const dnsTunnel = reportAnomalies.filter(a => a.type === "dns_tunneling");
   if (dnsTunnel.length) {
     h(2, "DNS Tunneling Suspects");
     dnsTunnel.forEach(a => p(`- **${a.src || "—"}** — ${a.description}`));
@@ -7208,6 +7836,7 @@ document.getElementById("save-session-btn").addEventListener("click", () => {
     credentials: graphData.credentials || [],
     files: graphData.files || [],
     ot_commands: graphData.ot_commands || [],
+    findings: findings || [],
   };
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const blob = new Blob([JSON.stringify(sessionData)], { type: "application/json" });
@@ -7316,11 +7945,15 @@ function showCtxMenu(event, d) {
   ctxMenu.classList.remove("hidden");
 }
 
-document.getElementById("ctx-add-note").addEventListener("click", () => {
+document.getElementById("ctx-add-note").addEventListener("click", async () => {
   ctxMenu.classList.add("hidden");
   if (!ctxTarget) return;
   const existing = getAnnotation(ctxTarget.ip);
-  const input = prompt("Add a note for " + ctxTarget.ip + ":", existing || "");
+  const input = await openTextModal({
+    title: "Host note: " + ctxTarget.ip,
+    value: existing || "",
+    placeholder: "Add analyst notes for this host...",
+  });
   if (input !== null) {
     saveAnnotation(ctxTarget.ip, input);
     updateNoteIcon(ctxTarget.ip, !!input);
@@ -7572,7 +8205,7 @@ document.addEventListener("keydown", (e) => {
   }
 
   // 1–7 → switch views
-  const VIEW_MAP = { "1": "graph", "2": "table", "3": "dns", "4": "ot", "5": "otlog", "6": "vlangraph", "7": "diff", "8": "dashboard" };
+  const VIEW_MAP = { "1": "graph", "2": "table", "3": "dns", "4": "ot", "5": "otlog", "6": "vlangraph", "7": "diff", "8": "dashboard", "9": "findings" };
   if (VIEW_MAP[e.key] && graphData) {
     const btn = document.querySelector(`.vt-btn[data-view="${VIEW_MAP[e.key]}"]`);
     if (btn && !btn.classList.contains("hidden")) { setView(VIEW_MAP[e.key]); return; }
