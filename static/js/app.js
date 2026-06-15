@@ -1727,16 +1727,18 @@ function buildFilesSidebar(files) {
     const ts = f.rel_time != null ? `+${f.rel_time}s` : "";
     const size = f.size != null ? _fmtBytes(f.size) : "?";
     const mime = f.mime_type || "application/octet-stream";
+    const filename = f.filename || "file";
+    const sha256 = f.sha256 || "";
     card.innerHTML = `
-      <div class="file-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</div>
+      <div class="file-name" title="${escHtml(filename)}">${escHtml(filename)}</div>
       <div class="file-meta">
         <span class="file-mime">${escHtml(mime)}</span>
         <span class="file-size">${size}</span>
         <span style="margin-left:auto;color:var(--text2);font-size:10px">${ts}</span>
-        <button class="file-dl-btn" onclick="downloadFile('${escHtml(f.sha256)}','${escHtml(f.filename || 'file')}')" title="Download captured file">⬇</button>
+        <button class="file-dl-btn" data-file-sha="${escHtml(sha256)}" data-file-name="${escHtml(filename)}" title="Download captured file">⬇</button>
       </div>
       <div class="file-route">${escHtml(f.src)} → ${escHtml(f.dst)}</div>
-      <div class="file-hash" title="SHA-256">${escHtml(f.sha256 || '')}${f.sha256 ? ` <button class="copy-btn" onclick="copyText('${escHtml(f.sha256)}')" title="Copy SHA-256">⧉</button>` : ''}</div>`;
+      <div class="file-hash" title="SHA-256">${escHtml(sha256)}${sha256 ? ` ${copyButton(sha256, "Copy SHA-256")}` : ""}</div>`;
     list.appendChild(card);
   });
 }
@@ -2932,10 +2934,10 @@ function showDetailPanel(d, navCtx) {
 
   detailPanel.classList.add("open");
   document.getElementById("dh-ip").innerHTML =
-    escHtml(d.ip) + ` <button class="copy-btn" onclick="copyText('${escHtml(d.ip)}')" title="Copy IP">⧉</button>`;
+    escHtml(d.ip) + ` ${copyButton(d.ip, "Copy IP")}`;
   const _hostStr = d.hostname || (d.dns_names && d.dns_names[0]) || "";
   document.getElementById("dh-hostname").innerHTML = _hostStr
-    ? escHtml(_hostStr) + ` <button class="copy-btn" onclick="copyText('${escHtml(_hostStr)}')" title="Copy hostname">⧉</button>`
+    ? escHtml(_hostStr) + ` ${copyButton(_hostStr, "Copy hostname")}`
     : "";
 
   const body = document.getElementById("detail-body");
@@ -3032,7 +3034,7 @@ function showDetailPanel(d, navCtx) {
       const threat = knownBad[j];
       rows.push(`<div class="d-val" style="font-family:var(--font-mono);font-size:10px;margin-bottom:3px">
         <span style="color:${threat ? 'var(--red)' : 'var(--text2)'}">${escHtml(j)}</span>
-        <button class="copy-btn" onclick="copyText('${escHtml(j)}')" title="Copy JA3">⧉</button>
+        ${copyButton(j, "Copy JA3")}
         ${threat ? `<span style="color:var(--red);margin-left:6px">⚠ ${escHtml(threat)}</span>` : ""}
       </div>`);
     });
@@ -4092,6 +4094,10 @@ function buildHttpHeadersTable(headers) {
 function escHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function copyButton(value, title) {
+  return `<button class="copy-btn" data-copy-text="${escHtml(value)}" title="${escHtml(title)}">⧉</button>`;
 }
 
 /* ── Packet inspector resize handle ──────────────────────────────────────── */
@@ -8268,6 +8274,25 @@ function copyText(text) {
     () => showToast("Copy failed", "error", 2000)
   );
 }
+
+document.addEventListener("click", (e) => {
+  if (!e.target || typeof e.target.closest !== "function") return;
+
+  const copyBtn = e.target.closest("[data-copy-text]");
+  if (copyBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    copyText(copyBtn.dataset.copyText || "");
+    return;
+  }
+
+  const fileBtn = e.target.closest("[data-file-sha]");
+  if (fileBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    downloadFile(fileBtn.dataset.fileSha || "", fileBtn.dataset.fileName || "file");
+  }
+});
 
 /* ── A3: Persistent filter state ────────────────────────────────────────── */
 function saveFilterState() {

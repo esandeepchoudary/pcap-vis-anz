@@ -129,6 +129,10 @@ def test_is_private_ipv6_loopback():
 def test_is_private_ipv6_link_local():
     assert is_private("fe80::1") is True
     assert is_private("FE80::abcd") is True
+    assert is_private("fe90::1") is True
+    assert is_private("fea0::1") is True
+    assert is_private("febf::1") is True
+    assert is_private("fec0::1") is False
 
 def test_is_private_ipv6_ula_fc():
     assert is_private("fc00::1") is True

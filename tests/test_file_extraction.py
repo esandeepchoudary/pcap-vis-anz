@@ -1,59 +1,20 @@
 """Unit tests for HTTP file-transfer detection helpers."""
-import base64
 import hashlib
-import re
+import os
+import sys
 
-# Replicate the extraction logic from analyze_pcap() for unit testing
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-_FILE_MIME_PREFIXES = (
-    "application/", "image/", "audio/", "video/",
-    "text/csv", "text/xml", "text/plain",
-)
-_FILE_MIME_SKIP = {
-    "text/html", "text/css", "text/javascript",
-    "application/json", "application/javascript",
-    "application/x-www-form-urlencoded",
-}
+from app import _extract_http_file_transfer
 
 
 def _extract_file(payload: bytes):
-    """Return (filename, mime, size, sha256) or None from an HTTP response payload."""
-    if not payload or not payload.startswith(b"HTTP/"):
+    """Return (filename, mime, size, sha256) or None using production logic."""
+    result = _extract_http_file_transfer(payload)
+    if result is None:
         return None
-    sep = payload.find(b"\r\n\r\n")
-    if sep == -1:
-        return None
-    hdr_raw = payload[:sep].decode("utf-8", errors="replace")
-    body = payload[sep + 4:]
-    mime = ""
-    filename = ""
-    clen = None
-    for hl in hdr_raw.split("\r\n")[1:]:
-        if ":" not in hl:
-            continue
-        hk, hv = hl.split(":", 1)
-        hk_l = hk.strip().lower()
-        hv_s = hv.strip()
-        if hk_l == "content-type":
-            mime = hv_s.split(";")[0].strip().lower()
-        elif hk_l == "content-disposition":
-            fnm = re.search(r'filename\*?=["\']?([^"\';\r\n]+)', hv_s, re.IGNORECASE)
-            if fnm:
-                filename = fnm.group(1).strip().strip("\"'")[:200]
-        elif hk_l == "content-length":
-            try:
-                clen = int(hv_s)
-            except ValueError:
-                pass
-    interesting = filename or (
-        mime and any(mime.startswith(p) for p in _FILE_MIME_PREFIXES)
-        and mime not in _FILE_MIME_SKIP
-    )
-    if not interesting or not body:
-        return None
-    sha = hashlib.sha256(body).hexdigest()
-    size = clen if clen is not None else len(body)
-    return filename, mime, size, sha
+    meta, _body = result
+    return meta["filename"], meta["mime_type"], meta["size"], meta["sha256"]
 
 
 def _make_response(status="200 OK", headers=None, body=b"data"):
@@ -171,3 +132,20 @@ class TestFileExtraction:
         assert result is not None
         _, _, _, sha = result
         assert sha == hashlib.sha256(body).hexdigest()
+
+    def test_context_metadata_uses_production_helper(self):
+        payload = _make_response(
+            headers={"Content-Type": "application/pdf"},
+            body=b"%PDF",
+        )
+        result = _extract_http_file_transfer(
+            payload, pkt_time=123.4567, rel_time=1.2345,
+            src="10.0.0.1", dst="10.0.0.2",
+        )
+        assert result is not None
+        meta, body = result
+        assert body == b"%PDF"
+        assert meta["time"] == 123.457
+        assert meta["rel_time"] == 1.234
+        assert meta["src"] == "10.0.0.1"
+        assert meta["dst"] == "10.0.0.2"
