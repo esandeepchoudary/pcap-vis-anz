@@ -9,9 +9,9 @@ import socket
 import tempfile
 import threading
 import statistics
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, OrderedDict
 from urllib.parse import parse_qs
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor, Future, TimeoutError as FutureTimeoutError
 from functools import lru_cache
 from flask import Flask, request, jsonify, render_template, make_response
 from flask_compress import Compress
@@ -50,9 +50,12 @@ def _get_executor() -> ThreadPoolExecutor:
             _executor = ThreadPoolExecutor(max_workers=_UPLOAD_MAX_WORKERS)
         return _executor
 
-# Captured file bodies keyed by SHA-256; populated during analyze_pcap,
-# cleared at the start of each /upload request.
-_file_body_cache: dict = {}
+# Captured file bodies keyed by SHA-256; populated during analyze_pcap.
+# Implemented as a size-bounded LRU (OrderedDict) so download links from prior
+# uploads remain valid until genuine memory pressure evicts them. The cache is
+# never wiped wholesale on a new upload — entries are evicted only when the 256 MB
+# cap is exceeded (oldest-first).
+_file_body_cache: OrderedDict = OrderedDict()
 _file_body_cache_lock = threading.Lock()
 _file_body_cache_bytes: int = 0   # running total; guarded by _file_body_cache_lock
 _FILE_CACHE_MAX_BYTES = 256 * 1024 * 1024  # 256 MB hard cap on cached file bodies
@@ -2325,8 +2328,35 @@ def analyze_pcap(filepath):
                     sip = _ipv6_str(raw[l2_off + 8:l2_off + 24])
                     dip = _ipv6_str(raw[l2_off + 24:l2_off + 40])
                     l3_off = l2_off
-                    # Fixed 40-byte IPv6 header; extension headers not traversed
-                    l4_off = l3_off + 40
+                    # Walk IPv6 extension headers to reach the transport layer.
+                    # Known extension-header types and their length encodings:
+                    #   Hop-by-Hop (0), Routing (43), Destination Options (60):
+                    #     length = (raw[off+1] + 1) * 8
+                    #   Fragment (44): fixed 8 bytes
+                    #   AH (51): length = (raw[off+1] + 2) * 4
+                    # Any unknown next-header type is treated as transport.
+                    _EXT_HDR_TYPES = {0, 43, 44, 51, 60}
+                    _off = l2_off + 40   # start of first extension header / transport
+                    _nh = proto_num
+                    _hops = 0
+                    while _nh in _EXT_HDR_TYPES and _hops < 8:
+                        if _nh == 44:           # Fragment header: fixed 8 bytes
+                            _ext_len = 8
+                        elif _nh == 51:         # AH: (hdr ext len + 2) * 4
+                            if _off + 2 > len(raw):
+                                break
+                            _ext_len = (raw[_off + 1] + 2) * 4
+                        else:                   # Hop-by-hop, Routing, Destination Options
+                            if _off + 2 > len(raw):
+                                break
+                            _ext_len = (raw[_off + 1] + 1) * 8
+                        if _off + _ext_len > len(raw):
+                            break
+                        _nh = raw[_off]         # next header field is always byte 0
+                        _off += _ext_len
+                        _hops += 1
+                    proto_num = _nh
+                    l4_off = _off
                     is_ipv6 = True
                 else:
                     continue
@@ -2497,15 +2527,24 @@ def analyze_pcap(filepath):
                                             "size": _size, "sha256": _sha,
                                         })
                                         _body_bytes = bytes(_body)
+                                        _entry_size = len(_body_bytes)
                                         with _file_body_cache_lock:
                                             global _file_body_cache_bytes
-                                            if _file_body_cache_bytes + len(_body_bytes) <= _FILE_CACHE_MAX_BYTES:
-                                                _file_body_cache[_sha] = {
-                                                    "body": _body_bytes,
-                                                    "filename": _filename,
-                                                    "mime": _mime or "application/octet-stream",
-                                                }
-                                                _file_body_cache_bytes += len(_body_bytes)
+                                            if _entry_size <= _FILE_CACHE_MAX_BYTES:
+                                                # LRU eviction: drop oldest entries until the new one fits
+                                                while _file_body_cache_bytes + _entry_size > _FILE_CACHE_MAX_BYTES and _file_body_cache:
+                                                    _, _evicted = _file_body_cache.popitem(last=False)
+                                                    _file_body_cache_bytes -= len(_evicted["body"])
+                                                if _sha not in _file_body_cache:
+                                                    _file_body_cache[_sha] = {
+                                                        "body": _body_bytes,
+                                                        "filename": _filename,
+                                                        "mime": _mime or "application/octet-stream",
+                                                    }
+                                                    _file_body_cache_bytes += _entry_size
+                                                else:
+                                                    # Already cached; promote to most-recently-used
+                                                    _file_body_cache.move_to_end(_sha)
                             except Exception:
                                 pass
 
@@ -3532,10 +3571,6 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    with _file_body_cache_lock:
-        global _file_body_cache_bytes
-        _file_body_cache.clear()
-        _file_body_cache_bytes = 0
     files = request.files.getlist("file")
     if not files:
         single = request.files.get("file")
@@ -3567,11 +3602,23 @@ def upload():
         ex = _get_executor()
         futures = [ex.submit(analyze_pcap, p) for p in tmp_paths]
         results = []
-        for fut in futures:
+        for i, fut in enumerate(futures):
             try:
                 results.append(fut.result(timeout=_UPLOAD_TASK_TIMEOUT))
+            except FutureTimeoutError:
+                # The thread cannot be force-killed (Python limitation); process
+                # isolation (ProcessPoolExecutor) would be needed for hard
+                # cancellation. Cancel any queued futures that haven't started yet
+                # to avoid starving the shared worker pool.
+                logger.warning(
+                    "analyze_pcap task exceeded %ds timeout; cancelling remaining queued tasks",
+                    _UPLOAD_TASK_TIMEOUT,
+                )
+                for remaining in futures[i + 1:]:
+                    remaining.cancel()
+                results.append({"error": "Failed to parse PCAP file (parse timed out)"})
             except Exception:
-                logger.warning("analyze_pcap task failed or timed out", exc_info=True)
+                logger.warning("analyze_pcap task failed", exc_info=True)
                 results.append({"error": "Failed to parse PCAP file"})
 
         if not results:
@@ -3605,6 +3652,8 @@ def download_file(sha256):
         return jsonify({"error": "Invalid hash"}), 400
     with _file_body_cache_lock:
         entry = _file_body_cache.get(sha256)
+        if entry is not None:
+            _file_body_cache.move_to_end(sha256)  # promote to most-recently-used
     if entry is None:
         return jsonify({"error": "File not in cache. Re-upload the PCAP to download."}), 404
     safe_fn = secure_filename(entry["filename"]) or f"transfer_{sha256[:8]}"

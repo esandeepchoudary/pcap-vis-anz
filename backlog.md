@@ -269,6 +269,17 @@ Items surfaced in the 2026-05-17 robustness review (`REVIEW.md`) that were not a
 - [x] VLAN Graph host nodes now show the same host-type emoji icons as the main Graph view — `hostIcon(d.host_type)` appended as `<text class="node-icon">` after the host circle; reuses the existing `hostIcon()` function and `.node-icon` CSS (emoji font stack); `text-anchor: middle` and `pointer-events: none` set for correct centering and click-through.
 - [x] **Bug fix**: VLAN graph host-type icons were invisible — `.node-icon` base rule sets `fill: transparent`; main-graph icons are rescued by the more-specific `.node text { fill: var(--text) }` rule, but VLAN node groups use class `vhost` (not `node`) so that rule never applied. Fixed by adding `.attr("fill", "var(--text)")` inline on the VLAN icon text element.
 
+## Logic Review Fixes (2026-06-15, feature/analyst-workflow-improvements)
+
+Fixes for all five issues identified in `review-by-claude.md` (2026-06-15).
+
+- [x] **Fix 1 (High)** — Purdue cross-zone highlighting was broken: `renderGraph()` called `purdueLevel(n.host_type)` (string) instead of the full node object. Changed to `n.purdue_level ?? purdueLevel(n)` to match all other call sites and prefer the more-accurate backend value.
+- [x] **Fix 2 (Medium)** — OT Log stale filter buttons: `renderOtLog()` empty-command early return now clears `#otlog-filter-protos` and `#otlog-filter-dirs` before returning, removing buttons left over from a prior capture.
+- [x] **Fix 3 (Medium)** — Concurrent uploads wiped the global file-body download cache: converted `_file_body_cache` from a plain dict (cleared on every `/upload`) to a size-bounded LRU `OrderedDict` (evicts oldest entries at the 256 MB cap). Download links from prior uploads now survive subsequent uploads.
+- [x] **Fix 4 (Medium)** — Timed-out parse tasks kept running in the worker pool: `FutureTimeoutError` is now caught separately with a clear log message and remaining not-yet-started futures in the batch are cancelled. Running threads cannot be force-killed in Python (process isolation would be required for hard cancellation — deferred).
+- [x] **Fix 5 (Low)** — IPv6 extension headers not parsed: the parser previously assumed a fixed 40-byte base header offset. It now walks hop-by-hop (0), routing (43), destination options (60), fragment (44), and AH (51) extension headers (up to 8 hops, with bounds checks) before dispatching to TCP/UDP/ICMP.
+- [x] **Tests** — Added `tests/test_ipv6_ext_headers.py` (7 tests), `tests/test_file_cache.py` (3 tests), and 2 static frontend assertions in `tests/test_frontend_findings_static.py`. Total: 348 tests passing.
+
 ## Analyst Workflow Improvements (2026-06-13, feature/analyst-workflow-improvements)
 
 - [x] **AGENTS.md** — Added repo-root agent instructions mirroring `CLAUDE.md` workflow, branch, test, run, commit, and push guidance.

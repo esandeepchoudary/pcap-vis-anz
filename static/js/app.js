@@ -2443,7 +2443,7 @@ function renderGraph(data) {
   // ── Links ──
   // Build Purdue level lookup for cross-zone highlighting
   const _pLevel = {};
-  nodes.forEach(n => { _pLevel[n.id] = purdueLevel(n); });
+  nodes.forEach(n => { _pLevel[n.id] = n.purdue_level ?? purdueLevel(n); });
   _canvasPLevel = _pLevel;
   // (cross-zone count is used only for edge class assignment below — no sidebar badge)
 
@@ -6928,6 +6928,8 @@ function renderOtLog(cmds) {
 
   if (!cmds || cmds.length === 0) {
     tbody.innerHTML = "";
+    protoBar.innerHTML = "";
+    dirBar.innerHTML = "";
     emptyEl.classList.remove("hidden");
     countLabel.textContent = "0 commands";
     return;
