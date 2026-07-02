@@ -253,6 +253,103 @@ _RE_IMAP_LOGIN = re.compile(
     r'[A-Za-z0-9]+ LOGIN ("(?:[^"\\]|\\.)*"|[^\s"]+)\s+("(?:[^"\\]|\\.)*"|[^\s"]+)',
     re.IGNORECASE,
 )
+_FILE_MIME_PREFIXES = (
+    "application/", "image/", "audio/", "video/",
+    "text/csv", "text/xml", "text/plain",
+)
+_FILE_MIME_SKIP = {
+    "text/html", "text/css", "text/javascript",
+    "application/json", "application/javascript",
+    "application/x-www-form-urlencoded",
+}
+_FILE_EXT_BY_MIME = {
+    "application/pdf": ".pdf",
+    "application/zip": ".zip",
+    "application/x-zip-compressed": ".zip",
+    "application/gzip": ".gz",
+    "application/x-tar": ".tar",
+    "application/x-msdownload": ".exe",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "text/csv": ".csv",
+    "text/xml": ".xml",
+}
+_IPV6_PRIVATE_NETWORKS = (
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("fc00::/7"),
+)
+
+
+def _extract_http_file_transfer(payload: bytes, *, pkt_time=None, rel_time=None,
+                                src="", dst=""):
+    """Return (metadata, body_bytes) for an interesting HTTP response body."""
+    if not payload or not payload.startswith(b"HTTP/"):
+        return None
+    sep = payload.find(b"\r\n\r\n")
+    if sep == -1:
+        return None
+
+    hdr_raw = payload[:sep].decode("utf-8", errors="replace")
+    body = payload[sep + 4:]
+    mime = ""
+    filename = ""
+    content_len = None
+
+    for header_line in hdr_raw.split("\r\n")[1:]:
+        if ":" not in header_line:
+            continue
+        header_key, header_val = header_line.split(":", 1)
+        header_key_l = header_key.strip().lower()
+        header_val_s = header_val.strip()
+        if header_key_l == "content-type":
+            mime = header_val_s.split(";")[0].strip().lower()
+            if not _RE_MIME_VALID.match(mime):
+                mime = "application/octet-stream"
+        elif header_key_l == "content-disposition":
+            fname_match = _RE_CONTENT_DISP_FNAME.search(header_val_s)
+            if fname_match:
+                filename = fname_match.group(1).strip().strip("\"'")[:200]
+        elif header_key_l == "content-length":
+            try:
+                content_len = int(header_val_s)
+            except ValueError:
+                pass
+
+    interesting = (
+        filename or
+        (mime and any(mime.startswith(prefix) for prefix in _FILE_MIME_PREFIXES)
+         and mime not in _FILE_MIME_SKIP)
+    )
+    if not interesting or not body:
+        return None
+
+    body_bytes = bytes(body)
+    sha = hashlib.sha256(body_bytes).hexdigest()
+    size = content_len if content_len is not None else len(body_bytes)
+    if not filename:
+        filename = f"transfer_{sha[:8]}{_FILE_EXT_BY_MIME.get(mime, '')}"
+
+    meta = {
+        "filename": filename,
+        "mime_type": mime,
+        "size": size,
+        "sha256": sha,
+    }
+    if pkt_time is not None:
+        meta["time"] = round(pkt_time, 3)
+    if rel_time is not None:
+        meta["rel_time"] = round(rel_time, 3)
+    if src:
+        meta["src"] = src
+    if dst:
+        meta["dst"] = dst
+    return meta, body_bytes
 
 # Purdue model level mapping (mirrors JS purdueLevel())
 _PURDUE_L5_TYPES: set[str] = set()  # external hosts determined by country field
@@ -353,11 +450,10 @@ def is_private(ip):
     try:
         if ":" in ip:
             # IPv6: loopback (::1), link-local (fe80::/10), ULA (fc00::/7)
-            low = ip.lower()
-            return (low == "::1"
-                    or low.startswith("fe80:")
-                    or low.startswith("fc")
-                    or low.startswith("fd"))
+            addr = ipaddress.ip_address(ip)
+            if addr.version != 6:
+                return False
+            return any(addr in net for net in _IPV6_PRIVATE_NETWORKS)
         parts = list(map(int, ip.split(".")))
         if len(parts) != 4:
             return False
@@ -2153,13 +2249,6 @@ def analyze_pcap(filepath):
     _CRED_LDAP_PORTS  = {389}
     _CRED_SNMP_PORTS  = {161, 162}
     _CRED_TELNET_PORT = 23
-    _FILE_MIME_PREFIXES = (
-        "application/", "image/", "audio/", "video/",
-        "text/csv", "text/xml", "text/plain",
-    )
-    _FILE_MIME_SKIP = {"text/html", "text/css", "text/javascript",
-                       "application/json", "application/javascript",
-                       "application/x-www-form-urlencoded"}
     ot_commands = []
 
     try:
@@ -2471,80 +2560,34 @@ def analyze_pcap(filepath):
                         # HTTP response file detection
                         if payload and len(files) < MAX_FILES and sport in _CRED_HTTP_PORTS and payload[:5] == b"HTTP/":
                             try:
-                                _sep = payload.find(b"\r\n\r\n")
-                                if _sep != -1:
-                                    _hdr_raw = payload[:_sep].decode("utf-8", errors="replace")
-                                    _body = payload[_sep + 4:]
-                                    _mime = ""
-                                    _filename = ""
-                                    _clen = None
-                                    for _hl in _hdr_raw.split("\r\n")[1:]:
-                                        if ":" not in _hl:
-                                            continue
-                                        _hk, _hv = _hl.split(":", 1)
-                                        _hk_l = _hk.strip().lower()
-                                        _hv_s = _hv.strip()
-                                        if _hk_l == "content-type":
-                                            _mime = _hv_s.split(";")[0].strip().lower()
-                                            if not _RE_MIME_VALID.match(_mime):
-                                                _mime = "application/octet-stream"
-                                        elif _hk_l == "content-disposition":
-                                            _fnm = _RE_CONTENT_DISP_FNAME.search(_hv_s)
-                                            if _fnm:
-                                                _filename = _fnm.group(1).strip().strip("\"'")[:200]
-                                        elif _hk_l == "content-length":
-                                            try:
-                                                _clen = int(_hv_s)
-                                            except ValueError:
-                                                pass
-                                    _interesting = (
-                                        _filename or
-                                        (_mime and any(_mime.startswith(p) for p in _FILE_MIME_PREFIXES)
-                                         and _mime not in _FILE_MIME_SKIP)
-                                    )
-                                    if _interesting and _body:
-                                        _sha = hashlib.sha256(_body).hexdigest()
-                                        _size = _clen if _clen is not None else len(_body)
-                                        if not _filename:
-                                            _ext_map = {
-                                                "application/pdf": ".pdf", "application/zip": ".zip",
-                                                "application/x-zip-compressed": ".zip",
-                                                "application/gzip": ".gz", "application/x-tar": ".tar",
-                                                "application/x-msdownload": ".exe",
-                                                "application/vnd.ms-excel": ".xls",
-                                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
-                                                "application/msword": ".doc",
-                                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-                                                "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
-                                                "text/csv": ".csv", "text/xml": ".xml",
-                                            }
-                                            _ext = _ext_map.get(_mime, "")
-                                            _filename = f"transfer_{_sha[:8]}{_ext}"
-                                        files.append({
-                                            "time": round(pkt_time, 3), "rel_time": round(rel_t, 3),
-                                            "src": sip, "dst": dip,
-                                            "filename": _filename, "mime_type": _mime,
-                                            "size": _size, "sha256": _sha,
-                                        })
-                                        _body_bytes = bytes(_body)
-                                        _entry_size = len(_body_bytes)
-                                        with _file_body_cache_lock:
-                                            global _file_body_cache_bytes
-                                            if _entry_size <= _FILE_CACHE_MAX_BYTES:
-                                                # LRU eviction: drop oldest entries until the new one fits
-                                                while _file_body_cache_bytes + _entry_size > _FILE_CACHE_MAX_BYTES and _file_body_cache:
-                                                    _, _evicted = _file_body_cache.popitem(last=False)
-                                                    _file_body_cache_bytes -= len(_evicted["body"])
-                                                if _sha not in _file_body_cache:
-                                                    _file_body_cache[_sha] = {
-                                                        "body": _body_bytes,
-                                                        "filename": _filename,
-                                                        "mime": _mime or "application/octet-stream",
-                                                    }
-                                                    _file_body_cache_bytes += _entry_size
-                                                else:
-                                                    # Already cached; promote to most-recently-used
-                                                    _file_body_cache.move_to_end(_sha)
+                                _file_result = _extract_http_file_transfer(
+                                    payload, pkt_time=pkt_time, rel_time=rel_t,
+                                    src=sip, dst=dip,
+                                )
+                                if _file_result:
+                                    _file_meta, _body_bytes = _file_result
+                                    files.append(_file_meta)
+                                    _entry_size = len(_body_bytes)
+                                    _sha = _file_meta["sha256"]
+                                    _filename = _file_meta["filename"]
+                                    _mime = _file_meta["mime_type"]
+                                    with _file_body_cache_lock:
+                                        global _file_body_cache_bytes
+                                        if _entry_size <= _FILE_CACHE_MAX_BYTES:
+                                            # LRU eviction: drop oldest entries until the new one fits
+                                            while _file_body_cache_bytes + _entry_size > _FILE_CACHE_MAX_BYTES and _file_body_cache:
+                                                _, _evicted = _file_body_cache.popitem(last=False)
+                                                _file_body_cache_bytes -= len(_evicted["body"])
+                                            if _sha not in _file_body_cache:
+                                                _file_body_cache[_sha] = {
+                                                    "body": _body_bytes,
+                                                    "filename": _filename,
+                                                    "mime": _mime or "application/octet-stream",
+                                                }
+                                                _file_body_cache_bytes += _entry_size
+                                            else:
+                                                # Already cached; promote to most-recently-used
+                                                _file_body_cache.move_to_end(_sha)
                             except Exception:
                                 pass
 

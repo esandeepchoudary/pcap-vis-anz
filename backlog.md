@@ -280,6 +280,13 @@ Fixes for all five issues identified in `review-by-claude.md` (2026-06-15).
 - [x] **Fix 5 (Low)** — IPv6 extension headers not parsed: the parser previously assumed a fixed 40-byte base header offset. It now walks hop-by-hop (0), routing (43), destination options (60), fragment (44), and AH (51) extension headers (up to 8 hops, with bounds checks) before dispatching to TCP/UDP/ICMP.
 - [x] **Tests** — Added `tests/test_ipv6_ext_headers.py` (7 tests), `tests/test_file_cache.py` (3 tests), and 2 static frontend assertions in `tests/test_frontend_findings_static.py`. Total: 348 tests passing.
 
+## Bug Fixes (2026-06-15, feature/bugfix-audit-findings)
+
+- [x] **BE** — `is_private()` now classifies the full IPv6 link-local range `fe80::/10` as private instead of only `fe80::/16`; prevents `fe90::`/`fea0::`/`febf::` hosts from being treated as Public Internet.
+- [x] **BE** — HTTP file-transfer extraction is now a production helper (`_extract_http_file_transfer`) used by `analyze_pcap()` and tests, removing the old duplicated test-only parser.
+- [x] **FE** — Removed inline `onclick` handlers from copy/download buttons; file-transfer, IP, hostname, JA3, and SHA-256 actions now use escaped `data-*` attributes plus delegated click handling.
+- [x] **Tests** — Added IPv6 link-local boundary assertions, production-helper file extraction coverage, and a static frontend guard preventing inline event handlers from returning.
+
 ## Analyst Workflow Improvements (2026-06-13, feature/analyst-workflow-improvements)
 
 - [x] **AGENTS.md** — Added repo-root agent instructions mirroring `CLAUDE.md` workflow, branch, test, run, commit, and push guidance.

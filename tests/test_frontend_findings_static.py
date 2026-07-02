@@ -33,6 +33,12 @@ def test_blocking_prompt_calls_are_not_reintroduced():
     assert "prompt(" not in read("static/js/app.js")
 
 
+def test_inline_event_handlers_are_not_reintroduced():
+    js = read("static/js/app.js")
+
+    assert "onclick=" not in js
+
+
 def test_agents_instructions_are_available():
     agents = read("AGENTS.md")
 
