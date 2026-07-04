@@ -6553,7 +6553,7 @@ function vlanCellStyle(mode, cell, isDiag, scales) {
       stroke: isDiag ? "#30363d" : null,
       strokeWidth: isDiag ? 1 : 0,
       text: metric === "packets" ? fmtNum(cell.packets) : fmtBytes(cell.bytes),
-      textFill: t > 0.6 ? "#0d1117" : "#e6edf3",
+      textFill: t > 0.6 ? "#e6edf3" : "#0d1117",
     };
   }
 
@@ -6567,7 +6567,7 @@ function vlanCellStyle(mode, cell, isDiag, scales) {
       stroke: writes ? "#ff8c00" : (isDiag ? "#30363d" : null),
       strokeWidth: writes ? 1.5 : (isDiag ? 1 : 0),
       text: v > 0 ? Math.round(100 * ov / v) + "%" : "",
-      textFill: t > 0.6 ? "#0d1117" : "#e6edf3",
+      textFill: t > 0.6 ? "#e6edf3" : "#0d1117",
     };
   }
 
@@ -6647,7 +6647,7 @@ function vlanMatrixLegendSpec(mode, m) {
   if (mode === "traffic") {
     return {
       kind: "gradient",
-      stops: ["#0d366b", "#1c5cab", "#2a78d6", "#5598e7", "#9ec5f4"],
+      stops: ["#9ec5f4", "#5598e7", "#2a78d6", "#1c5cab", "#0d366b"],
       minLabel: "low",
       maxLabel: metric === "packets" ? fmtNum(m.maxPackets) : fmtBytes(m.maxBytes),
       note: `log scale · cell = total ${metric === "packets" ? "packets" : "bytes"} between VLAN pair · diagonal = intra-VLAN`,
@@ -6656,7 +6656,7 @@ function vlanMatrixLegendSpec(mode, m) {
   if (mode === "ot") {
     return {
       kind: "gradient",
-      stops: ["#431407", "#9a3412", "#ea580c", "#fb923c", "#fdba74"],
+      stops: ["#fdba74", "#fb923c", "#ea580c", "#9a3412", "#431407"],
       minLabel: "low",
       maxLabel: metric === "packets" ? fmtNum(m.maxOtPackets) : fmtBytes(m.maxOtBytes),
       note: "OT/ICS-carrying traffic (log) · orange border = OT writes cross this boundary · gray = traffic but no OT",
@@ -6826,8 +6826,8 @@ function renderVlanMatrix(data) {
   const maxOtVal = metric === "packets" ? m.maxOtPackets : m.maxOtBytes;
   const scales = {
     metric,
-    traffic: makeHeatScale(maxVal,   ["#0d366b", "#1c5cab", "#2a78d6", "#5598e7", "#9ec5f4"]),
-    ot:      makeHeatScale(maxOtVal, ["#431407", "#9a3412", "#ea580c", "#fb923c", "#fdba74"]),
+    traffic: makeHeatScale(maxVal,   ["#9ec5f4", "#5598e7", "#2a78d6", "#1c5cab", "#0d366b"]),
+    ot:      makeHeatScale(maxOtVal, ["#fdba74", "#fb923c", "#ea580c", "#9a3412", "#431407"]),
   };
 
   // Cells

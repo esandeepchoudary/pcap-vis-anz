@@ -352,3 +352,7 @@ Fixes for all five issues identified in `review-by-claude.md` (2026-06-15).
 - [x] **Export quality** — `exportVlanMatrixPng()` and `exportOTMatrixPng()` both floor resolution at `Math.max(2, devicePixelRatio)` (was `devicePixelRatio || 2`, i.e. 1x on standard displays) and rasterize each layer's SVG at its scaled intrinsic size via `viewBox` (was rasterized at logical size then blurrily upscaled by `drawImage`)
 - [x] **Export label clipping fixed** — the VLAN matrix's column-label PNG layer is now serialized with a left-side `viewBox` bleed (`BLEED=24`) matching the new up-left label rise, replacing the old bottom-only `COL_BLEED` that didn't help an upward/leftward overhang
 - [ ] **Deferred** — OT matrix's on-screen column labels (`rotate(-55)`, dive-down geometry) share the same overlap risk as the VLAN matrix's old geometry; not reported by users yet, left untouched this pass (only its export got the crispness fix)
+
+### Heat ramp direction fix (2026-07-04)
+
+- [x] **Reversed Traffic + OT heat ramps** — both `makeHeatScale()` gradients in `renderVlanMatrix` (and their matching `vlanMatrixLegendSpec()` legend stops) were previously dark-for-low/light-for-high, which read backwards on a heatmap; stops arrays reversed so **light = less data exchange, dark = more** for both Bytes/Packets (blue) and OT-share (orange) views. In-cell `textFill` contrast ternaries in `vlanCellStyle()` flipped to match (light text now shows on the now-dark high-value cells)
