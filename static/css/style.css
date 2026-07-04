@@ -994,7 +994,10 @@ header h1 span { color: var(--accent); }
 .gc-btn:hover { background: var(--bg3); border-color: var(--accent); }
 /* Text-label gc-btn overrides — these buttons carry words, not just icons */
 #btn-color-vlan,
-#vlan-matrix-btn {
+#vlan-matrix-btn,
+#vlan-matrix-export-btn,
+.vm-mode-btn,
+.vm-metric-btn {
   width: auto;
   padding: 0 8px;
   font-size: 11px;
@@ -2338,6 +2341,7 @@ header h1 span { color: var(--accent); }
   grid-template-rows: 90px max-content;
   width: max-content;
   padding: 20px 24px;
+  margin: 0 auto;  /* centers small (few-VLAN) matrices; no-op once the layout fills the pane */
 }
 #vlan-matrix-corner {
   position: sticky;
@@ -2357,6 +2361,13 @@ header h1 span { color: var(--accent); }
   background: var(--bg2);
   flex-shrink: 0;
 }
+#vlan-matrix-modes { display: flex; gap: 6px; align-items: center; }
+#vlan-matrix-modes.hidden { display: none; }
+.vm-legend-grad   { display: inline-block; width: 110px; height: 8px; border-radius: 4px;
+                    vertical-align: middle; margin: 0 6px; }
+.vm-legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+                    vertical-align: middle; margin: 0 4px 0 10px; }
+#vlan-matrix-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
 
 /* ── Keyboard shortcuts overlay ───────────────────────────────────────────── */
 .sc-overlay {

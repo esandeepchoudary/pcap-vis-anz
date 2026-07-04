@@ -173,18 +173,26 @@ const PROTO_COLORS_CB = Object.assign({}, PROTO_COLORS, {
   "TR-069":      "#ee7733",
 });
 
+const PROTO_COLOR_PRIORITY = [
+  "HTTPS","HTTP","SSH","RDP","DNS","SMTP","SMTPS","IMAP","IMAPS",
+  "POP3","POP3S","FTP","FTP-Data","MySQL","PostgreSQL","MongoDB",
+  "Redis","SMB","SNMP","DHCP","NTP","BGP","ICMP","TCP","UDP",
+];
+
+/** Picks the single "dominant" protocol from a set, using the same priority order as
+ *  protoColor, so any legend built from this always matches the cell colors it labels. */
+function dominantProto(protocols) {
+  if (!protocols || !protocols.length) return null;
+  for (const p of PROTO_COLOR_PRIORITY) {
+    if (protocols.includes(p)) return p;
+  }
+  return protocols[0];
+}
+
 function protoColor(protocols) {
   if (!protocols || !protocols.length) return "#607D8B";
   const map = colorBlindMode ? PROTO_COLORS_CB : PROTO_COLORS;
-  const priority = [
-    "HTTPS","HTTP","SSH","RDP","DNS","SMTP","SMTPS","IMAP","IMAPS",
-    "POP3","POP3S","FTP","FTP-Data","MySQL","PostgreSQL","MongoDB",
-    "Redis","SMB","SNMP","DHCP","NTP","BGP","ICMP","TCP","UDP",
-  ];
-  for (const p of priority) {
-    if (protocols.includes(p)) return map[p] || "#607D8B";
-  }
-  return map[protocols[0]] || "#607D8B";
+  return map[dominantProto(protocols)] || "#607D8B";
 }
 
 function hostColor(type) {
@@ -775,10 +783,20 @@ function loadGraph(data) {
   const vlanSummarySec = document.getElementById("vlan-summary-section");
   if (vlanSummarySec) vlanSummarySec.style.display = "none";
   _vlanMatrixMode = false;
+  _vlanMatrixView = "traffic";
+  _vlanMatrixMetric = "bytes";
   const matrixBtn = document.getElementById("vlan-matrix-btn");
   if (matrixBtn) { matrixBtn.classList.remove("active"); matrixBtn.textContent = "⊞ Matrix"; }
   const matrixCont = document.getElementById("vlan-matrix-container");
   if (matrixCont) matrixCont.classList.add("hidden");
+  const matrixModes = document.getElementById("vlan-matrix-modes");
+  if (matrixModes) {
+    matrixModes.classList.add("hidden");
+    matrixModes.querySelectorAll(".vm-mode-btn").forEach(b => b.classList.toggle("active", b.dataset.vmMode === "traffic"));
+    matrixModes.querySelectorAll(".vm-metric-btn").forEach(b => b.classList.toggle("active", b.dataset.vmMetric === "bytes"));
+    const metricGroup = document.getElementById("vlan-matrix-metric");
+    if (metricGroup) metricGroup.style.display = "";
+  }
   const canvasWrap = document.getElementById("vlan-canvas-wrap");
   if (canvasWrap) canvasWrap.classList.remove("hidden");
   const graphCtrl = document.getElementById("vlan-graph-controls");
@@ -5191,7 +5209,8 @@ function exportOTMapPng() {
 
 function exportOTMatrixPng() {
   if (!graphData) return;
-  const DPR = window.devicePixelRatio || 2;
+  // Floor at 2x so exports stay crisp even on 1x displays.
+  const SCALE = Math.max(2, window.devicePixelRatio || 1);
   const LABEL_W = 96, LABEL_H = 96;
   const colsSvg  = document.getElementById("ot-matrix-cols");
   const rowsSvg  = document.getElementById("ot-matrix-rows");
@@ -5204,11 +5223,16 @@ function exportOTMatrixPng() {
   const totalW = LABEL_W + cellsW;
   const totalH = LABEL_H + cellsH;
 
+  // Rasterize each SVG at its SCALE-d intrinsic size (viewBox keeps logical coordinates)
+  // so drawImage composites 1:1 into device pixels instead of upscaling a low-res bitmap.
   const serializeSvg = (svgEl, w, h) => {
     const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     bg.setAttribute("width", w); bg.setAttribute("height", h); bg.setAttribute("fill", "#0d1117");
     const clone = svgEl.cloneNode(true);
     clone.insertBefore(bg, clone.firstChild);
+    clone.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    clone.setAttribute("width", w * SCALE);
+    clone.setAttribute("height", h * SCALE);
     return new XMLSerializer().serializeToString(clone);
   };
   const loadImg = (svgStr) => new Promise(resolve => {
@@ -5224,10 +5248,10 @@ function exportOTMatrixPng() {
     loadImg(serializeSvg(cellsSvg, cellsW, cellsH)),
   ]).then(([cols, rows, cells]) => {
     const canvas = document.createElement("canvas");
-    canvas.width  = Math.round(totalW * DPR);
-    canvas.height = Math.round(totalH * DPR);
+    canvas.width  = Math.round(totalW * SCALE);
+    canvas.height = Math.round(totalH * SCALE);
     const ctx = canvas.getContext("2d");
-    ctx.scale(DPR, DPR);
+    ctx.scale(SCALE, SCALE);
     ctx.fillStyle = "#0d1117";
     ctx.fillRect(0, 0, totalW, totalH);
     ctx.drawImage(cols.img,  LABEL_W, 0,       colsW,  LABEL_H);
@@ -6382,7 +6406,290 @@ function renderVlanGraph(data) {
 }
 
 /* ── Cross-VLAN flow matrix ───────────────────────────────────────────────── */
-let _vlanMatrixMode = false;
+let _vlanMatrixMode   = false;
+let _vlanMatrixView   = "traffic";   // "traffic" | "ot" | "anomaly" | "protocol"
+let _vlanMatrixMetric = "bytes";     // "bytes" | "packets"  (Traffic-view sub-toggle)
+
+// OT/ICS protocol labels the backend can actually emit (cross-checked against PORT_MAP in
+// app.py and PROTO_COLORS above) — kept as a single source of truth instead of the two
+// separate 8-item arrays duplicated by the OT matrix (OT_PROTO_ORDER / OT_PROTO_KEY).
+const VLAN_OT_PROTOCOLS = new Set([
+  "Modbus","DNP3","S7comm","EtherNet/IP","IEC-104","BACnet","OPC-UA","PROFINET",
+  "HART-IP","GE-SRTP","OMRON-FINS","Emerson-DeltaV","DLMS","CoAP","MQTT"
+]);
+
+const VM_SEV_COLORS = { high: "#f85149", medium: "#d29922", low: "#58a6ff" };  // matches app.js anomaly-badge convention
+
+// Full VLAN membership for a host (matches the VLAN graph view, :5843-5851) — replaces the
+// old primaryVlan()/node.vlans[0] approach which under-counted multi-VLAN hosts.
+const vlansOf = n => !n ? [] :
+  (n.vlans || []).map(String).concat(n.vlan_untagged ? ["untagged"] : []);
+
+/**
+ * Pure data-layer builder for the VLAN flow matrix: aggregates edges + anomalies into
+ * per-VLAN-pair cells keyed by a canonical sorted "a|b" key (undirected, no double-counting
+ * even though a host can belong to several VLANs and thus contribute to several pair keys).
+ */
+function buildVlanFlowMatrix(data) {
+  const nodeByIp = Object.fromEntries((data.nodes || []).map(n => [n.ip, n]));
+  const vids = [...(data.stats?.vlans || []).map(String)];
+  if ((data.nodes || []).some(n => n.vlan_untagged)) vids.push("untagged");
+
+  const cells = {};                      // "a|b" (sorted) -> cell; diagonal = "a|a"
+  const key = (a, b) => [a, b].sort().join("|");
+  const getCell = k => cells[k] ||= { packets: 0, bytes: 0, protocols: new Set(),
+    otPackets: 0, otBytes: 0, otProtocols: new Set(), otReads: 0, otWrites: 0,
+    anomalies: [], maxSeverity: null };
+
+  (data.edges || []).forEach(e => {
+    const sv = vlansOf(nodeByIp[e.source]), dv = vlansOf(nodeByIp[e.target]);
+    const pairKeys = new Set();
+    sv.forEach(a => dv.forEach(b => pairKeys.add(key(a, b))));  // a===b → diagonal (intra-VLAN)
+    const otProtos = (e.protocols || []).filter(p => VLAN_OT_PROTOCOLS.has(p));
+    pairKeys.forEach(k => {
+      const c = getCell(k);
+      c.packets += e.packet_count || 0;  c.bytes += e.bytes || 0;
+      (e.protocols || []).forEach(p => c.protocols.add(p));
+      if (otProtos.length) {
+        c.otPackets += e.packet_count || 0;  c.otBytes += e.bytes || 0;
+        otProtos.forEach(p => c.otProtocols.add(p));
+        c.otReads += e.ot_reads || 0;  c.otWrites += e.ot_writes || 0;
+      }
+    });
+  });
+
+  // ALL anomaly types (previously only vlan_cross_segment_ot was mapped)
+  const SEV_RANK = { high: 3, medium: 2, low: 1 };
+  (data.anomalies || []).forEach(a => {
+    const sv = vlansOf(nodeByIp[a.src]), dv = a.dst ? vlansOf(nodeByIp[a.dst]) : null;
+    const pairKeys = new Set();
+    if (dv && dv.length) sv.forEach(x => dv.forEach(y => pairKeys.add(key(x, y))));
+    else sv.forEach(x => pairKeys.add(key(x, x)));       // single-host anomaly → diagonal
+    pairKeys.forEach(k => {
+      const c = getCell(k);
+      c.anomalies.push(a);
+      if (!c.maxSeverity || SEV_RANK[a.severity] > SEV_RANK[c.maxSeverity]) c.maxSeverity = a.severity;
+    });
+  });
+
+  // Scale maxima: cross-pair only for the ramp domains (intra-VLAN volume would flatten it);
+  // track both metrics for the Bytes|Packets toggle.
+  let maxBytes = 0, maxPackets = 0, maxOtBytes = 0, maxOtPackets = 0, maxDiagBytes = 0, maxDiagPackets = 0;
+  Object.entries(cells).forEach(([k, c]) => {
+    const [a, b] = k.split("|");
+    if (a === b) { maxDiagBytes = Math.max(maxDiagBytes, c.bytes); maxDiagPackets = Math.max(maxDiagPackets, c.packets); }
+    else {
+      maxBytes = Math.max(maxBytes, c.bytes);       maxPackets = Math.max(maxPackets, c.packets);
+      maxOtBytes = Math.max(maxOtBytes, c.otBytes); maxOtPackets = Math.max(maxOtPackets, c.otPackets);
+    }
+  });
+  return { vids, cells, key, maxBytes, maxPackets, maxOtBytes, maxOtPackets, maxDiagBytes, maxDiagPackets };
+}
+
+/** Log-scale heat helper: exposes both the d3 color scale and a 0-1 normalized position
+ *  (used to pick readable in-cell text color against bright fills). */
+function makeHeatScale(maxVal, stops) {
+  const domainMax = Math.max(2, maxVal || 0);
+  const scale = d3.scaleSequentialLog().domain([1, domainMax]).clamp(true).interpolator(d3.interpolateRgbBasis(stops));
+  const t = v => {
+    if (!(v > 0)) return 0;
+    const clamped = Math.min(Math.max(v, 1), domainMax);
+    return Math.log(clamped) / Math.log(domainMax);
+  };
+  return { scale, t };
+}
+
+/** Pure per-cell styling for the active matrix mode. Returns {fill, opacity, stroke,
+ *  strokeWidth, text, textFill}. `scales` = { metric, traffic:{scale,t}, ot:{scale,t} }. */
+function vlanCellStyle(mode, cell, isDiag, scales) {
+  const metric = scales.metric;
+  const v  = cell ? (metric === "packets" ? cell.packets   : cell.bytes)   : 0;
+  const ov = cell ? (metric === "packets" ? cell.otPackets : cell.otBytes) : 0;
+  const hasTraffic = v > 0;
+  const hasOt      = ov > 0;
+  const hasAnomaly = !!cell && cell.anomalies.length > 0;
+
+  const EMPTY      = { fill: "#161b22", opacity: 0.4, stroke: null, strokeWidth: 0, text: "", textFill: "#8b949e" };
+  const NOT_RELEV  = { fill: "#21262d", opacity: 0.5, stroke: null, strokeWidth: 0, text: "", textFill: "#8b949e" };
+  const DIAG_EMPTY = { fill: "#0a0f15", opacity: 0.8, stroke: null, strokeWidth: 0, text: "", textFill: "#8b949e" };
+
+  if (mode === "traffic") {
+    if (!hasTraffic) return isDiag ? DIAG_EMPTY : EMPTY;
+    const t = scales.traffic.t(v);
+    return {
+      fill: scales.traffic.scale(v),
+      opacity: isDiag ? 0.55 : 0.9,
+      stroke: isDiag ? "#30363d" : null,
+      strokeWidth: isDiag ? 1 : 0,
+      text: metric === "packets" ? fmtNum(cell.packets) : fmtBytes(cell.bytes),
+      textFill: t > 0.6 ? "#0d1117" : "#e6edf3",
+    };
+  }
+
+  if (mode === "ot") {
+    if (!hasOt) return hasTraffic ? NOT_RELEV : (isDiag ? DIAG_EMPTY : EMPTY);
+    const t = scales.ot.t(ov);
+    const writes = cell.otWrites > 0;
+    return {
+      fill: scales.ot.scale(ov),
+      opacity: isDiag ? 0.55 : 0.9,
+      stroke: writes ? "#ff8c00" : (isDiag ? "#30363d" : null),
+      strokeWidth: writes ? 1.5 : (isDiag ? 1 : 0),
+      text: v > 0 ? Math.round(100 * ov / v) + "%" : "",
+      textFill: t > 0.6 ? "#0d1117" : "#e6edf3",
+    };
+  }
+
+  if (mode === "anomaly") {
+    if (!hasAnomaly) return hasTraffic ? NOT_RELEV : EMPTY;
+    return {
+      fill: VM_SEV_COLORS[cell.maxSeverity] || "#58a6ff",
+      opacity: 0.85,
+      stroke: null, strokeWidth: 0,
+      text: String(cell.anomalies.length),
+      textFill: "#ffffff",
+    };
+  }
+
+  // protocol (legacy) — diagonal always dark, matching the original rendering
+  if (isDiag) return DIAG_EMPTY;
+  if (!cell || !cell.protocols.size) return EMPTY;
+  const isOtAnom = cell.anomalies.some(a => a.type === "vlan_cross_segment_ot" || a.type.startsWith("ot_"));
+  return {
+    fill: isOtAnom ? "#ff8c00" : (protoColor([...cell.protocols]) || "#555"),
+    opacity: 0.75,
+    stroke: isOtAnom ? "#f85149" : null,
+    strokeWidth: isOtAnom ? 1.5 : 0,
+    text: "", textFill: "#e6edf3",
+  };
+}
+
+function vlanBaseLabel(vid) { return vid === "untagged" ? "Untagged" : `VLAN ${vid}`; }
+
+function vlanCellTooltipHtml(mode, rowVid, colVid, cell, isDiag) {
+  const rowLabel = vlanDisplayName(rowVid, vlanBaseLabel(rowVid));
+  const header = isDiag
+    ? `${escHtml(rowLabel)} (intra-VLAN)`
+    : `${escHtml(rowLabel)} ↔ ${escHtml(vlanDisplayName(colVid, vlanBaseLabel(colVid)))}`;
+
+  if (!cell) return `<strong>${header}</strong><br>No data`;
+
+  if (mode === "traffic") {
+    const protos = [...cell.protocols];
+    return `<strong>${header}</strong><br>
+      ${fmtNum(cell.packets)} pkts · ${fmtBytes(cell.bytes)}<br>
+      ${protos.slice(0, 5).map(escHtml).join(" · ")}`;
+  }
+  if (mode === "ot") {
+    if (!cell.otProtocols.size) {
+      return `<strong>${header}</strong><br><span style="color:#8b949e">No OT/ICS traffic on this pair</span>`;
+    }
+    const share = cell.bytes > 0 ? Math.round(100 * cell.otBytes / cell.bytes) : 0;
+    return `<strong>${header}</strong><br>
+      ${[...cell.otProtocols].map(escHtml).join(" · ")}<br>
+      ${fmtBytes(cell.otBytes)} OT-carrying traffic (${share}% of total)<br>
+      ${fmtNum(cell.otReads)} reads / ${fmtNum(cell.otWrites)} writes`;
+  }
+  if (mode === "anomaly") {
+    if (!cell.anomalies.length) return `<strong>${header}</strong><br>No anomalies`;
+    const shown = cell.anomalies.slice(0, 5);
+    const rows = shown.map(a =>
+      `<span style="color:${VM_SEV_COLORS[a.severity] || '#58a6ff'}">●</span> ${escHtml(a.severity || "")} · ${escHtml(a.type)} · ${escHtml(a.src || "")}${a.dst ? " → " + escHtml(a.dst) : " → —"}`
+    ).join("<br>");
+    const more = cell.anomalies.length > 5 ? `<br>+${cell.anomalies.length - 5} more` : "";
+    const firstDesc = shown[0]?.description
+      ? `<br><span style="font-size:10px;color:#8b949e">${escHtml(shown[0].description)}</span>` : "";
+    return `<strong>${header}</strong><br>${rows}${more}${firstDesc}`;
+  }
+  // protocol
+  const protos = [...cell.protocols];
+  const isOtAnom = cell.anomalies.some(a => a.type === "vlan_cross_segment_ot" || a.type.startsWith("ot_"));
+  return `<strong>${header}</strong><br>
+    ${fmtNum(cell.packets)} pkts · ${fmtBytes(cell.bytes)}<br>
+    ${protos.slice(0, 5).map(escHtml).join(" · ")}
+    ${isOtAnom ? `<br><span style="color:#f85149;font-size:10px">⚠ OT anomaly</span>` : ""}`;
+}
+
+/** Declarative legend spec shared by the on-screen legend and the PNG export footer. */
+function vlanMatrixLegendSpec(mode, m) {
+  const metric = _vlanMatrixMetric;
+  if (mode === "traffic") {
+    return {
+      kind: "gradient",
+      stops: ["#0d366b", "#1c5cab", "#2a78d6", "#5598e7", "#9ec5f4"],
+      minLabel: "low",
+      maxLabel: metric === "packets" ? fmtNum(m.maxPackets) : fmtBytes(m.maxBytes),
+      note: `log scale · cell = total ${metric === "packets" ? "packets" : "bytes"} between VLAN pair · diagonal = intra-VLAN`,
+    };
+  }
+  if (mode === "ot") {
+    return {
+      kind: "gradient",
+      stops: ["#431407", "#9a3412", "#ea580c", "#fb923c", "#fdba74"],
+      minLabel: "low",
+      maxLabel: metric === "packets" ? fmtNum(m.maxOtPackets) : fmtBytes(m.maxOtBytes),
+      note: "OT/ICS-carrying traffic (log) · orange border = OT writes cross this boundary · gray = traffic but no OT",
+    };
+  }
+  if (mode === "anomaly") {
+    return {
+      kind: "swatches",
+      items: [
+        { color: VM_SEV_COLORS.high,   label: "high" },
+        { color: VM_SEV_COLORS.medium, label: "medium" },
+        { color: VM_SEV_COLORS.low,    label: "low" },
+      ],
+      note: "number = anomaly count · diagonal = single-host anomalies",
+    };
+  }
+  // protocol — build the legend from whatever dominant protocols are actually on
+  // screen, so swatch colors always match the cells (most-common protocol first).
+  const map = colorBlindMode ? PROTO_COLORS_CB : PROTO_COLORS;
+  const present = new Map();  // proto -> pair count
+  Object.entries(m.cells).forEach(([k, c]) => {
+    const [a, b] = k.split("|");
+    if (a === b || !c.protocols.size) return;   // diagonal is always dark in protocol view
+    const p = dominantProto([...c.protocols]);
+    if (p) present.set(p, (present.get(p) || 0) + 1);
+  });
+  const items = [...present.entries()]
+    .sort((x, y) => y[1] - x[1])
+    .map(([p]) => ({ color: map[p] || "#607D8B", label: p }));
+  items.push({ color: "#ff8c00", label: "cross-VLAN OT anomaly" });
+  return {
+    kind: "swatches",
+    items,
+    note: "cell = dominant protocol · red border = VLAN anomaly · diagonal = intra-VLAN (hidden)",
+  };
+}
+
+function updateVlanMatrixLegend(spec) {
+  const el = document.getElementById("vlan-matrix-legend");
+  if (!el) return;
+  el.innerHTML = "";
+  if (spec.kind === "gradient") {
+    const minL = document.createElement("span"); minL.textContent = spec.minLabel;
+    const grad = document.createElement("span");
+    grad.className = "vm-legend-grad";
+    grad.style.background = `linear-gradient(90deg, ${spec.stops.join(", ")})`;
+    const maxL = document.createElement("span"); maxL.textContent = spec.maxLabel;
+    el.appendChild(minL); el.appendChild(grad); el.appendChild(maxL);
+  } else if (spec.kind === "swatches") {
+    spec.items.forEach(item => {
+      const sw = document.createElement("span");
+      sw.className = "vm-legend-swatch";
+      sw.style.background = item.color;
+      const lbl = document.createElement("span"); lbl.textContent = item.label;
+      el.appendChild(sw); el.appendChild(lbl);
+    });
+  }
+  if (spec.note) {
+    const note = document.createElement("span");
+    note.style.marginLeft = "10px"; note.style.color = "var(--text2)";
+    note.textContent = spec.note;
+    el.appendChild(note);
+  }
+}
 
 document.getElementById("vlan-matrix-btn").addEventListener("click", () => {
   _vlanMatrixMode = !_vlanMatrixMode;
@@ -6392,6 +6699,7 @@ document.getElementById("vlan-matrix-btn").addEventListener("click", () => {
   // Canvas / matrix swap
   document.getElementById("vlan-canvas-wrap").classList.toggle("hidden", _vlanMatrixMode);
   document.getElementById("vlan-matrix-container").classList.toggle("hidden", !_vlanMatrixMode);
+  document.getElementById("vlan-matrix-modes").classList.toggle("hidden", !_vlanMatrixMode);
   // Graph-specific controls (layout buttons + fit) hide in matrix mode
   const graphCtrl = document.getElementById("vlan-graph-controls");
   if (graphCtrl) graphCtrl.style.display = _vlanMatrixMode ? "none" : "";
@@ -6401,126 +6709,312 @@ document.getElementById("vlan-matrix-btn").addEventListener("click", () => {
   if (_vlanMatrixMode && graphData) renderVlanMatrix(graphData);
 });
 
+// Delegated listener for the mode/metric segmented controls next to the matrix
+document.getElementById("vlan-matrix-modes").addEventListener("click", ev => {
+  const modeBtn = ev.target.closest(".vm-mode-btn");
+  if (modeBtn) {
+    _vlanMatrixView = modeBtn.dataset.vmMode;
+    document.querySelectorAll("#vlan-matrix-modes .vm-mode-btn").forEach(b => b.classList.toggle("active", b === modeBtn));
+    const metricGroup = document.getElementById("vlan-matrix-metric");
+    if (metricGroup) metricGroup.style.display = _vlanMatrixView === "traffic" ? "" : "none";
+    if (graphData) renderVlanMatrix(graphData);
+    return;
+  }
+  const metricBtn = ev.target.closest(".vm-metric-btn");
+  if (metricBtn) {
+    _vlanMatrixMetric = metricBtn.dataset.vmMetric;
+    document.querySelectorAll("#vlan-matrix-modes .vm-metric-btn").forEach(b => b.classList.toggle("active", b === metricBtn));
+    if (graphData) renderVlanMatrix(graphData);
+    return;
+  }
+});
+
+document.getElementById("vlan-matrix-export-btn").addEventListener("click", ev => {
+  if (ev.shiftKey) exportVlanMatrixAllViews();
+  else exportVlanMatrixPng();
+});
+
 function renderVlanMatrix(data) {
   const ns = "http://www.w3.org/2000/svg";
+  const m = buildVlanFlowMatrix(data);
+  if (!m.vids.length) return;
 
-  const allVids = [...(data.stats?.vlans || []).map(String)];
-  if ((data.nodes || []).some(n => n.vlan_untagged)) allVids.push("untagged");
-  if (!allVids.length) return;
-
-  // Adaptive cell size: larger for small VLAN counts, smaller for large ones
-  const N    = allVids.length;
-  const CELL = Math.max(44, Math.min(60, Math.floor(240 / Math.max(N, 1))));
+  // Adaptive cell size: fills available pane width (capped), shrinks for large VLAN counts
+  const N = m.vids.length;
   const LABEL = 90;  // must match #vlan-matrix-layout grid-template-columns in CSS
-
-  // Build node→primaryVlan lookup
-  const nodeByIp = Object.fromEntries((data.nodes || []).map(n => [n.ip, n]));
-  const primaryVlan = ip => {
-    const n = nodeByIp[ip];
-    if (!n) return null;
-    return (n.vlans && n.vlans.length) ? String(n.vlans[0]) : (n.vlan_untagged ? "untagged" : null);
-  };
-
-  // Build VLAN×VLAN flow map
-  const flowMap = {};
-  allVids.forEach(a => { flowMap[a] = {}; allVids.forEach(b => { flowMap[a][b] = null; }); });
-  (data.edges || []).forEach(e => {
-    const sv = primaryVlan(e.source), dv = primaryVlan(e.target);
-    if (!sv || !dv || sv === dv) return;
-    const key1 = sv, key2 = dv;
-    if (!flowMap[key1]) return;
-    if (!flowMap[key1][key2]) flowMap[key1][key2] = { packets: 0, bytes: 0, protocols: new Set() };
-    flowMap[key1][key2].packets += e.packet_count || 0;
-    flowMap[key1][key2].bytes   += e.bytes || 0;
-    (e.protocols || []).forEach(p => flowMap[key1][key2].protocols.add(p));
-    // Mirror (undirected)
-    if (!flowMap[key2]) return;
-    if (!flowMap[key2][key1]) flowMap[key2][key1] = { packets: 0, bytes: 0, protocols: new Set() };
-    flowMap[key2][key1].packets += e.packet_count || 0;
-    flowMap[key2][key1].bytes   += e.bytes || 0;
-    (e.protocols || []).forEach(p => flowMap[key2][key1].protocols.add(p));
-  });
-
-  // Anomalous VLAN pairs
-  const anomVlanPairs = new Set();
-  (data.anomalies || []).forEach(a => {
-    if (a.type === "vlan_cross_segment_ot") {
-      const sv = a.src ? primaryVlan(a.src) : null;
-      const dv = a.dst ? primaryVlan(a.dst) : null;
-      if (sv && dv) { anomVlanPairs.add(`${sv}|${dv}`); anomVlanPairs.add(`${dv}|${sv}`); }
-    }
-  });
+  const container = document.getElementById("vlan-matrix-container");
+  // Available cell strip = pane width minus the row-label gutter and the 24px×2 grid padding.
+  const avail = Math.max(320, (container?.clientWidth || 1200) - LABEL - 48);
+  const MIN_CELL = N > 20 ? 24 : 44;
+  const MAX_CELL = N > 20 ? 52 : 84;
+  const CELL = Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor(avail / Math.max(N, 1))));
+  const SHOW_TEXT = CELL >= 34;
 
   const colsSvg  = document.getElementById("vlan-matrix-cols");
   const rowsSvg  = document.getElementById("vlan-matrix-rows");
   const cellsSvg = document.getElementById("vlan-matrix-cells");
   [colsSvg, rowsSvg, cellsSvg].forEach(s => { s.innerHTML = ""; });
 
-  const truncLabel = v => v === "untagged" ? "Untagged" : `VLAN ${v}`;
+  const vidLabel = vid => {
+    const full = vlanDisplayName(vid, vlanBaseLabel(vid));
+    return full.length > 14 ? full.slice(0, 13) + "…" : full;
+  };
 
   // Column headers (rotated) — overflow:visible lets rotated text extend outside SVG viewport
   colsSvg.setAttribute("width",  N * CELL);
   colsSvg.setAttribute("height", LABEL);
   colsSvg.setAttribute("overflow", "visible");
-  allVids.forEach((vid, j) => {
+  m.vids.forEach((vid, j) => {
     const t = document.createElementNS(ns, "text");
-    t.setAttribute("transform", `translate(${j * CELL + CELL / 2 + 2},${LABEL - 4}) rotate(-60)`);
+    // rotate(45) + text-anchor:end, anchored just above the cells, makes the label
+    // rise up-left — it never dips into the cell area like a downward rotation would.
+    t.setAttribute("transform", `translate(${j * CELL + CELL / 2}, ${LABEL - 8}) rotate(45)`);
     t.setAttribute("font-size", "10"); t.setAttribute("fill", "#8b949e");
+    t.setAttribute("font-weight", "700");
     t.setAttribute("text-anchor", "end");
-    t.textContent = truncLabel(vid);
+    t.textContent = vidLabel(vid);
     colsSvg.appendChild(t);
   });
 
   // Row headers
   rowsSvg.setAttribute("width",  LABEL);
   rowsSvg.setAttribute("height", N * CELL);
-  allVids.forEach((vid, i) => {
+  m.vids.forEach((vid, i) => {
     const t = document.createElementNS(ns, "text");
     t.setAttribute("x", LABEL - 4); t.setAttribute("y", i * CELL + CELL * 0.65);
     t.setAttribute("font-size", "10"); t.setAttribute("fill", "#8b949e");
+    t.setAttribute("font-weight", "700");
     t.setAttribute("text-anchor", "end");
-    t.textContent = truncLabel(vid);
+    t.textContent = vidLabel(vid);
     rowsSvg.appendChild(t);
   });
+
+  // Color scales (built once per render; value accessor honors the Bytes|Packets toggle)
+  const metric  = _vlanMatrixMetric;
+  const maxVal   = metric === "packets" ? m.maxPackets   : m.maxBytes;
+  const maxOtVal = metric === "packets" ? m.maxOtPackets : m.maxOtBytes;
+  const scales = {
+    metric,
+    traffic: makeHeatScale(maxVal,   ["#0d366b", "#1c5cab", "#2a78d6", "#5598e7", "#9ec5f4"]),
+    ot:      makeHeatScale(maxOtVal, ["#431407", "#9a3412", "#ea580c", "#fb923c", "#fdba74"]),
+  };
 
   // Cells
   cellsSvg.setAttribute("width",  N * CELL);
   cellsSvg.setAttribute("height", N * CELL);
 
-  allVids.forEach((rowVid, i) => {
-    allVids.forEach((colVid, j) => {
+  m.vids.forEach((rowVid, i) => {
+    m.vids.forEach((colVid, j) => {
       const isDiag = i === j;
-      const flow = isDiag ? null : flowMap[rowVid]?.[colVid];
-      const isAnom = !isDiag && (anomVlanPairs.has(`${rowVid}|${colVid}`));
+      const cell = m.cells[m.key(rowVid, colVid)] || null;
+      const style = vlanCellStyle(_vlanMatrixView, cell, isDiag, scales);
 
       const rect = document.createElementNS(ns, "rect");
       rect.setAttribute("x", j * CELL + 1); rect.setAttribute("y", i * CELL + 1);
       rect.setAttribute("width", CELL - 2); rect.setAttribute("height", CELL - 2);
       rect.setAttribute("rx", "2");
+      rect.setAttribute("fill", style.fill);
+      rect.setAttribute("opacity", style.opacity);
+      if (style.stroke) { rect.setAttribute("stroke", style.stroke); rect.setAttribute("stroke-width", style.strokeWidth); }
 
-      if (isDiag) {
-        rect.setAttribute("fill", "#0a0f15"); rect.setAttribute("opacity", "0.8");
-      } else if (flow) {
-        const protos = [...flow.protocols];
-        const fill = isAnom ? "#ff8c00" : (protoColor(protos) || "#555");
-        rect.setAttribute("fill", fill); rect.setAttribute("opacity", "0.75");
-        if (isAnom) { rect.setAttribute("stroke", "#f85149"); rect.setAttribute("stroke-width", "1.5"); }
+      // Any cell with flow or anomalies is interactive — anomaly-only pairs (no aggregated
+      // edge) must still show a tooltip even though packets/bytes are 0.
+      const hasData = !!(cell && (cell.packets > 0 || cell.bytes > 0 || cell.anomalies.length > 0));
+      if (hasData) {
         rect.style.cursor = "pointer";
         rect.addEventListener("mouseenter", ev => {
-          tooltip.innerHTML = `<strong>VLAN ${escHtml(rowVid)} ↔ VLAN ${escHtml(colVid)}</strong><br>
-            ${fmtNum(flow.packets)} pkts · ${fmtBytes(flow.bytes)}<br>
-            ${protos.slice(0, 5).map(escHtml).join(" · ")}
-            ${isAnom ? `<br><span style="color:#f85149;font-size:10px">⚠ OT anomaly</span>` : ""}`;
+          tooltip.innerHTML = vlanCellTooltipHtml(_vlanMatrixView, rowVid, colVid, cell, isDiag);
           tooltip.classList.add("visible"); positionTooltip(ev);
         });
         rect.addEventListener("mousemove", ev => positionTooltip(ev));
         rect.addEventListener("mouseleave", () => hideTooltip());
-      } else {
-        rect.setAttribute("fill", "#161b22"); rect.setAttribute("opacity", "0.4");
       }
       cellsSvg.appendChild(rect);
+
+      if (SHOW_TEXT && style.text) {
+        const txt = document.createElementNS(ns, "text");
+        txt.setAttribute("x", j * CELL + CELL / 2);
+        txt.setAttribute("y", i * CELL + CELL * 0.58);
+        txt.setAttribute("text-anchor", "middle");
+        txt.setAttribute("font-size", "9");
+        txt.setAttribute("pointer-events", "none");
+        txt.setAttribute("fill", style.textFill);
+        if (_vlanMatrixView === "anomaly") txt.setAttribute("font-weight", "700");
+        txt.textContent = style.text;
+        cellsSvg.appendChild(txt);
+      }
     });
   });
+
+  updateVlanMatrixLegend(vlanMatrixLegendSpec(_vlanMatrixView, m));
+}
+
+/** Export the currently active matrix view as a self-describing PNG (title header +
+ *  legend footer band). Returns a Promise so exportVlanMatrixAllViews() can sequence calls. */
+function exportVlanMatrixPng() {
+  if (!graphData) return Promise.resolve();
+  // Floor at 2x so exports stay crisp even on 1x displays.
+  const SCALE = Math.max(2, window.devicePixelRatio || 1);
+  const LABEL_W = 90, LABEL_H = 90;  // must match LABEL in renderVlanMatrix (not 96 — that's the OT matrix)
+  const HEADER_H = 46;
+  const BLEED = 24;  // the up-left rising column labels can overhang left of the first column
+  const colsSvg  = document.getElementById("vlan-matrix-cols");
+  const rowsSvg  = document.getElementById("vlan-matrix-rows");
+  const cellsSvg = document.getElementById("vlan-matrix-cells");
+  const colsW  = parseFloat(colsSvg.getAttribute("width"))  || 0;
+  const rowsH  = parseFloat(rowsSvg.getAttribute("height")) || 0;
+  const cellsW = parseFloat(cellsSvg.getAttribute("width")) || 0;
+  const cellsH = parseFloat(cellsSvg.getAttribute("height")) || 0;
+  if (cellsW === 0) return Promise.resolve();
+  const spec = vlanMatrixLegendSpec(_vlanMatrixView, buildVlanFlowMatrix(graphData));
+  const measureCtx = document.createElement("canvas").getContext("2d");
+  measureCtx.font = "9px sans-serif";
+  const noteW = spec.note ? Math.ceil(measureCtx.measureText(spec.note).width) : 0;
+  // Wide enough for the matrix, the header title, and the footer note line
+  const totalW = Math.max(380, LABEL_W + cellsW, noteW + 28);
+
+  // The legend can wrap onto multiple rows (e.g. many protocol swatches) — measure
+  // first so the footer band (and canvas height) is sized correctly up front.
+  let legendRows = 1;
+  if (spec.kind === "swatches" && spec.items.length) {
+    let lx = 14;
+    spec.items.forEach(item => {
+      const w = 14 + measureCtx.measureText(item.label).width + 12;
+      if (lx + w > totalW - 14 && lx > 14) { legendRows++; lx = 14; }
+      lx += w;
+    });
+  }
+  const FOOTER_H = legendRows * 16 + 32;  // legend row(s) + note line + padding
+  const totalH = HEADER_H + LABEL_H + cellsH + FOOTER_H;
+
+  // Rasterize each SVG at its SCALE-d intrinsic size (viewBox keeps logical coordinates)
+  // so drawImage composites 1:1 into device pixels instead of upscaling a low-res bitmap.
+  // vbX/vbY let a layer's viewBox start left/above (0,0) to capture overhanging content.
+  const serializeSvg = (svgEl, vbX, vbY, vbW, vbH, withBg = true) => {
+    const clone = svgEl.cloneNode(true);
+    clone.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
+    clone.setAttribute("width", vbW * SCALE);
+    clone.setAttribute("height", vbH * SCALE);
+    if (withBg) {
+      const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bg.setAttribute("x", vbX); bg.setAttribute("y", vbY);
+      bg.setAttribute("width", vbW); bg.setAttribute("height", vbH); bg.setAttribute("fill", "#0d1117");
+      clone.insertBefore(bg, clone.firstChild);
+    }
+    return new XMLSerializer().serializeToString(clone);
+  };
+  const loadImg = (svgStr) => new Promise(resolve => {
+    const url = URL.createObjectURL(new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.onload = () => resolve({ img, url });
+    img.src = url;
+  });
+
+  const VIEW_TITLES = {
+    traffic:  `Traffic volume (${_vlanMatrixMetric})`,
+    ot:       "OT/ICS flows",
+    anomaly:  "Anomalies",
+    protocol: "Dominant protocol",
+  };
+
+  return Promise.all([
+    // Transparent, bled left so the up-left rising column labels aren't clipped;
+    // drawn last (on top of the cells) to match the on-screen overflow:visible look.
+    loadImg(serializeSvg(colsSvg, -BLEED, 0, colsW + BLEED, LABEL_H, false)),
+    loadImg(serializeSvg(rowsSvg, 0, 0, LABEL_W, rowsH)),
+    loadImg(serializeSvg(cellsSvg, 0, 0, cellsW, cellsH)),
+  ]).then(([cols, rows, cells]) => {
+    const canvas = document.createElement("canvas");
+    canvas.width  = Math.round(totalW * SCALE);
+    canvas.height = Math.round(totalH * SCALE);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(SCALE, SCALE);
+    ctx.fillStyle = "#0d1117";
+    ctx.fillRect(0, 0, totalW, totalH);
+
+    // Header band
+    ctx.fillStyle = "#161b22";
+    ctx.fillRect(0, 0, totalW, HEADER_H);
+    ctx.fillStyle = "#30363d";
+    ctx.fillRect(0, HEADER_H - 1, totalW, 1);
+    ctx.fillStyle = "#e6edf3";
+    ctx.font = "13px sans-serif";
+    ctx.fillText(`VLAN Flow Matrix — ${VIEW_TITLES[_vlanMatrixView] || _vlanMatrixView}`, 14, 20);
+    ctx.fillStyle = "#8b949e";
+    ctx.font = "10px sans-serif";
+    ctx.fillText(new Date().toISOString().slice(0, 10), 14, 36);
+
+    // Matrix — cells first, then the column-label layer on top so labels rising
+    // up-left past the first column aren't clipped by the cells layer beneath
+    ctx.drawImage(rows.img,  0,               HEADER_H + LABEL_H, LABEL_W, rowsH);
+    ctx.drawImage(cells.img, LABEL_W,         HEADER_H + LABEL_H, cellsW,  cellsH);
+    ctx.drawImage(cols.img,  LABEL_W - BLEED, HEADER_H,           colsW + BLEED, LABEL_H);
+    [cols, rows, cells].forEach(x => URL.revokeObjectURL(x.url));
+
+    // Footer legend band — same declarative spec that drives the on-screen legend
+    const footerY = HEADER_H + LABEL_H + cellsH;
+    ctx.fillStyle = "#161b22";
+    ctx.fillRect(0, footerY, totalW, FOOTER_H);
+    ctx.fillStyle = "#30363d";
+    ctx.fillRect(0, footerY, totalW, 1);
+
+    let lx = 14;
+    let rowY = footerY + 16;   // legend row(s); note gets its own line below the last one
+    ctx.font = "9px sans-serif";
+    if (spec.kind === "gradient") {
+      const gradW = 110, gradH = 8;
+      ctx.fillStyle = "#8b949e";
+      ctx.fillText(spec.minLabel, lx, rowY + 3);
+      lx += ctx.measureText(spec.minLabel).width + 6;
+      const grad = ctx.createLinearGradient(lx, 0, lx + gradW, 0);
+      const n = spec.stops.length;
+      spec.stops.forEach((c, idx) => grad.addColorStop(n === 1 ? 0 : idx / (n - 1), c));
+      ctx.fillStyle = grad;
+      ctx.fillRect(lx, rowY - gradH / 2, gradW, gradH);
+      lx += gradW + 6;
+      ctx.fillStyle = "#8b949e";
+      ctx.fillText(spec.maxLabel, lx, rowY + 3);
+      lx += ctx.measureText(spec.maxLabel).width + 14;
+    } else if (spec.kind === "swatches") {
+      spec.items.forEach(item => {
+        const w = 14 + ctx.measureText(item.label).width + 12;
+        if (lx + w > totalW - 14 && lx > 14) { lx = 14; rowY += 16; }
+        ctx.fillStyle = item.color;
+        ctx.fillRect(lx, rowY - 5, 10, 10);
+        lx += 14;
+        ctx.fillStyle = "#8b949e";
+        ctx.fillText(item.label, lx, rowY + 3);
+        lx += ctx.measureText(item.label).width + 12;
+      });
+    }
+    if (spec.note) {
+      ctx.fillStyle = "#8b949e";
+      ctx.fillText(spec.note, 14, rowY + 20);
+    }
+
+    const a = document.createElement("a");
+    const suffix = _vlanMatrixView === "traffic" ? `-${_vlanMatrixMetric}` : "";
+    a.download = `vlan-matrix-${_vlanMatrixView}${suffix}-${new Date().toISOString().slice(0, 10)}.png`;
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+  });
+}
+
+/** Sequentially exports all 4 matrix views as separate PNGs, then restores the prior view. */
+async function exportVlanMatrixAllViews() {
+  if (!graphData) return;
+  const prevView = _vlanMatrixView;
+  for (const mode of ["traffic", "ot", "anomaly", "protocol"]) {
+    _vlanMatrixView = mode;
+    renderVlanMatrix(graphData);
+    await exportVlanMatrixPng();
+  }
+  _vlanMatrixView = prevView;
+  renderVlanMatrix(graphData);
+  const modesBar = document.getElementById("vlan-matrix-modes");
+  if (modesBar) {
+    modesBar.querySelectorAll(".vm-mode-btn").forEach(b => b.classList.toggle("active", b.dataset.vmMode === prevView));
+  }
 }
 
 /* ── C2: Dashboard / summary view ───────────────────────────────────────── */
@@ -7180,6 +7674,17 @@ document.getElementById("exp-vlan-traffic").addEventListener("click", () => {
 document.getElementById("exp-vlan-svg").addEventListener("click", () => {
   exportVlanSvg();
   document.getElementById("export-menu").classList.add("hidden");
+});
+document.getElementById("exp-vlan-matrix").addEventListener("click", () => {
+  document.getElementById("export-menu").classList.add("hidden");
+  if (!graphData || !graphData.stats?.vlans?.length) return;
+  if (!document.getElementById("vlan-matrix-cells").childElementCount) renderVlanMatrix(graphData);
+  exportVlanMatrixPng();
+});
+document.getElementById("exp-vlan-matrix-all").addEventListener("click", () => {
+  document.getElementById("export-menu").classList.add("hidden");
+  if (!graphData || !graphData.stats?.vlans?.length) return;
+  exportVlanMatrixAllViews();
 });
 document.getElementById("imp-vlan-names").addEventListener("click", () => {
   document.getElementById("export-menu").classList.add("hidden");
