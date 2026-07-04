@@ -124,6 +124,8 @@
         <div class="dropdown-item" id="exp-vlan-inventory">Export VLAN Inventory CSV</div>
         <div class="dropdown-item" id="exp-vlan-traffic">Export VLAN Traffic CSV</div>
         <div class="dropdown-item" id="exp-vlan-svg">Export VLAN Diagram SVG</div>
+        <div class="dropdown-item" id="exp-vlan-matrix">Export VLAN Matrix PNG</div>
+        <div class="dropdown-item" id="exp-vlan-matrix-all">Export VLAN Matrix PNG (all views)</div>
         <div class="dropdown-item" id="imp-vlan-names">Import VLAN Names CSV…</div>
       </div>
     </div>
@@ -529,6 +531,19 @@
           <button class="gc-btn" id="vlan-zoom-fit" title="Fit to screen">⊡</button>
         </div>
         <button class="gc-btn" id="vlan-matrix-btn" title="Toggle flow matrix view">⊞ Matrix</button>
+        <div id="vlan-matrix-modes" class="hidden">
+          <div class="layout-group">
+            <button class="gc-btn vm-mode-btn active" data-vm-mode="traffic"  title="Cell brightness = traffic volume">Traffic</button>
+            <button class="gc-btn vm-mode-btn"        data-vm-mode="ot"       title="Where OT/ICS protocols cross VLANs">OT/ICS</button>
+            <button class="gc-btn vm-mode-btn"        data-vm-mode="anomaly"  title="VLAN pairs involved in anomalies">Anomalies</button>
+            <button class="gc-btn vm-mode-btn"        data-vm-mode="protocol" title="Dominant protocol per pair">Protocol</button>
+          </div>
+          <div class="layout-group" id="vlan-matrix-metric">
+            <button class="gc-btn vm-metric-btn active" data-vm-metric="bytes"   title="Heat by bytes">Bytes</button>
+            <button class="gc-btn vm-metric-btn"        data-vm-metric="packets" title="Heat by packets">Pkts</button>
+          </div>
+          <button class="gc-btn" id="vlan-matrix-export-btn" title="Export current view as PNG (Shift-click: all views)">⤓ PNG</button>
+        </div>
         <input id="vlan-search" type="text" placeholder="Search VLANs / IPs…"
                style="display:none" autocomplete="off">
       </div>
@@ -551,9 +566,7 @@
           <svg id="vlan-matrix-rows"></svg>
           <svg id="vlan-matrix-cells"></svg>
         </div>
-        <div id="vlan-matrix-legend">
-          Cell color = dominant protocol · Orange = cross-VLAN OT anomaly · Red border = VLAN anomaly
-        </div>
+        <div id="vlan-matrix-legend"></div>
       </div>
     </div>
 
