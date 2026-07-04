@@ -6746,7 +6746,7 @@ function renderVlanMatrix(data) {
   // Available cell strip = pane width minus the row-label gutter and the 24px×2 grid padding.
   const avail = Math.max(320, (container?.clientWidth || 1200) - LABEL - 48);
   const MIN_CELL = N > 20 ? 24 : 44;
-  const MAX_CELL = N > 20 ? 60 : 110;
+  const MAX_CELL = N > 20 ? 52 : 84;
   const CELL = Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor(avail / Math.max(N, 1))));
   const SHOW_TEXT = CELL >= 34;
 
@@ -6770,6 +6770,7 @@ function renderVlanMatrix(data) {
     // rise up-left — it never dips into the cell area like a downward rotation would.
     t.setAttribute("transform", `translate(${j * CELL + CELL / 2}, ${LABEL - 8}) rotate(45)`);
     t.setAttribute("font-size", "10"); t.setAttribute("fill", "#8b949e");
+    t.setAttribute("font-weight", "700");
     t.setAttribute("text-anchor", "end");
     t.textContent = vidLabel(vid);
     colsSvg.appendChild(t);
@@ -6782,6 +6783,7 @@ function renderVlanMatrix(data) {
     const t = document.createElementNS(ns, "text");
     t.setAttribute("x", LABEL - 4); t.setAttribute("y", i * CELL + CELL * 0.65);
     t.setAttribute("font-size", "10"); t.setAttribute("fill", "#8b949e");
+    t.setAttribute("font-weight", "700");
     t.setAttribute("text-anchor", "end");
     t.textContent = vidLabel(vid);
     rowsSvg.appendChild(t);
