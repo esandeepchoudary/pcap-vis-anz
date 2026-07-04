@@ -735,11 +735,11 @@ async function uploadFiles(files) {
 
   try {
     const resp = await fetch("/upload", { method: "POST", body: form });
-    let data;
+    const raw = await resp.text();
+    let data = {};
     try {
-      data = await resp.json();
+      data = raw ? JSON.parse(raw) : {};
     } catch(_) {
-      const raw = await resp.text().catch(() => "");
       throw new Error(`Server returned non-JSON (${resp.status}): ${raw.slice(0, 120)}`);
     }
     if (!resp.ok) throw new Error(data?.error || `Server error ${resp.status}: ${resp.statusText}`);
@@ -760,9 +760,35 @@ async function uploadFiles(files) {
 }
 
 /* ── Graph rendering ─────────────────────────────────────────────────────── */
+function normalizeGraphPayload(data) {
+  const payload = data && typeof data === "object" ? data : {};
+  payload.stats = payload.stats && typeof payload.stats === "object" && !Array.isArray(payload.stats)
+    ? payload.stats
+    : {};
+  payload.nodes       = Array.isArray(payload.nodes) ? payload.nodes : [];
+  payload.edges       = Array.isArray(payload.edges) ? payload.edges : [];
+  payload.anomalies   = Array.isArray(payload.anomalies) ? payload.anomalies : [];
+  payload.credentials = Array.isArray(payload.credentials) ? payload.credentials : [];
+  payload.files       = Array.isArray(payload.files) ? payload.files : [];
+  payload.ot_commands = Array.isArray(payload.ot_commands) ? payload.ot_commands : [];
+  payload.warnings    = Array.isArray(payload.warnings) ? payload.warnings : [];
+  payload.packets = payload.packets && typeof payload.packets === "object" && !Array.isArray(payload.packets)
+    ? payload.packets
+    : {};
+
+  const stats = payload.stats;
+  stats.protocols   = Array.isArray(stats.protocols) ? stats.protocols : [];
+  stats.host_types  = Array.isArray(stats.host_types) ? stats.host_types : [];
+  stats.vlans       = Array.isArray(stats.vlans) ? stats.vlans : [];
+  stats.ip_versions = Array.isArray(stats.ip_versions) ? stats.ip_versions : [];
+
+  return payload;
+}
+
 function loadGraph(data) {
+  data = normalizeGraphPayload(data);
   graphData = data;
-  packetData = data.packets || {};
+  packetData = data.packets;
   _otLogRendered = false;
   _otLogActiveProtoF = null;
   _otLogActiveDirF   = null;
@@ -1148,23 +1174,23 @@ function buildFilterList(containerId, items, activeSet, colorMap, kind) {
   const counts = {};
   if (graphData) {
     if (kind === "proto") {
-      graphData.edges.forEach(e => (e.protocols || []).forEach(p => {
+      (graphData.edges || []).forEach(e => (e.protocols || []).forEach(p => {
         counts[p] = (counts[p] || 0) + 1;
       }));
     } else if (kind === "vlan") {
-      graphData.nodes.forEach(n => {
+      (graphData.nodes || []).forEach(n => {
         (n.vlans || []).forEach(v => {
           counts[String(v)] = (counts[String(v)] || 0) + 1;
         });
         if (n.vlan_untagged) counts["untagged"] = (counts["untagged"] || 0) + 1;
       });
     } else if (kind === "ipver") {
-      graphData.nodes.forEach(n => {
+      (graphData.nodes || []).forEach(n => {
         const v = String(n.ip_version || 4);
         counts[v] = (counts[v] || 0) + 1;
       });
     } else {
-      graphData.nodes.forEach(n => {
+      (graphData.nodes || []).forEach(n => {
         counts[n.host_type || "Unknown Host"] = (counts[n.host_type || "Unknown Host"] || 0) + 1;
       });
     }
@@ -1202,11 +1228,12 @@ function buildFilterList(containerId, items, activeSet, colorMap, kind) {
 
 function updateFilterUI() {
   if (!graphData) return;
-  const totalProtos  = (graphData.stats.protocols || []).length;
-  const totalTypes   = (graphData.stats.host_types || []).length;
-  const totalVlans   = (graphData.stats.vlans || []).length +
+  const stats = graphData.stats || {};
+  const totalProtos  = (stats.protocols || []).length;
+  const totalTypes   = (stats.host_types || []).length;
+  const totalVlans   = (stats.vlans || []).length +
                        ((graphData.nodes || []).some(n => n.vlan_untagged) ? 1 : 0);
-  const totalIpVers  = (graphData.stats.ip_versions || []).length;
+  const totalIpVers  = (stats.ip_versions || []).length;
   const hiddenProtos = totalProtos - activeProtos.size;
   const hiddenTypes  = totalTypes  - activeTypes.size;
   const hiddenVlans  = totalVlans  - activeVlans.size;
@@ -1274,7 +1301,7 @@ function updateFilterUI() {
 
 document.getElementById("proto-clear-btn").addEventListener("click", () => {
   if (!graphData) return;
-  const all = graphData.stats.protocols || [];
+  const all = (graphData.stats || {}).protocols || [];
   const selectAll = activeProtos.size < all.length;
   activeProtos.clear();
   if (selectAll) all.forEach(p => activeProtos.add(p));
@@ -1284,7 +1311,7 @@ document.getElementById("proto-clear-btn").addEventListener("click", () => {
 });
 document.getElementById("type-clear-btn").addEventListener("click", () => {
   if (!graphData) return;
-  const all = graphData.stats.host_types || [];
+  const all = (graphData.stats || {}).host_types || [];
   const selectAll = activeTypes.size < all.length;
   activeTypes.clear();
   if (selectAll) all.forEach(t => activeTypes.add(t));
@@ -1294,7 +1321,7 @@ document.getElementById("type-clear-btn").addEventListener("click", () => {
 });
 document.getElementById("vlan-clear-btn").addEventListener("click", () => {
   if (!graphData) return;
-  const allVlans = (graphData.stats.vlans || []).map(String);
+  const allVlans = ((graphData.stats || {}).vlans || []).map(String);
   if ((graphData.nodes || []).some(n => n.vlan_untagged)) allVlans.push("untagged");
   const selectAll = activeVlans.size < allVlans.length;
   activeVlans.clear();
@@ -1305,7 +1332,7 @@ document.getElementById("vlan-clear-btn").addEventListener("click", () => {
 });
 document.getElementById("ipver-clear-btn").addEventListener("click", () => {
   if (!graphData) return;
-  const all = (graphData.stats.ip_versions || []).map(String);
+  const all = ((graphData.stats || {}).ip_versions || []).map(String);
   const selectAll = activeIpVersions.size < all.length;
   activeIpVersions.clear();
   if (selectAll) all.forEach(v => activeIpVersions.add(v));
@@ -1316,17 +1343,18 @@ document.getElementById("ipver-clear-btn").addEventListener("click", () => {
 
 function clearAllFilters() {
   if (!graphData) return;
+  const stats = graphData.stats || {};
   searchBox.value = "";
   searchTerm = "";
   activeProtos.clear();
-  (graphData.stats.protocols || []).forEach(p => activeProtos.add(p));
+  (stats.protocols || []).forEach(p => activeProtos.add(p));
   activeTypes.clear();
-  (graphData.stats.host_types || []).forEach(t => activeTypes.add(t));
+  (stats.host_types || []).forEach(t => activeTypes.add(t));
   activeVlans.clear();
-  (graphData.stats.vlans || []).map(String).forEach(v => activeVlans.add(v));
+  (stats.vlans || []).map(String).forEach(v => activeVlans.add(v));
   if ((graphData.nodes || []).some(n => n.vlan_untagged)) activeVlans.add("untagged");
   activeIpVersions.clear();
-  (graphData.stats.ip_versions || []).map(String).forEach(v => activeIpVersions.add(v));
+  (stats.ip_versions || []).map(String).forEach(v => activeIpVersions.add(v));
   document.querySelectorAll("#proto-filters input[type=checkbox]").forEach(cb  => { cb.checked = true; });
   document.querySelectorAll("#type-filters input[type=checkbox]").forEach(cb   => { cb.checked = true; });
   document.querySelectorAll("#vlan-filters input[type=checkbox]").forEach(cb   => { cb.checked = true; });
@@ -3369,8 +3397,9 @@ function zoomFit() {
 /* ── Legend ──────────────────────────────────────────────────────────────── */
 function buildLegend(data) {
   const hostLegend = document.getElementById("legend-hosts");
+  const stats = data.stats || {};
   hostLegend.innerHTML = "";
-  data.stats.host_types.forEach(ht => {
+  (stats.host_types || []).forEach(ht => {
     const div = document.createElement("div");
     div.className = "legend-row";
     div.innerHTML = `<span class="legend-icon">${hostIcon(ht)}</span><div class="legend-dot" style="background:${hostColor(ht)}"></div><span>${escHtml(ht)}</span>`;
@@ -4182,7 +4211,9 @@ function _getSortedEdges() {
 function _buildConnRows() {
   if (!graphData) return [];
   const nodeMap = {};
-  graphData.nodes.forEach(n => { nodeMap[n.ip] = n; });
+  const stats = graphData.stats || {};
+  const ipVersions = stats.ip_versions || [];
+  (graphData.nodes || []).forEach(n => { nodeMap[n.ip] = n; });
 
   return _getSortedEdges()
     .map(e => {
@@ -4190,8 +4221,8 @@ function _buildConnRows() {
       const protoOk  = (e.protocols || []).some(p => activeProtos.has(p));
       const typeOk   = (!srcNode || activeTypes.has(srcNode.host_type)) &&
                        (!dstNode || activeTypes.has(dstNode.host_type));
-      const ipVerFilterActive = (graphData.stats.ip_versions || []).length > 1 &&
-                                activeIpVersions.size < (graphData.stats.ip_versions || []).length;
+      const ipVerFilterActive = ipVersions.length > 1 &&
+                                activeIpVersions.size < ipVersions.length;
       const ipVerOk  = !ipVerFilterActive ||
                        (!srcNode || activeIpVersions.has(String(srcNode.ip_version || 4))) &&
                        (!dstNode || activeIpVersions.has(String(dstNode.ip_version || 4)));
@@ -7836,10 +7867,11 @@ function exportVlanInventoryCsv() {
   if (!graphData || !((graphData.stats?.vlans?.length) || (graphData.nodes || []).some(n => n.vlan_untagged))) {
     showToast("No VLAN data to export.", "info"); return;
   }
+  const stats = graphData.stats || {};
   const rows = [["VLAN ID", "IP Address", "Country", "Hostname", "Host Type", "IP Version",
                   "Protocols", "Packet Count", "Bytes Sent", "Bytes Recv",
                   "PCP Values", "QinQ", "Untagged Frames", "Outer VLAN IDs", "Risk Score"]];
-  const allVlans   = (graphData.stats.vlans || []).map(String);
+  const allVlans   = (stats.vlans || []).map(String);
   const hasUntagged = (graphData.nodes || []).some(n => n.vlan_untagged);
 
   // One row per (VLAN, host) pair — multi-VLAN hosts appear on multiple rows for easy pivot/filter

@@ -2,6 +2,9 @@
 
 ## Completed
 
+- [x] Bug sweep: Partial/older session JSON is normalized at `loadGraph()` entry, including safe defaults for stats, nodes, edges, anomalies, packets, credentials, file transfers, OT commands, and warnings
+- [x] Bug sweep: Frontend filter, legend, connection-table, and VLAN-export paths no longer directly dereference missing `graphData.stats` fields
+- [x] Bug sweep: `/upload` frontend error handling reads the response body once as text, preserves non-JSON server diagnostics, and parses JSON manually to avoid empty single-use response bodies
 - [x] OT Map: Fix undefined CSS variables `--bg1` / `--text1` (caused white patch in dark mode)
 - [x] OT Map: Add D3 zoom + pan (Ctrl+scroll to zoom, drag to pan, +/−/⊡ toolbar buttons)
 - [x] OT Map: ResponsiveObserver — SVG re-renders on container resize and detail-panel close

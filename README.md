@@ -47,7 +47,7 @@ An interactive web-based tool for visualizing network packet captures. Upload a 
 - **Exports** — PNG graph screenshot, **Connections CSV** (every connection with source/dest country), **Hosts Inventory CSV** (one row per IP with country in "Name (CC)" format), **Anomalies CSV** (with source/dest country), **Credentials CSV** (with source/dest country), Markdown audit report (curated findings, capture summary, geographic distribution of external endpoints, risk ranking, anomalies by severity, OT inventory, VLAN device inventory, VLAN traffic by VLAN, TLS/SNI observations, captured credentials, file transfers, OT write log), **VLAN Inventory CSV** (with country), **VLAN Traffic CSV** (with source/dest country), VLAN Diagram SVG; all CSV exports always contain the complete dataset even when the graph only renders a top-N subset
 - **File transfer detection** — Detects HTTP file downloads (Content-Disposition: attachment + interesting Content-Type); sidebar "File Transfers" panel with filename, MIME, size, SHA-256 hash, safe copy/download controls, and production-tested extraction helper; 200 files/capture, 500/merge (deduped by hash)
 - **PCAP baseline diff** — "Set Baseline" button in header; upload a second PCAP and open the "⊕ Diff" tab to compare: new/disappeared hosts (with specific change labels: type change, risk delta >20, new protocols, new ports), new connections with protocols, traffic-volume changes (>2× or <0.5× packet ratio), and new anomalies vs baseline; four-column diff view, no server round-trip
-- **Session save / load** — Export full analysis, findings, and analyst triage edits to JSON and reload without re-uploading the capture file
+- **Session save / load** — Export full analysis, findings, and analyst triage edits to JSON and reload without re-uploading the capture file; older or partial session JSON is normalized on load so missing optional fields do not break the UI
 - **Node annotations** — Right-click any node to attach a persistent note using the in-app note modal (stored in browser localStorage)
 - **Anomaly detection** — 32 detection rules across general network, OT/ICS, IoT, and VLAN threat categories
 - **Large capture support** — Streams up to 1,000,000 packets without loading into memory (up to 100 files · 1 GB total per upload); multi-file uploads processed in parallel
@@ -250,17 +250,23 @@ pcap-vis-anz/
 │   ├── css/style.css       # Dark GitHub-style theme
 │   └── js/app.js           # D3.js force graph + UI logic
 └── tests/
+    ├── conftest.py            # Shared pytest fixtures and packet builders
     ├── test_parsers.py         # Protocol parser unit tests (Modbus, DNP3, S7, CoAP, …)
     ├── test_anomalies.py       # Anomaly detection rule tests
     ├── test_anomalies_ot.py    # OT/IoT anomaly rule tests (Modbus writes, DNP3 control, S7, EtherNet/IP, IEC-104, BACnet, IoT)
     ├── test_credentials.py     # Credential extraction tests
+    ├── test_file_cache.py      # Captured file download-cache tests
     ├── test_file_extraction.py # HTTP file transfer detection tests
+    ├── test_frontend_findings_static.py # Static frontend regression tests
     ├── test_geoip.py           # GeoIP bundled-DB and geo_lookup() tests
     ├── test_helpers.py         # Helper function tests (is_private, mac_vendor, geo_lookup)
     ├── test_http_mqtt_coap.py  # HTTP / MQTT / CoAP parser tests
+    ├── test_ipv6_ext_headers.py # IPv6 extension-header parsing tests
     ├── test_merge.py           # Multi-file merge tests
     ├── test_pcapng.py          # pcapng parse and parity tests
     ├── test_routes.py          # /upload endpoint HTTP tests (happy path, errors, file count cap)
+    ├── test_serialization.py   # Output schema and truncation-flag tests
+    ├── test_vlan.py            # VLAN parsing, merge, stats, and anomaly tests
     └── test_utils.py           # Utility function tests
 ```
 
@@ -271,7 +277,7 @@ pip install pytest            # or: pip install -r requirements-dev.txt
 pytest tests/ -q
 ```
 
-The suite contains 332 tests across 13 files covering protocol parsers, anomaly detection (including all 16 OT/IoT rules), credential extraction, file transfer detection, multi-file merging, full-fidelity serialization (no port/DNS truncation), GeoIP bundling, and the `/upload` HTTP endpoint.
+The suite contains 354 tests across 18 files covering protocol parsers, anomaly detection (including all 16 OT/IoT rules), credential extraction, file transfer detection, multi-file merging, full-fidelity serialization (no port/DNS truncation), GeoIP bundling, frontend regression guards, and the `/upload` HTTP endpoint.
 
 ## Configuration
 

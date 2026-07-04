@@ -81,3 +81,62 @@ def test_otlog_empty_path_clears_filter_bars():
     assert 'dirBar.innerHTML = ""' in early_block, (
         "renderOtLog() empty branch must clear dirBar before returning"
     )
+
+
+def test_graph_payload_is_normalized_before_global_assignment():
+    """Partial session/upload JSON should get safe defaults before helpers read graphData."""
+    js = read("static/js/app.js")
+
+    assert "function normalizeGraphPayload(data)" in js
+    assert "data = normalizeGraphPayload(data);" in js
+
+    normalizer_start = js.find("function normalizeGraphPayload(data)")
+    load_start = js.find("function loadGraph(data)")
+    assert normalizer_start != -1
+    assert load_start != -1
+    normalizer = js[normalizer_start:load_start]
+
+    for field in (
+        "nodes",
+        "edges",
+        "anomalies",
+        "credentials",
+        "files",
+        "ot_commands",
+        "warnings",
+    ):
+        assert f"payload.{field}" in normalizer
+        assert f"Array.isArray(payload.{field})" in normalizer
+
+    assert "payload.stats =" in normalizer
+    assert "payload.packets =" in normalizer
+    for stat_field in ("protocols", "host_types", "vlans", "ip_versions"):
+        assert f"stats.{stat_field}" in normalizer
+        assert f"Array.isArray(stats.{stat_field})" in normalizer
+
+
+def test_stats_consumers_use_safe_fallbacks():
+    """Filter, legend, and table code must not directly dereference graphData.stats fields."""
+    js = read("static/js/app.js")
+
+    for unsafe in (
+        "graphData.stats.protocols",
+        "graphData.stats.host_types",
+        "graphData.stats.vlans",
+        "graphData.stats.ip_versions",
+        "data.stats.host_types",
+    ):
+        assert unsafe not in js
+
+    assert "const stats = graphData.stats || {};" in js
+    assert "const stats = data.stats || {};" in js
+
+
+def test_upload_error_parsing_reads_response_body_once():
+    """Fetch Response bodies are single-use; upload errors need text preserved for diagnostics."""
+    js = read("static/js/app.js")
+
+    assert "await resp.json()" not in js
+    assert "const raw = await resp.text();" in js
+    assert "raw ? JSON.parse(raw) : {}" in js
+    assert "Server returned non-JSON" in js
