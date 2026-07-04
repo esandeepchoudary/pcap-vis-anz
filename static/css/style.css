@@ -994,7 +994,10 @@ header h1 span { color: var(--accent); }
 .gc-btn:hover { background: var(--bg3); border-color: var(--accent); }
 /* Text-label gc-btn overrides — these buttons carry words, not just icons */
 #btn-color-vlan,
-#vlan-matrix-btn {
+#vlan-matrix-btn,
+#vlan-matrix-export-btn,
+.vm-mode-btn,
+.vm-metric-btn {
   width: auto;
   padding: 0 8px;
   font-size: 11px;

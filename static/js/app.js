@@ -6819,7 +6819,8 @@ function exportVlanMatrixPng() {
   if (!graphData) return Promise.resolve();
   const DPR = window.devicePixelRatio || 2;
   const LABEL_W = 90, LABEL_H = 90;  // must match LABEL in renderVlanMatrix (not 96 — that's the OT matrix)
-  const HEADER_H = 46, FOOTER_H = 34;
+  const HEADER_H = 46, FOOTER_H = 48;   // footer holds legend row + note line
+  const COL_BLEED = 60;  // rotated column labels overhang the header band into the cells area
   const colsSvg  = document.getElementById("vlan-matrix-cols");
   const rowsSvg  = document.getElementById("vlan-matrix-rows");
   const cellsSvg = document.getElementById("vlan-matrix-cells");
@@ -6828,14 +6829,22 @@ function exportVlanMatrixPng() {
   const cellsW = parseFloat(cellsSvg.getAttribute("width")) || 0;
   const cellsH = parseFloat(cellsSvg.getAttribute("height")) || 0;
   if (cellsW === 0) return Promise.resolve();
-  const totalW = LABEL_W + cellsW;
+  const spec = vlanMatrixLegendSpec(_vlanMatrixView, buildVlanFlowMatrix(graphData));
+  const measureCtx = document.createElement("canvas").getContext("2d");
+  measureCtx.font = "9px sans-serif";
+  const noteW = spec.note ? Math.ceil(measureCtx.measureText(spec.note).width) : 0;
+  // Wide enough for the matrix, the header title, and the footer note line
+  const totalW = Math.max(380, LABEL_W + cellsW, noteW + 28);
   const totalH = HEADER_H + LABEL_H + cellsH + FOOTER_H;
 
-  const serializeSvg = (svgEl, w, h) => {
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("width", w); bg.setAttribute("height", h); bg.setAttribute("fill", "#0d1117");
+  const serializeSvg = (svgEl, w, h, withBg = true) => {
     const clone = svgEl.cloneNode(true);
-    clone.insertBefore(bg, clone.firstChild);
+    clone.setAttribute("width", w); clone.setAttribute("height", h);
+    if (withBg) {
+      const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bg.setAttribute("width", w); bg.setAttribute("height", h); bg.setAttribute("fill", "#0d1117");
+      clone.insertBefore(bg, clone.firstChild);
+    }
     return new XMLSerializer().serializeToString(clone);
   };
   const loadImg = (svgStr) => new Promise(resolve => {
@@ -6853,7 +6862,9 @@ function exportVlanMatrixPng() {
   };
 
   return Promise.all([
-    loadImg(serializeSvg(colsSvg, colsW, LABEL_H)),
+    // No background + extra height: the rotated labels overhang the band and must
+    // composite over the cells (like on-screen overflow:visible), not get clipped.
+    loadImg(serializeSvg(colsSvg, colsW, LABEL_H + COL_BLEED, false)),
     loadImg(serializeSvg(rowsSvg, LABEL_W, rowsH)),
     loadImg(serializeSvg(cellsSvg, cellsW, cellsH)),
   ]).then(([cols, rows, cells]) => {
@@ -6877,10 +6888,11 @@ function exportVlanMatrixPng() {
     ctx.font = "10px sans-serif";
     ctx.fillText(new Date().toISOString().slice(0, 10), 14, 36);
 
-    // Matrix
-    ctx.drawImage(cols.img,  LABEL_W, HEADER_H,           colsW,  LABEL_H);
+    // Matrix — cells first, then the transparent column-label layer on top so the
+    // rotated labels can overhang into the cells area without being clipped
     ctx.drawImage(rows.img,  0,       HEADER_H + LABEL_H, LABEL_W, rowsH);
     ctx.drawImage(cells.img, LABEL_W, HEADER_H + LABEL_H, cellsW, cellsH);
+    ctx.drawImage(cols.img,  LABEL_W, HEADER_H,           colsW,  LABEL_H + COL_BLEED);
     [cols, rows, cells].forEach(x => URL.revokeObjectURL(x.url));
 
     // Footer legend band — same declarative spec that drives the on-screen legend
@@ -6890,8 +6902,7 @@ function exportVlanMatrixPng() {
     ctx.fillStyle = "#30363d";
     ctx.fillRect(0, footerY, totalW, 1);
 
-    const spec = vlanMatrixLegendSpec(_vlanMatrixView, buildVlanFlowMatrix(graphData));
-    const midY = footerY + FOOTER_H / 2;
+    const midY = footerY + 16;   // legend row; note gets its own line below
     let lx = 14;
     ctx.font = "9px sans-serif";
     if (spec.kind === "gradient") {
@@ -6920,7 +6931,7 @@ function exportVlanMatrixPng() {
     }
     if (spec.note) {
       ctx.fillStyle = "#8b949e";
-      ctx.fillText(spec.note, lx, midY + 3);
+      ctx.fillText(spec.note, 14, footerY + 36);
     }
 
     const a = document.createElement("a");
