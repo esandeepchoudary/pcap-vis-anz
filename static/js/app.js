@@ -173,18 +173,26 @@ const PROTO_COLORS_CB = Object.assign({}, PROTO_COLORS, {
   "TR-069":      "#ee7733",
 });
 
+const PROTO_COLOR_PRIORITY = [
+  "HTTPS","HTTP","SSH","RDP","DNS","SMTP","SMTPS","IMAP","IMAPS",
+  "POP3","POP3S","FTP","FTP-Data","MySQL","PostgreSQL","MongoDB",
+  "Redis","SMB","SNMP","DHCP","NTP","BGP","ICMP","TCP","UDP",
+];
+
+/** Picks the single "dominant" protocol from a set, using the same priority order as
+ *  protoColor, so any legend built from this always matches the cell colors it labels. */
+function dominantProto(protocols) {
+  if (!protocols || !protocols.length) return null;
+  for (const p of PROTO_COLOR_PRIORITY) {
+    if (protocols.includes(p)) return p;
+  }
+  return protocols[0];
+}
+
 function protoColor(protocols) {
   if (!protocols || !protocols.length) return "#607D8B";
   const map = colorBlindMode ? PROTO_COLORS_CB : PROTO_COLORS;
-  const priority = [
-    "HTTPS","HTTP","SSH","RDP","DNS","SMTP","SMTPS","IMAP","IMAPS",
-    "POP3","POP3S","FTP","FTP-Data","MySQL","PostgreSQL","MongoDB",
-    "Redis","SMB","SNMP","DHCP","NTP","BGP","ICMP","TCP","UDP",
-  ];
-  for (const p of priority) {
-    if (protocols.includes(p)) return map[p] || "#607D8B";
-  }
-  return map[protocols[0]] || "#607D8B";
+  return map[dominantProto(protocols)] || "#607D8B";
 }
 
 function hostColor(type) {
@@ -5201,7 +5209,8 @@ function exportOTMapPng() {
 
 function exportOTMatrixPng() {
   if (!graphData) return;
-  const DPR = window.devicePixelRatio || 2;
+  // Floor at 2x so exports stay crisp even on 1x displays.
+  const SCALE = Math.max(2, window.devicePixelRatio || 1);
   const LABEL_W = 96, LABEL_H = 96;
   const colsSvg  = document.getElementById("ot-matrix-cols");
   const rowsSvg  = document.getElementById("ot-matrix-rows");
@@ -5214,11 +5223,16 @@ function exportOTMatrixPng() {
   const totalW = LABEL_W + cellsW;
   const totalH = LABEL_H + cellsH;
 
+  // Rasterize each SVG at its SCALE-d intrinsic size (viewBox keeps logical coordinates)
+  // so drawImage composites 1:1 into device pixels instead of upscaling a low-res bitmap.
   const serializeSvg = (svgEl, w, h) => {
     const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     bg.setAttribute("width", w); bg.setAttribute("height", h); bg.setAttribute("fill", "#0d1117");
     const clone = svgEl.cloneNode(true);
     clone.insertBefore(bg, clone.firstChild);
+    clone.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    clone.setAttribute("width", w * SCALE);
+    clone.setAttribute("height", h * SCALE);
     return new XMLSerializer().serializeToString(clone);
   };
   const loadImg = (svgStr) => new Promise(resolve => {
@@ -5234,10 +5248,10 @@ function exportOTMatrixPng() {
     loadImg(serializeSvg(cellsSvg, cellsW, cellsH)),
   ]).then(([cols, rows, cells]) => {
     const canvas = document.createElement("canvas");
-    canvas.width  = Math.round(totalW * DPR);
-    canvas.height = Math.round(totalH * DPR);
+    canvas.width  = Math.round(totalW * SCALE);
+    canvas.height = Math.round(totalH * SCALE);
     const ctx = canvas.getContext("2d");
-    ctx.scale(DPR, DPR);
+    ctx.scale(SCALE, SCALE);
     ctx.fillStyle = "#0d1117";
     ctx.fillRect(0, 0, totalW, totalH);
     ctx.drawImage(cols.img,  LABEL_W, 0,       colsW,  LABEL_H);
@@ -6628,10 +6642,24 @@ function vlanMatrixLegendSpec(mode, m) {
       note: "number = anomaly count · diagonal = single-host anomalies",
     };
   }
+  // protocol — build the legend from whatever dominant protocols are actually on
+  // screen, so swatch colors always match the cells (most-common protocol first).
+  const map = colorBlindMode ? PROTO_COLORS_CB : PROTO_COLORS;
+  const present = new Map();  // proto -> pair count
+  Object.entries(m.cells).forEach(([k, c]) => {
+    const [a, b] = k.split("|");
+    if (a === b || !c.protocols.size) return;   // diagonal is always dark in protocol view
+    const p = dominantProto([...c.protocols]);
+    if (p) present.set(p, (present.get(p) || 0) + 1);
+  });
+  const items = [...present.entries()]
+    .sort((x, y) => y[1] - x[1])
+    .map(([p]) => ({ color: map[p] || "#607D8B", label: p }));
+  items.push({ color: "#ff8c00", label: "cross-VLAN OT anomaly" });
   return {
     kind: "swatches",
-    items: [],
-    note: "Cell color = dominant protocol · Orange = cross-VLAN OT anomaly · Red border = VLAN anomaly",
+    items,
+    note: "cell = dominant protocol · red border = VLAN anomaly · diagonal = intra-VLAN (hidden)",
   };
 }
 
@@ -6711,11 +6739,15 @@ function renderVlanMatrix(data) {
   const m = buildVlanFlowMatrix(data);
   if (!m.vids.length) return;
 
-  // Adaptive cell size: larger for small VLAN counts, smaller for large ones
+  // Adaptive cell size: fills available pane width (capped), shrinks for large VLAN counts
   const N = m.vids.length;
-  const CELL = N > 20 ? Math.max(24, Math.floor(1100 / N))
-                      : Math.max(44, Math.min(60, Math.floor(240 / Math.max(N, 1))));
   const LABEL = 90;  // must match #vlan-matrix-layout grid-template-columns in CSS
+  const container = document.getElementById("vlan-matrix-container");
+  // Available cell strip = pane width minus the row-label gutter and the 24px×2 grid padding.
+  const avail = Math.max(320, (container?.clientWidth || 1200) - LABEL - 48);
+  const MIN_CELL = N > 20 ? 24 : 44;
+  const MAX_CELL = N > 20 ? 60 : 110;
+  const CELL = Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor(avail / Math.max(N, 1))));
   const SHOW_TEXT = CELL >= 34;
 
   const colsSvg  = document.getElementById("vlan-matrix-cols");
@@ -6734,7 +6766,9 @@ function renderVlanMatrix(data) {
   colsSvg.setAttribute("overflow", "visible");
   m.vids.forEach((vid, j) => {
     const t = document.createElementNS(ns, "text");
-    t.setAttribute("transform", `translate(${j * CELL + CELL / 2 + 2},${LABEL - 4}) rotate(-60)`);
+    // rotate(45) + text-anchor:end, anchored just above the cells, makes the label
+    // rise up-left — it never dips into the cell area like a downward rotation would.
+    t.setAttribute("transform", `translate(${j * CELL + CELL / 2}, ${LABEL - 8}) rotate(45)`);
     t.setAttribute("font-size", "10"); t.setAttribute("fill", "#8b949e");
     t.setAttribute("text-anchor", "end");
     t.textContent = vidLabel(vid);
@@ -6817,10 +6851,11 @@ function renderVlanMatrix(data) {
  *  legend footer band). Returns a Promise so exportVlanMatrixAllViews() can sequence calls. */
 function exportVlanMatrixPng() {
   if (!graphData) return Promise.resolve();
-  const DPR = window.devicePixelRatio || 2;
+  // Floor at 2x so exports stay crisp even on 1x displays.
+  const SCALE = Math.max(2, window.devicePixelRatio || 1);
   const LABEL_W = 90, LABEL_H = 90;  // must match LABEL in renderVlanMatrix (not 96 — that's the OT matrix)
-  const HEADER_H = 46, FOOTER_H = 48;   // footer holds legend row + note line
-  const COL_BLEED = 60;  // rotated column labels overhang the header band into the cells area
+  const HEADER_H = 46;
+  const BLEED = 24;  // the up-left rising column labels can overhang left of the first column
   const colsSvg  = document.getElementById("vlan-matrix-cols");
   const rowsSvg  = document.getElementById("vlan-matrix-rows");
   const cellsSvg = document.getElementById("vlan-matrix-cells");
@@ -6835,14 +6870,33 @@ function exportVlanMatrixPng() {
   const noteW = spec.note ? Math.ceil(measureCtx.measureText(spec.note).width) : 0;
   // Wide enough for the matrix, the header title, and the footer note line
   const totalW = Math.max(380, LABEL_W + cellsW, noteW + 28);
+
+  // The legend can wrap onto multiple rows (e.g. many protocol swatches) — measure
+  // first so the footer band (and canvas height) is sized correctly up front.
+  let legendRows = 1;
+  if (spec.kind === "swatches" && spec.items.length) {
+    let lx = 14;
+    spec.items.forEach(item => {
+      const w = 14 + measureCtx.measureText(item.label).width + 12;
+      if (lx + w > totalW - 14 && lx > 14) { legendRows++; lx = 14; }
+      lx += w;
+    });
+  }
+  const FOOTER_H = legendRows * 16 + 32;  // legend row(s) + note line + padding
   const totalH = HEADER_H + LABEL_H + cellsH + FOOTER_H;
 
-  const serializeSvg = (svgEl, w, h, withBg = true) => {
+  // Rasterize each SVG at its SCALE-d intrinsic size (viewBox keeps logical coordinates)
+  // so drawImage composites 1:1 into device pixels instead of upscaling a low-res bitmap.
+  // vbX/vbY let a layer's viewBox start left/above (0,0) to capture overhanging content.
+  const serializeSvg = (svgEl, vbX, vbY, vbW, vbH, withBg = true) => {
     const clone = svgEl.cloneNode(true);
-    clone.setAttribute("width", w); clone.setAttribute("height", h);
+    clone.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
+    clone.setAttribute("width", vbW * SCALE);
+    clone.setAttribute("height", vbH * SCALE);
     if (withBg) {
       const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      bg.setAttribute("width", w); bg.setAttribute("height", h); bg.setAttribute("fill", "#0d1117");
+      bg.setAttribute("x", vbX); bg.setAttribute("y", vbY);
+      bg.setAttribute("width", vbW); bg.setAttribute("height", vbH); bg.setAttribute("fill", "#0d1117");
       clone.insertBefore(bg, clone.firstChild);
     }
     return new XMLSerializer().serializeToString(clone);
@@ -6862,17 +6916,17 @@ function exportVlanMatrixPng() {
   };
 
   return Promise.all([
-    // No background + extra height: the rotated labels overhang the band and must
-    // composite over the cells (like on-screen overflow:visible), not get clipped.
-    loadImg(serializeSvg(colsSvg, colsW, LABEL_H + COL_BLEED, false)),
-    loadImg(serializeSvg(rowsSvg, LABEL_W, rowsH)),
-    loadImg(serializeSvg(cellsSvg, cellsW, cellsH)),
+    // Transparent, bled left so the up-left rising column labels aren't clipped;
+    // drawn last (on top of the cells) to match the on-screen overflow:visible look.
+    loadImg(serializeSvg(colsSvg, -BLEED, 0, colsW + BLEED, LABEL_H, false)),
+    loadImg(serializeSvg(rowsSvg, 0, 0, LABEL_W, rowsH)),
+    loadImg(serializeSvg(cellsSvg, 0, 0, cellsW, cellsH)),
   ]).then(([cols, rows, cells]) => {
     const canvas = document.createElement("canvas");
-    canvas.width  = Math.round(totalW * DPR);
-    canvas.height = Math.round(totalH * DPR);
+    canvas.width  = Math.round(totalW * SCALE);
+    canvas.height = Math.round(totalH * SCALE);
     const ctx = canvas.getContext("2d");
-    ctx.scale(DPR, DPR);
+    ctx.scale(SCALE, SCALE);
     ctx.fillStyle = "#0d1117";
     ctx.fillRect(0, 0, totalW, totalH);
 
@@ -6888,11 +6942,11 @@ function exportVlanMatrixPng() {
     ctx.font = "10px sans-serif";
     ctx.fillText(new Date().toISOString().slice(0, 10), 14, 36);
 
-    // Matrix — cells first, then the transparent column-label layer on top so the
-    // rotated labels can overhang into the cells area without being clipped
-    ctx.drawImage(rows.img,  0,       HEADER_H + LABEL_H, LABEL_W, rowsH);
-    ctx.drawImage(cells.img, LABEL_W, HEADER_H + LABEL_H, cellsW, cellsH);
-    ctx.drawImage(cols.img,  LABEL_W, HEADER_H,           colsW,  LABEL_H + COL_BLEED);
+    // Matrix — cells first, then the column-label layer on top so labels rising
+    // up-left past the first column aren't clipped by the cells layer beneath
+    ctx.drawImage(rows.img,  0,               HEADER_H + LABEL_H, LABEL_W, rowsH);
+    ctx.drawImage(cells.img, LABEL_W,         HEADER_H + LABEL_H, cellsW,  cellsH);
+    ctx.drawImage(cols.img,  LABEL_W - BLEED, HEADER_H,           colsW + BLEED, LABEL_H);
     [cols, rows, cells].forEach(x => URL.revokeObjectURL(x.url));
 
     // Footer legend band — same declarative spec that drives the on-screen legend
@@ -6902,36 +6956,38 @@ function exportVlanMatrixPng() {
     ctx.fillStyle = "#30363d";
     ctx.fillRect(0, footerY, totalW, 1);
 
-    const midY = footerY + 16;   // legend row; note gets its own line below
     let lx = 14;
+    let rowY = footerY + 16;   // legend row(s); note gets its own line below the last one
     ctx.font = "9px sans-serif";
     if (spec.kind === "gradient") {
       const gradW = 110, gradH = 8;
       ctx.fillStyle = "#8b949e";
-      ctx.fillText(spec.minLabel, lx, midY + 3);
+      ctx.fillText(spec.minLabel, lx, rowY + 3);
       lx += ctx.measureText(spec.minLabel).width + 6;
       const grad = ctx.createLinearGradient(lx, 0, lx + gradW, 0);
       const n = spec.stops.length;
       spec.stops.forEach((c, idx) => grad.addColorStop(n === 1 ? 0 : idx / (n - 1), c));
       ctx.fillStyle = grad;
-      ctx.fillRect(lx, midY - gradH / 2, gradW, gradH);
+      ctx.fillRect(lx, rowY - gradH / 2, gradW, gradH);
       lx += gradW + 6;
       ctx.fillStyle = "#8b949e";
-      ctx.fillText(spec.maxLabel, lx, midY + 3);
+      ctx.fillText(spec.maxLabel, lx, rowY + 3);
       lx += ctx.measureText(spec.maxLabel).width + 14;
     } else if (spec.kind === "swatches") {
       spec.items.forEach(item => {
+        const w = 14 + ctx.measureText(item.label).width + 12;
+        if (lx + w > totalW - 14 && lx > 14) { lx = 14; rowY += 16; }
         ctx.fillStyle = item.color;
-        ctx.fillRect(lx, midY - 5, 10, 10);
+        ctx.fillRect(lx, rowY - 5, 10, 10);
         lx += 14;
         ctx.fillStyle = "#8b949e";
-        ctx.fillText(item.label, lx, midY + 3);
+        ctx.fillText(item.label, lx, rowY + 3);
         lx += ctx.measureText(item.label).width + 12;
       });
     }
     if (spec.note) {
       ctx.fillStyle = "#8b949e";
-      ctx.fillText(spec.note, 14, footerY + 36);
+      ctx.fillText(spec.note, 14, rowY + 20);
     }
 
     const a = document.createElement("a");
