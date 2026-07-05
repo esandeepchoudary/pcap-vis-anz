@@ -369,6 +369,29 @@ sizing and no centering.
 - [x] **Column-label overflow** — `overflow="visible"` added to `#ot-matrix-cols`; label font-size bumped 9→10 to match the VLAN matrix. Overlap is resolved by the wider adaptive column pitch (rotation kept at `-55°`, no dive-down issue observed)
 - [x] **Resize reflow** — the OT `ResizeObserver` handler previously skipped re-rendering while `otMatrixMode` was on; it now calls `renderOTMatrix()` on resize so the grid reflows with the pane instead of staying stale until the view is toggled
 - Verified visually via a scripted Playwright pass (small 13-device and large 40-device synthetic captures): small matrix now centers with 68px cells (was 20px, top-left); large matrix cells (31px) nearly fill the pane width; zoomed label crop confirms no overlap; resize test confirms `#ot-matrix-cells` width changes with viewport; click-to-inspect regression check passed with no console errors
+- **Correction (2026-07-05):** the "no dive-down issue observed" call above was wrong — user screenshots (`ot-matrix-2026-07-05.png`) showed every column label clipped to its trailing 1–2 characters (e.g. `10.11.11.73` → `.3`). The wider column pitch masked it in the small/large synthetic test captures used for that pass, but `-55°` is a downward rotation for left-anchored text in SVG's y-down space — it always dove into the cell area and got clipped by the `LABEL_H` header box; only truncation happened to hide it in some cases. See fix below.
+
+### OT matrix column-label clipping fix (2026-07-05)
+
+Root cause: `renderOTMatrix()`'s column headers used `rotate(-55, x, LABEL_H-4)` with
+`text-anchor="end"` — a negative/downward rotation that sends left-anchored text below the
+baseline, dipping out of the 96px header box so only the trailing glyph survived (both on
+screen and in the PNG export, which serializes the same SVG). The VLAN matrix's column
+headers never had this problem because `renderVlanMatrix()` uses an upward
+`translate(x, LABEL-8) rotate(45)` instead.
+
+- [x] **Column-label transform fixed** — `renderOTMatrix()`'s column-header loop now uses the
+  same `translate(x, LABEL_H-8) rotate(45)` + `text-anchor="end"` construction as
+  `renderVlanMatrix()`, so labels rise up-left and stay inside the header band instead of
+  diving into the grid and clipping.
+- Verified visually via a scripted Playwright pass against a 40-device synthetic OT capture:
+  on-screen matrix and the exported PNG (`exportOTMatrixPng()`, unchanged, reuses the same
+  SVG) both now show full column labels (`192.168.1.20`, `10.10.35.10`, etc.) instead of
+  single trailing characters; `python -m pytest tests/ -q` still 357 passed.
+- Known minor edge case (shared with the VLAN matrix's identical corner design, not a
+  regression): the very first column's diagonal label can partially tuck behind the sticky
+  `#ot-matrix-corner` box (z-index 3, opaque) when it overflows left past x=0. Cosmetic only,
+  affects at most one column, left as-is to match the proven VLAN reference.
 
 ### VLAN parsing/matrix correctness audit (2026-07-04, feature/vlan-audit-fixes)
 

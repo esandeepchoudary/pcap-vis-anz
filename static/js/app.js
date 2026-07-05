@@ -5551,9 +5551,10 @@ function renderOTMatrix(data) {
     const x = j * CELL + CELL / 2;
     const lbl = n.hostname || n.ip;
     const txt = document.createElementNS(ns, "text");
-    txt.setAttribute("x", x);
-    txt.setAttribute("y", LABEL_H - 4);
-    txt.setAttribute("transform", `rotate(-55,${x},${LABEL_H - 4})`);
+    // translate + rotate(45) (not a negative angle) makes the label rise up-left from the
+    // anchor — a negative rotation sends left-anchored text downward in SVG's y-down space,
+    // which dips it out of the LABEL_H header box and clips it. Mirrors renderVlanMatrix().
+    txt.setAttribute("transform", `translate(${x},${LABEL_H - 8}) rotate(45)`);
     txt.setAttribute("fill", "#8b949e");
     txt.setAttribute("font-size", "10");
     txt.setAttribute("font-family", "monospace");
