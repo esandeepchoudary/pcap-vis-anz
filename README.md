@@ -28,7 +28,7 @@ An interactive web-based tool for visualizing network packet captures. Upload a 
 - **Colour-blind safe palette** — ◑ button in graph controls switches all node and edge colours to a deuteranopia-safe palette (greens → teal, reds → orange); persisted in localStorage
 - **Stats sparkline** — 48×12 px inline SVG bar chart next to the Packets stat shows packet-density distribution across the capture duration
 - **Expanded right-click menu** — "Highlight Anomalies" fades all non-anomaly nodes for immediate triage focus; "Open in Table" switches to the connection table pre-filtered to that node's IP
-- **VLAN identification** — Full 802.1Q single-tag and 802.1ad QinQ double-tag parsing: extracts VLAN ID, PCP priority bits, DEI bit, and outer/inner VIDs for QinQ; tracked per host, per connection, and aggregated in stats.
+- **VLAN identification** — Full 802.1Q single-tag and QinQ double-tag parsing (both the 802.1ad `0x88A8` outer-TPID form and the legacy stacked `0x8100`/`0x8100` "tag-in-tag" form some older Cisco `dot1q-tunnel` deployments use): extracts VLAN ID, PCP priority bits, DEI bit, and outer/inner VIDs for QinQ; tracked per host, per connection, and aggregated in stats.
   - **VLAN Graph view** — dedicated tab showing VLANs as super-nodes with convex-hull cluster polygons; hosts clustered inside; multi-VLAN (hopping) hosts physically placed between segments; cross-VLAN traffic shown as red edges; inter-VLAN gateway nodes marked with a GW badge; **host nodes now show the same host-type emoji icons as the main Graph view** (🌐 web server, ⚙️ PLC, 📷 IP camera, …)
   - **VLAN security analysis** — segmentation score (0–100 with Good/Fair/Poor/Critical rating), ARP spoofing detection per-VLAN, broadcast storm detection (>10% broadcast threshold), PCP priority abuse detection; 4 VLAN anomaly rules (hopping, native leak, QinQ, cross-segment OT)
   - **VLAN data enrichment** — VLAN-to-subnet mapping, CDP/LLDP frame parsing (extracts device hostname and native VLAN from Cisco Discovery Protocol and IEEE 802.1AB switch frames), per-VLAN aggregate risk score, VLAN sprawl metrics (singleton/isolated VLANs)
@@ -94,7 +94,7 @@ An interactive web-based tool for visualizing network packet captures. Upload a 
 - QinQ (double-tagged) frames — 802.1ad outer tag detected; legitimate in carrier networks but a classic VLAN-hopping vector
 - Cross-VLAN OT traffic — OT/ICS device communicating with a host on a different VLAN; segmentation violation
 - **ARP spoofing within VLAN** — same IP seen with 2+ different MACs on the same VLAN; possible ARP poisoning or MAC flapping
-- **Broadcast storm** — VLAN with >10% broadcast traffic (and >50 broadcast packets); misconfiguration or loop
+- **Broadcast storm** — VLAN with >10% broadcast traffic (and >50 broadcast packets); misconfiguration or loop. Counts ARP frames and L2-broadcast (`ff:ff:ff:ff:ff:ff`) destination-MAC frames toward the per-VLAN total/broadcast tally alongside IP-layer broadcasts, since ARP dominates most real-world storms; carries an explicit `vlan_id` so it still places on the VLAN matrix diagonal despite having no src/dst host
 - **PCP priority abuse** — end-host (Windows PC, IP camera, IoT sensor) sending frames tagged with PCP ≥ 6 (network-control priority); unexpected QoS manipulation
 
 All anomalies are shown in the sidebar and on the node detail panel; affected nodes pulse with a coloured ring (red = high, yellow = medium).

@@ -10,7 +10,7 @@ from app import analyze_pcap, merge_results, analyze_anomalies
 
 try:
     from scapy.utils import wrpcap
-    from scapy.layers.l2 import Ether, Dot1Q, Dot1AD
+    from scapy.layers.l2 import Ether, Dot1Q, Dot1AD, ARP
     from scapy.layers.inet import IP, TCP, UDP
     from scapy.layers.inet6 import IPv6
     SCAPY_AVAILABLE = True
@@ -122,6 +122,25 @@ def test_qinq_outer_inner_vlan_extracted():
     r = _analyze(pkts)
     na = _node(r, IP_A)
     assert na is not None
+    assert na["vlan_qinq"] is True
+    assert 200 in na["vlans"]
+    assert 100 in na["vlan_outer"]
+    assert 4 in na["vlan_pcps"]
+
+
+def test_stacked_dot1q_qinq_extracted():
+    """Regression: legacy tag-in-tag QinQ (0x8100 outer + 0x8100 inner, no 0x88A8)
+    must not be silently dropped. Before the fix, this frame's second ethertype
+    (0x8100) matched no known L3 type and the whole packet was discarded — no host,
+    no VLAN, no flow recorded."""
+    pkts = [
+        Ether(src=MAC_A, dst=MAC_B) / Dot1Q(vlan=100) / Dot1Q(vlan=200, prio=4) /
+        IP(src=IP_A, dst=IP_B) / TCP(sport=50001, dport=80, flags="S"),
+    ]
+    r = _analyze(pkts)
+    assert "error" not in r
+    na = _node(r, IP_A)
+    assert na is not None, "stacked 0x8100/0x8100 QinQ frame was dropped"
     assert na["vlan_qinq"] is True
     assert 200 in na["vlans"]
     assert 100 in na["vlan_outer"]
@@ -281,6 +300,40 @@ def test_no_vlan_cross_segment_same_vlan():
     anomalies = analyze_anomalies(hosts, connections, {})
     types = {a["type"] for a in anomalies}
     assert "vlan_cross_segment_ot" not in types
+
+
+def test_broadcast_storm_carries_vlan_id():
+    """Regression: broadcast_storm is emitted with src=dst=None (it's a VLAN-wide
+    condition, not a host-to-host one), so consumers that key off src/dst (e.g. the
+    VLAN flow matrix) need an explicit vlan_id to place it anywhere at all."""
+    hosts = {"10.0.0.1": _make_host(vlan_ids={30})}
+    vlan_pkt_total = {30: 100}
+    vlan_pkt_bcast = {30: 40}   # 40% > 10% threshold, 100 >= BCAST_MIN_PKTS
+    anomalies = analyze_anomalies(hosts, {}, {}, vlan_pkt_total=vlan_pkt_total,
+                                  vlan_pkt_bcast=vlan_pkt_bcast)
+    storms = [a for a in anomalies if a["type"] == "broadcast_storm"]
+    assert len(storms) == 1
+    assert storms[0]["vlan_id"] == 30
+    assert storms[0]["src"] is None and storms[0]["dst"] is None
+
+
+# ── ARP frames counted toward per-VLAN broadcast tally (integration) ──────────
+
+def test_arp_broadcast_drives_broadcast_storm():
+    """Regression: ARP frames (mostly L2-broadcast) previously `continue`d before
+    ever reaching the IP-only vlan_pkt_total/vlan_pkt_bcast tally, so an ARP-storm
+    VLAN — the most common real-world broadcast storm — could never trip the rule."""
+    pkts = [
+        Ether(src=MAC_A, dst="ff:ff:ff:ff:ff:ff") / Dot1Q(vlan=30) /
+        ARP(psrc=f"10.30.0.{i % 250 + 1}", hwsrc=MAC_A, pdst="10.30.0.254")
+        for i in range(60)
+    ]
+    r = _analyze(pkts)
+    assert "error" not in r
+    types = {a["type"] for a in r["anomalies"]}
+    assert "broadcast_storm" in types
+    storm = next(a for a in r["anomalies"] if a["type"] == "broadcast_storm")
+    assert storm["vlan_id"] == 30
 
 
 # ── ip_version field + stats (both serialization paths) ──────────────────────

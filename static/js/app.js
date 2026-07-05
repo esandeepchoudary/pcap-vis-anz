@@ -6492,10 +6492,18 @@ function buildVlanFlowMatrix(data) {
   // ALL anomaly types (previously only vlan_cross_segment_ot was mapped)
   const SEV_RANK = { high: 3, medium: 2, low: 1 };
   (data.anomalies || []).forEach(a => {
-    const sv = vlansOf(nodeByIp[a.src]), dv = a.dst ? vlansOf(nodeByIp[a.dst]) : null;
+    let sv = vlansOf(nodeByIp[a.src]);
+    const dv = a.dst ? vlansOf(nodeByIp[a.dst]) : null;
+    // Host-less, VLAN-keyed anomalies (e.g. broadcast_storm: src=dst=null) carry an
+    // explicit vlan_id instead — without this they had no host to resolve VLANs from
+    // and were silently dropped from every matrix view despite being counted elsewhere
+    // (e.g. the VLAN health summary), so the two disagreed.
+    if (!sv.length && !dv && a.vlan_id !== undefined && a.vlan_id !== null) {
+      sv = [String(a.vlan_id)];
+    }
     const pairKeys = new Set();
     if (dv && dv.length) sv.forEach(x => dv.forEach(y => pairKeys.add(key(x, y))));
-    else sv.forEach(x => pairKeys.add(key(x, x)));       // single-host anomaly → diagonal
+    else sv.forEach(x => pairKeys.add(key(x, x)));       // single-host/VLAN anomaly → diagonal
     pairKeys.forEach(k => {
       const c = getCell(k);
       c.anomalies.push(a);
