@@ -1982,6 +1982,9 @@ def analyze_anomalies(hosts, connections, packet_store, credentials=None,
                     "severity": "medium",
                     "src": None,
                     "dst": None,
+                    # Host-less anomaly — carry the VLAN explicitly so consumers (e.g. the
+                    # VLAN flow matrix) can still place it without a src/dst IP to look up.
+                    "vlan_id": vlan_id,
                     "description": (
                         f"VLAN {vlan_id}: {bcast} broadcast packets out of {total} total "
                         f"({bcast * 100 // total}%) — possible broadcast storm or misconfiguration"
@@ -2295,13 +2298,29 @@ def analyze_pcap(filepath):
                     else:
                         ethertype = inner_ethertype
                         l2_off = 18
-                elif ethertype == 0x8100 and len(raw) >= 18:   # 802.1Q single tag
-                    tci = (raw[14] << 8) | raw[15]
-                    vlan_outer = tci & 0x0FFF
-                    pcp = (tci >> 13) & 0x07
-                    dei = (tci >> 12) & 0x01
-                    ethertype = (raw[16] << 8) | raw[17]
-                    l2_off = 18
+                elif ethertype == 0x8100 and len(raw) >= 18:   # 802.1Q single tag (or stacked 0x8100/0x8100)
+                    tci_outer = (raw[14] << 8) | raw[15]
+                    vlan_outer = tci_outer & 0x0FFF
+                    inner_ethertype = (raw[16] << 8) | raw[17]
+                    if inner_ethertype == 0x8100 and len(raw) >= 22:
+                        # Stacked double 0x8100 tags — some switches (older Cisco
+                        # dot1q-tunnel/"tag-in-tag") emit QinQ using 0x8100 for both
+                        # the outer and inner tag instead of the 802.1ad 0x88A8 outer
+                        # TPID. Without this, these frames fell through to `else:
+                        # continue` below (no matching L3 ethertype) and were dropped
+                        # entirely — no host, no VLAN, no flow recorded for them.
+                        tci_inner = (raw[18] << 8) | raw[19]
+                        vlan_inner = tci_inner & 0x0FFF
+                        pcp = (tci_inner >> 13) & 0x07
+                        dei = (tci_inner >> 12) & 0x01
+                        ethertype = (raw[20] << 8) | raw[21]
+                        l2_off = 22
+                        is_qinq = True
+                    else:
+                        pcp = (tci_outer >> 13) & 0x07
+                        dei = (tci_outer >> 12) & 0x01
+                        ethertype = inner_ethertype
+                        l2_off = 18
 
                 eth_type = ethertype
 
@@ -2374,6 +2393,16 @@ def analyze_pcap(filepath):
 
                 # ── ARP ──────────────────────────────────────────────────────
                 if ethertype == 0x0806:
+                    # Tally per-VLAN packet/broadcast totals for ARP frames too — ARP
+                    # (mostly L2-broadcast requests) dominates real broadcast storms, but
+                    # was previously excluded since this branch `continue`s before ever
+                    # reaching the IP-only tally below, silently under-counting the
+                    # broadcast_storm ratio's numerator and denominator alike.
+                    _vlan_arp = vlan_inner if vlan_inner is not None else vlan_outer
+                    if _vlan_arp is not None:
+                        vlan_pkt_total[_vlan_arp] += 1
+                        if dmac == "ff:ff:ff:ff:ff:ff":
+                            vlan_pkt_bcast[_vlan_arp] += 1
                     if len(raw) >= l2_off + 28:
                         try:
                             spa = socket.inet_ntoa(raw[l2_off + 14:l2_off + 18])
@@ -2381,7 +2410,6 @@ def analyze_pcap(filepath):
                             if spa and spa not in ("0.0.0.0", "255.255.255.255"):
                                 h = host(spa, sha)
                                 h["protocols"].add("ARP")
-                                _vlan_arp = vlan_inner if vlan_inner is not None else vlan_outer
                                 if _vlan_arp is not None:
                                     h["vlan_ids"].add(_vlan_arp)
                                     if pcp is not None:
@@ -2468,8 +2496,10 @@ def analyze_pcap(filepath):
                 dh["packet_count"] += 1
                 dh["bytes_recv"] += plen
 
-                # broadcast / multicast flags
-                is_bcast = dip.endswith(".255") or dip == "255.255.255.255"
+                # broadcast / multicast flags — also treat an L2-broadcast destination MAC
+                # as broadcast (catches directed broadcasts on subnets wider than /24,
+                # which the IP-suffix heuristic alone misses).
+                is_bcast = dip.endswith(".255") or dip == "255.255.255.255" or dmac == "ff:ff:ff:ff:ff:ff"
                 if is_bcast:
                     dh["flags"].add("broadcast")
                 if dip.startswith(("224.", "225.", "239.")) or dip.startswith("ff"):
