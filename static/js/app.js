@@ -5454,7 +5454,7 @@ let otMatrixMode = false;
 function renderOTMatrix(data) {
   if (!data) return;
   const ns = "http://www.w3.org/2000/svg";
-  const CELL = 20, LABEL_W = 96, LABEL_H = 96;
+  const LABEL_W = 96, LABEL_H = 96;
 
   const truncMid = (s, max) =>
     s.length <= max ? s : s.slice(0, Math.ceil(max / 2 - 1)) + "…" + s.slice(-(Math.floor(max / 2 - 1)));
@@ -5498,6 +5498,14 @@ function renderOTMatrix(data) {
     .slice(0, 40);
   const N = matrixNodes.length;
 
+  // Adaptive cell size: fills available pane width (capped), shrinks for large device counts —
+  // mirrors the VLAN matrix (renderVlanMatrix) so both grids behave consistently.
+  const otMatrixContainer = document.getElementById("ot-matrix-container");
+  const otAvail = Math.max(320, (otMatrixContainer?.clientWidth || 1200) - LABEL_W - 24);
+  const OT_MIN_CELL = N > 24 ? 20 : 30;
+  const OT_MAX_CELL = N > 24 ? 46 : 68;
+  const CELL = Math.max(OT_MIN_CELL, Math.min(OT_MAX_CELL, Math.floor(otAvail / Math.max(N, 1))));
+
   const colsSvg  = document.getElementById("ot-matrix-cols");
   const rowsSvg  = document.getElementById("ot-matrix-rows");
   const cellsSvg = document.getElementById("ot-matrix-cells");
@@ -5536,6 +5544,7 @@ function renderOTMatrix(data) {
   colsSvg.innerHTML = "";
   colsSvg.setAttribute("width", N * CELL);
   colsSvg.setAttribute("height", LABEL_H);
+  colsSvg.setAttribute("overflow", "visible");
 
   const colLabelEls = [];
   matrixNodes.forEach((n, j) => {
@@ -5546,7 +5555,7 @@ function renderOTMatrix(data) {
     txt.setAttribute("y", LABEL_H - 4);
     txt.setAttribute("transform", `rotate(-55,${x},${LABEL_H - 4})`);
     txt.setAttribute("fill", "#8b949e");
-    txt.setAttribute("font-size", "9");
+    txt.setAttribute("font-size", "10");
     txt.setAttribute("font-family", "monospace");
     txt.setAttribute("text-anchor", "end");
     txt.textContent = truncMid(lbl, 14);
@@ -5568,7 +5577,7 @@ function renderOTMatrix(data) {
     txt.setAttribute("x", LABEL_W - 4);
     txt.setAttribute("y", i * CELL + CELL / 2 + 3);
     txt.setAttribute("fill", "#8b949e");
-    txt.setAttribute("font-size", "9");
+    txt.setAttribute("font-size", "10");
     txt.setAttribute("font-family", "monospace");
     txt.setAttribute("text-anchor", "end");
     txt.textContent = truncMid(lbl, 15);
@@ -7663,7 +7672,8 @@ new ResizeObserver(() => {
   clearTimeout(_otResizeTimer);
   _otResizeTimer = setTimeout(() => {
     if (graphData) {
-      if (!otMatrixMode) renderOTMap(graphData);
+      if (otMatrixMode) renderOTMatrix(graphData);
+      else renderOTMap(graphData);
       renderOTTimeline();
     }
   }, 150);

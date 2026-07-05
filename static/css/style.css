@@ -2208,6 +2208,7 @@ header h1 span { color: var(--accent); }
   grid-template-rows: 96px max-content;
   width: max-content;
   padding: 0 12px 12px 12px;
+  margin: 0 auto;
 }
 #ot-matrix-corner {
   position: sticky;

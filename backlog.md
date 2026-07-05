@@ -351,11 +351,24 @@ Fixes for all five issues identified in `review-by-claude.md` (2026-06-15).
 - [x] **Protocol-view legend** — `vlanMatrixLegendSpec()`'s protocol branch previously returned `items: []` (note-only); now populates swatches from the dominant protocol of every non-diagonal cell (via new shared `dominantProto()` helper, also used by `protoColor()` so colors can't drift) plus the cross-VLAN-OT-anomaly swatch; PNG footer wraps swatches onto multiple rows when they don't fit one line
 - [x] **Export quality** — `exportVlanMatrixPng()` and `exportOTMatrixPng()` both floor resolution at `Math.max(2, devicePixelRatio)` (was `devicePixelRatio || 2`, i.e. 1x on standard displays) and rasterize each layer's SVG at its scaled intrinsic size via `viewBox` (was rasterized at logical size then blurrily upscaled by `drawImage`)
 - [x] **Export label clipping fixed** — the VLAN matrix's column-label PNG layer is now serialized with a left-side `viewBox` bleed (`BLEED=24`) matching the new up-left label rise, replacing the old bottom-only `COL_BLEED` that didn't help an upward/leftward overhang
-- [ ] **Deferred** — OT matrix's on-screen column labels (`rotate(-55)`, dive-down geometry) share the same overlap risk as the VLAN matrix's old geometry; not reported by users yet, left untouched this pass (only its export got the crispness fix)
+- [x] **Deferred** — OT matrix's on-screen column labels (`rotate(-55)`, dive-down geometry) share the same overlap risk as the VLAN matrix's old geometry; not reported by users yet, left untouched this pass (only its export got the crispness fix). **Fixed 2026-07-04**, see below.
 
 ### Heat ramp direction fix (2026-07-04)
 
 - [x] **Reversed Traffic + OT heat ramps** — both `makeHeatScale()` gradients in `renderVlanMatrix` (and their matching `vlanMatrixLegendSpec()` legend stops) were previously dark-for-low/light-for-high, which read backwards on a heatmap; stops arrays reversed so **light = less data exchange, dark = more** for both Bytes/Packets (blue) and OT-share (orange) views. In-cell `textFill` contrast ternaries in `vlanCellStyle()` flipped to match (light text now shows on the now-dark high-value cells)
+
+### OT Matrix layout fix (2026-07-04) — brought in line with VLAN matrix
+
+User-reported screenshots showed the OT matrix (a) stranded top-left with large empty space
+on small captures and (b) overlapping top-axis IP labels on large captures. Root cause: unlike
+`renderVlanMatrix`, `renderOTMatrix` used a fixed `CELL = 20px` with no container-width-aware
+sizing and no centering.
+
+- [x] **Adaptive cell size** — `renderOTMatrix` now computes `CELL` from `#ot-matrix-container.clientWidth` (was a fixed 20px), clamped 30–68px for ≤24 devices / 20–46px above that, mirroring the VLAN matrix's `MIN_CELL`/`MAX_CELL` pattern
+- [x] **Matrix now centered** — `#ot-matrix-layout` gets `margin: 0 auto` so small-device-count matrices are centered instead of stranded top-left (matches VLAN matrix CSS)
+- [x] **Column-label overflow** — `overflow="visible"` added to `#ot-matrix-cols`; label font-size bumped 9→10 to match the VLAN matrix. Overlap is resolved by the wider adaptive column pitch (rotation kept at `-55°`, no dive-down issue observed)
+- [x] **Resize reflow** — the OT `ResizeObserver` handler previously skipped re-rendering while `otMatrixMode` was on; it now calls `renderOTMatrix()` on resize so the grid reflows with the pane instead of staying stale until the view is toggled
+- Verified visually via a scripted Playwright pass (small 13-device and large 40-device synthetic captures): small matrix now centers with 68px cells (was 20px, top-left); large matrix cells (31px) nearly fill the pane width; zoomed label crop confirms no overlap; resize test confirms `#ot-matrix-cells` width changes with viewport; click-to-inspect regression check passed with no console errors
 
 ### VLAN parsing/matrix correctness audit (2026-07-04, feature/vlan-audit-fixes)
 
