@@ -1,33 +1,61 @@
 # PCAP Network Visualizer
 
-An interactive web-based tool for visualizing network packet captures. Upload a `.pcap`, `.pcapng`, or `.cap` file and explore your network as a live force-directed graph — with host classification, protocol detection, OS fingerprinting, and DNS resolution.
+An interactive web-based tool for visualizing network packet captures. Upload a `.pcap`, `.pcapng`, or `.cap` file and explore your network as a live force-directed graph — with host classification, protocol detection, OS fingerprinting, and DNS resolution. Built for SOC analysts, OT/ICS and IoT security engineers, and anyone doing network forensics or incident response who needs to turn a raw capture into an inspectable network map fast.
 
-![Python](https://img.shields.io/badge/python-3.8%2B-blue) ![Flask](https://img.shields.io/badge/flask-2.3%2B-lightgrey) ![License](https://img.shields.io/badge/license-MIT-green)
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/) [![Flask](https://img.shields.io/badge/flask-2.3%2B-lightgrey)](https://flask.palletsprojects.com/) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE) [![Docs](https://img.shields.io/badge/docs-live-blue)](https://esandeepchoudary.github.io/pcap-vis-anz/)
+
+## Table of Contents
+
+- [Documentation](#documentation)
+- [Features](#features)
+- [Anomaly Detection](#anomaly-detection)
+- [OT/ICS Protocol Support](#otics-protocol-support)
+- [IoT Device Support](#iot-device-support)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Capturing your own traffic](#capturing-your-own-traffic)
+- [Project Structure](#project-structure)
+- [Testing](#testing)
+- [Configuration](#configuration)
+- [Security & self-containment](#security--self-containment)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
+## Documentation
+
+Full tutorials (with real screenshots) and product docs are published at **[esandeepchoudary.github.io/pcap-vis-anz](https://esandeepchoudary.github.io/pcap-vis-anz/)** — covering every view (Graph, Table, DNS Map, OT Map, OT Log, VLAN, Diff, Dashboard, Findings) plus an overview, getting-started guide, and configuration reference. The docs site also serves an [`llms.txt`](https://esandeepchoudary.github.io/pcap-vis-anz/llms.txt) index for LLM-based tooling.
+
+If you're a coding agent working in this repository, see [`AGENTS.md`](./AGENTS.md) for branching conventions, testing workflow, and an architecture map — it's the canonical, up-to-date reference (`CLAUDE.md` just points to it). `GET /session-schema` on a running instance also returns a real JSON Schema describing the `/upload` response shape, useful if you're integrating against the API rather than reading the UI.
 
 ## Features
 
+### Visualization & Graph
+
 - **Interactive graph** — D3.js v7 force simulation with Force, Radial, and Cluster layout modes; drag, zoom, and pan
+- **Detail panel** — Click any node to see host details (ports, services, traffic stats, DNS queries, TLS SNI names, anomalies, OT analysis, conversations, and captured credentials); safe copy buttons (⧉) next to IP, hostname, JA3 fingerprints, and SHA-256 hashes
+- **Colour-blind safe palette** — ◑ button in graph controls switches all node and edge colours to a deuteranopia-safe palette (greens → teal, reds → orange); persisted in localStorage
+- **Stats sparkline** — 48×12 px inline SVG bar chart next to the Packets stat shows packet-density distribution across the capture duration
+- **Expanded right-click menu** — "Highlight Anomalies" fades all non-anomaly nodes for immediate triage focus; "Open in Table" switches to the connection table pre-filtered to that node's IP
+- **Timeline** — Two-handle brush for selecting an arbitrary time window (drag either end to resize, drag the blue selection to move); auto-play slides the window forward; speed selector (0.5×, 1×, 2×, 5×); abs/rel toggle switches between `HH:MM:SS–HH:MM:SS` and `+Ns–+Ns`; Space to play/pause, ←/→ shift the window
+- **Graph power features** — Node pinning (select node → press P; dashed yellow ring; drag to reposition; right-click → Unpin All); isolate mode (double-click a node to show only it + direct neighbours; double-click again to restore); minimap (150×100 overview, bottom-right, drag to pan); edge packet-count labels on hover; keyboard shortcuts overlay (press ?); **cluster collapse** (⊕ button enters cluster mode — click any host-type label in sidebar to collapse that type into a centroid chip, click chip to re-expand)
+
+### Views
+
+- **Nine views** — Graph (network map), Table (sortable connection list), DNS Map (query explorer), OT Map (Purdue Model zone layout), OT Log (chronological OT command history), VLAN Graph (VLAN segment topology), Diff (baseline comparison), **Dashboard** (summary cards, risk-score bar chart, protocol distribution, clickable Top Anomalies list; key `8`), and **Findings** (analyst triage workspace; key `9`)
+- **Findings workspace** — Automatically derives reviewable findings from anomalies, captured credentials, file transfers, OT write/error command groups, and high-risk hosts; supports status, severity override, analyst notes, report include/exclude, evidence-copy bundles, graph/packet navigation, and false-positive suppression.
+
+### Host, Protocol & Network Detection
+
 - **Host classification** — 38 host types: Router, PLC, IP Camera, Web Server, DNS Server, Windows Host, and more
 - **Protocol detection** — 80+ protocols identified by port (HTTP, SSH, DNS, RDP, MySQL, Modbus, MQTT, CoAP, …)
 - **IPv4 and IPv6 support** — both address families tracked; private ranges correctly classified (including IPv6 loopback, ULA, and the full `fe80::/10` link-local range); IPv6 nodes shown with a dashed-stroke ring; header adoption stat (`IPv6: X% (N/total)`) appears when both families are present; sidebar **IP Version** filter (shown only in mixed captures); IPv6 extension headers (hop-by-hop, routing, destination options, fragment, AH) are traversed so TCP/UDP ports are correctly identified even with extension headers present
 - **OS fingerprinting** — TTL / hop-limit heuristic (Linux/Unix, Windows, Network Device)
 - **MAC vendor lookup** — OUI lookup covering IT, OT, and IoT vendors (VMware, Cisco, Siemens, Amazon Echo, …)
 - **DNS name resolution** — Extracts hostnames and query logs from captured DNS traffic
-- **TLS inspection** — Parses TLS ClientHello to extract SNI (server name) and compute JA3 fingerprints; matches against a curated known-bad JA3 list to flag malware/C2 TLS sessions
-- **Credentials extraction** — Captures cleartext credentials from HTTP Basic Auth, HTML form POSTs, FTP, Telnet, MQTT CONNECT, and CoAP; shown in sidebar with reveal-password toggle and exportable to CSV
-- **Per-host risk score** — 0–100 composite score based on anomaly severity, OT write/error counts, internet exposure, and TLS anomalies; shown in node detail panel and ranked in the audit report
-- **Filtering** — Filter graph by protocol or host type via sidebar checkboxes; selections saved to localStorage and restored on next load
-- **Search** — Find nodes by IP address or hostname (300ms debounce); `/` keyboard shortcut focuses the search box
-- **Detail panel** — Click any node to see host details (ports, services, traffic stats, DNS queries, TLS SNI names, anomalies, OT analysis, conversations, and captured credentials); safe copy buttons (⧉) next to IP, hostname, JA3 fingerprints, and SHA-256 hashes
-- **Nine views** — Graph (network map), Table (sortable connection list), DNS Map (query explorer), OT Map (Purdue Model zone layout), OT Log (chronological OT command history), VLAN Graph (VLAN segment topology), Diff (baseline comparison), **Dashboard** (summary cards, risk-score bar chart, protocol distribution, clickable Top Anomalies list; key `8`), and **Findings** (analyst triage workspace; key `9`)
-- **Findings workspace** — Automatically derives reviewable findings from anomalies, captured credentials, file transfers, OT write/error command groups, and high-risk hosts; supports status, severity override, analyst notes, report include/exclude, evidence-copy bundles, graph/packet navigation, and false-positive suppression.
-- **Light/dark mode** — ☀/☾ toggle in header; full CSS variable override for both themes; persisted in localStorage with FOUC prevention
-- **Collapsible sidebar** — `‹`/`›` toggle button collapses the sidebar to a 32 px icon rail; state persisted in localStorage
-- **Packet inspector search** — live-filter input above the packet table; matches any column text; shows `N / M` count badge; clears when switching connections
-- **Filter presets** — save the current protocol + host-type filter selection as a named preset; chip list in sidebar with one-click load and delete; stored in localStorage across sessions
-- **Colour-blind safe palette** — ◑ button in graph controls switches all node and edge colours to a deuteranopia-safe palette (greens → teal, reds → orange); persisted in localStorage
-- **Stats sparkline** — 48×12 px inline SVG bar chart next to the Packets stat shows packet-density distribution across the capture duration
-- **Expanded right-click menu** — "Highlight Anomalies" fades all non-anomaly nodes for immediate triage focus; "Open in Table" switches to the connection table pre-filtered to that node's IP
+
+### VLAN
+
 - **VLAN identification** — Full 802.1Q single-tag and QinQ double-tag parsing (both the 802.1ad `0x88A8` outer-TPID form and the legacy stacked `0x8100`/`0x8100` "tag-in-tag" form some older Cisco `dot1q-tunnel` deployments use): extracts VLAN ID, PCP priority bits, DEI bit, and outer/inner VIDs for QinQ; tracked per host, per connection, and aggregated in stats.
   - **VLAN Graph view** — dedicated tab showing VLANs as super-nodes with convex-hull cluster polygons; hosts clustered inside; multi-VLAN (hopping) hosts physically placed between segments; cross-VLAN traffic shown as red edges; inter-VLAN gateway nodes marked with a GW badge; **host nodes now show the same host-type emoji icons as the main Graph view** (🌐 web server, ⚙️ PLC, 📷 IP camera, …)
   - **VLAN security analysis** — segmentation score (0–100 with Good/Fair/Poor/Critical rating), ARP spoofing detection per-VLAN, broadcast storm detection (>10% broadcast threshold), PCP priority abuse detection; 4 VLAN anomaly rules (hopping, native leak, QinQ, cross-segment OT)
@@ -36,20 +64,42 @@ An interactive web-based tool for visualizing network packet captures. Upload a 
   - **VLAN UX** — color-by-VLAN toggle in main graph, VLAN search in VLAN tab toolbar, user-assigned VLAN labels (double-click to rename, persisted in localStorage), VLAN health summary card in sidebar, ⊞ Matrix view (VLAN×VLAN flow adjacency grid), VLAN spotlight (one-click filter main graph to single VLAN), VLAN change detection column in ⊕ Diff view, per-VLAN bandwidth stacked timeline minimap
   - **VLAN flow matrix — 4 views** — the ⊞ Matrix toggle now offers a segmented switcher with four modes: **Traffic** (cell brightness = log-scaled flow volume, with a Bytes | Packets sub-toggle and in-cell totals), **OT/ICS** (orange heat on VLAN pairs carrying OT/ICS protocol traffic, orange cell border when OT writes cross the boundary, gray for traffic-but-no-OT pairs), **Anomalies** (cell color = worst severity across all anomaly types — not just cross-segment OT — with in-cell anomaly count; single-host anomalies like port scans land on the diagonal), and **Protocol** (dominant protocol per pair, with a legend listing every protocol color shown plus the cross-VLAN OT-anomaly swatch). Each mode has its own hover tooltip and legend. Cell attribution now uses each host's **full VLAN membership** (not just its first VLAN), matching the totals shown in the VLAN graph view's cross-link tooltips — multi-VLAN hosts contribute to every membership pair. Cell size scales to fill the available pane width (up to 110px per cell for ≤20 VLANs), and small (few-VLAN) matrices are centered rather than stuck in the top-left corner. Every view can be exported as a self-describing, high-resolution PNG (title header + legend footer band, minimum 2x pixel density regardless of display) via the toolbar's **⤓ PNG** button (Shift-click, or the global Export menu's "…(all views)" item, exports all four views sequentially)
   - **File transfer downloads** — HTTP files captured in PCAPs are available for download directly from the File Transfers sidebar panel (size-bounded LRU in-memory cache, 256 MB cap, download links survive subsequent uploads)
+
+### OT/ICS
+
 - **OT Map** — Full Purdue Model swimlane view (L0 Field → L6 Public Internet) with automatic Public Internet zone for non-RFC1918 IPs (no GeoIP required), D3 zoom/pan (Ctrl+scroll, toolbar buttons), traffic-weighted edges, anomaly callouts (! badge on affected nodes, lane tint for high-severity), cross-zone vs. cross-level edge counting, zone legend, Purdue level tooltips, activeTypes filter integration with sidebar bypass toggle ("Respect filters" button), OT protocol evidence-based Purdue level assignment, and editable mode: drag-to-reclassify, add/remove devices (IP format + Purdue level validation with inline error), risk annotation (Critical → Info, panel positioned near clicked node), and PNG/JSON export
 - **OT Communication Matrix** — Toggle within the OT Map view (⊞ Matrix button) to switch to a device×device adjacency matrix: each cell is coloured by dominant OT protocol, orange for cross-zone traffic, and red-bordered when an anomaly is present; hover for packet count, byte total, OT read/write counts, and cross-zone/anomaly warnings. Cell size adapts to fill the available pane width (clamped per device count, mirroring the VLAN matrix), small matrices are centered instead of pinned to the top-left corner, and the grid reflows on window resize
-- **Timeline** — Two-handle brush for selecting an arbitrary time window (drag either end to resize, drag the blue selection to move); auto-play slides the window forward; speed selector (0.5×, 1×, 2×, 5×); abs/rel toggle switches between `HH:MM:SS–HH:MM:SS` and `+Ns–+Ns`; Space to play/pause, ←/→ shift the window
-- **Graph power features** — Node pinning (select node → press P; dashed yellow ring; drag to reposition; right-click → Unpin All); isolate mode (double-click a node to show only it + direct neighbours; double-click again to restore); minimap (150×100 overview, bottom-right, drag to pan); edge packet-count labels on hover; keyboard shortcuts overlay (press ?); **cluster collapse** (⊕ button enters cluster mode — click any host-type label in sidebar to collapse that type into a centroid chip, click chip to re-expand)
-- **Keyboard shortcuts** — Press `?` to open the overlay: `1`–`9` switch views, `F` fits graph, `/` focuses search, `Space`/`←`/`→` control timeline brush, `P` pins selected node, `Esc` closes panels
+- **OT Analysis panel** — Per-node read/write/error ratio bar, master/outstation role badge, Modbus unit IDs, DNP3 link addresses
+
+### Security & Forensics
+
+- **TLS inspection** — Parses TLS ClientHello to extract SNI (server name) and compute JA3 fingerprints; matches against a curated known-bad JA3 list to flag malware/C2 TLS sessions
+- **Credentials extraction** — Captures cleartext credentials from HTTP Basic Auth, HTML form POSTs, FTP, Telnet, MQTT CONNECT, and CoAP; shown in sidebar with reveal-password toggle and exportable to CSV
+- **Per-host risk score** — 0–100 composite score based on anomaly severity, OT write/error counts, internet exposure, and TLS anomalies; shown in node detail panel and ranked in the audit report
 - **Inline anomaly explanations** — Every anomaly badge has an `ℹ` button; clicking it expands a "What / Why / Steps" panel covering all 30+ anomaly types with remediation guidance
 - **Packet inspector** — Click any edge or node to open a Wireshark-style panel with three tabs: **Packets** (per-packet protocol tree and protocol-coloured hex dump — each layer highlighted in a distinct colour), **Cmd Log** (OT command history for OT connections), and **Stream** (ASCII/hex payload reassembly for TCP sessions); **⧉ float button** detaches the inspector into a resizable draggable overlay; **⊡** re-docks it; live packet search with `N / M` count badge across the full packet list (not just the first page)
-- **OT Analysis panel** — Per-node read/write/error ratio bar, master/outstation role badge, Modbus unit IDs, DNP3 link addresses
-- **Exports** — PNG graph screenshot, **Connections CSV** (every connection with source/dest country), **Hosts Inventory CSV** (one row per IP with country in "Name (CC)" format), **Anomalies CSV** (with source/dest country), **Credentials CSV** (with source/dest country), Markdown audit report (curated findings, capture summary, geographic distribution of external endpoints, risk ranking, anomalies by severity, OT inventory, VLAN device inventory, VLAN traffic by VLAN, TLS/SNI observations, captured credentials, file transfers, OT write log), **VLAN Inventory CSV** (with country), **VLAN Traffic CSV** (with source/dest country), VLAN Diagram SVG; all CSV exports always contain the complete dataset even when the graph only renders a top-N subset
 - **File transfer detection** — Detects HTTP file downloads (Content-Disposition: attachment + interesting Content-Type); sidebar "File Transfers" panel with filename, MIME, size, SHA-256 hash, safe copy/download controls, and production-tested extraction helper; 200 files/capture, 500/merge (deduped by hash)
 - **PCAP baseline diff** — "Set Baseline" button in header; upload a second PCAP and open the "⊕ Diff" tab to compare: new/disappeared hosts (with specific change labels: type change, risk delta >20, new protocols, new ports), new connections with protocols, traffic-volume changes (>2× or <0.5× packet ratio), and new anomalies vs baseline; four-column diff view, no server round-trip
-- **Session save / load** — Export full analysis, findings, and analyst triage edits to JSON and reload without re-uploading the capture file; older or partial session JSON is normalized on load so missing optional fields do not break the UI
-- **Node annotations** — Right-click any node to attach a persistent note using the in-app note modal (stored in browser localStorage)
 - **Anomaly detection** — 32 detection rules across general network, OT/ICS, IoT, and VLAN threat categories
+
+### Exports & Reporting
+
+- **Exports** — PNG graph screenshot, **Connections CSV** (every connection with source/dest country), **Hosts Inventory CSV** (one row per IP with country in "Name (CC)" format), **Anomalies CSV** (with source/dest country), **Credentials CSV** (with source/dest country), Markdown audit report (curated findings, capture summary, geographic distribution of external endpoints, risk ranking, anomalies by severity, OT inventory, VLAN device inventory, VLAN traffic by VLAN, TLS/SNI observations, captured credentials, file transfers, OT write log), **VLAN Inventory CSV** (with country), **VLAN Traffic CSV** (with source/dest country), VLAN Diagram SVG; all CSV exports always contain the complete dataset even when the graph only renders a top-N subset
+- **Session save / load** — Export full analysis, findings, and analyst triage edits to JSON and reload without re-uploading the capture file; older or partial session JSON is normalized on load so missing optional fields do not break the UI
+
+### UX & Productivity
+
+- **Filtering** — Filter graph by protocol or host type via sidebar checkboxes; selections saved to localStorage and restored on next load
+- **Search** — Find nodes by IP address or hostname (300ms debounce); `/` keyboard shortcut focuses the search box
+- **Light/dark mode** — ☀/☾ toggle in header; full CSS variable override for both themes; persisted in localStorage with FOUC prevention
+- **Collapsible sidebar** — `‹`/`›` toggle button collapses the sidebar to a 32 px icon rail; state persisted in localStorage
+- **Packet inspector search** — live-filter input above the packet table; matches any column text; shows `N / M` count badge; clears when switching connections
+- **Filter presets** — save the current protocol + host-type filter selection as a named preset; chip list in sidebar with one-click load and delete; stored in localStorage across sessions
+- **Keyboard shortcuts** — Press `?` to open the overlay: `1`–`9` switch views, `F` fits graph, `/` focuses search, `Space`/`←`/`→` control timeline brush, `P` pins selected node, `Esc` closes panels
+- **Node annotations** — Right-click any node to attach a persistent note using the in-app note modal (stored in browser localStorage)
+
+### Performance
+
 - **Large capture support** — Streams up to 1,000,000 packets without loading into memory (up to 100 files · 1 GB total per upload); multi-file uploads processed in parallel
 - **Performance-optimised parsing** — C-level MAC/IPv4 formatting (`bytes.hex`, `socket.inet_ntoa`), branch-compare `conn_key`, hoisted broadcast flag, module-level compiled regexes, and O(C) risk-scoring via a per-IP connection index (replaces prior O(H×C) double-scan); frontend canvas tick uses a cached visible-node set and precomputed per-edge colour/width, minimap throttled to every 5th tick, `applyFilters` folded to a single DOM pass
 
@@ -237,7 +287,7 @@ Sample `.pcap` files are also available at [https://www.malware-traffic-analysis
 
 ## Project Structure
 
-```
+```text
 pcap-vis-anz/
 ├── app.py                  # Flask backend + PCAP parser (scapy)
 ├── requirements.txt        # Python dependencies
@@ -245,7 +295,7 @@ pcap-vis-anz/
 ├── docs/                   # Generated tutorial + product docs (Markdown)
 ├── site/                   # Docusaurus site serving docs/ — see site/README.md
 ├── tours/                  # Tour specs driving the docs generation
-├── fixtures/                # Demo capture used to generate doc screenshots
+├── fixtures/               # Demo capture used to generate doc screenshots
 ├── data/
 │   ├── dbip-country-lite.mmdb  # Bundled DB-IP Country Lite GeoIP DB (CC BY 4.0)
 │   └── DB-IP-LICENSE.txt       # Attribution and refresh instructions
@@ -298,17 +348,17 @@ The suite contains 354 tests across 18 files covering protocol parsers, anomaly 
 | `RENDER_NODE_CAP` | 1,500 | Max SVG node groups drawn in the force graph (see below) |
 | `RENDER_EDGE_CAP` | 4,000 | Max edges drawn (SVG/canvas) in the force graph |
 | `MAX_CRED_STATE_ENTRIES` | 5,000 | Half-open credential state entries per protocol (Telnet, FTP, etc.); module-level so it can be overridden in tests |
+| Connections in inspector | top 40 | Connections with packet detail (by packet count) |
+| Ports shown per node | 30 | Open ports listed in the detail panel |
+| DNS names per node | 5 | Resolved hostnames shown in the detail panel |
+| DNS queries per node | 10 | DNS queries shown in the detail panel |
+| Port | 5000 | HTTP port (`--port` flag) |
 
 ### Full-fidelity exports vs. render caps
 
 The backend parses and serializes **all** hosts and connections up to the backstop limits. CSV exports (Connections, Hosts Inventory, VLAN Inventory, VLAN Traffic) always use the full dataset — no connection or IP is omitted from an export due to UI rendering decisions.
 
 When a capture contains more than `RENDER_NODE_CAP` hosts, the graph view renders only the top-N by traffic and shows a blue banner: *"Graph shows top N of M hosts — exports contain the full dataset."* The **Table view** and all CSV exports still reflect every host and connection. The `stats.hosts_truncated` / `stats.connections_truncated` flags in the `/upload` JSON response are `true` only when the parse-time backstop limits (250k hosts / 1M connections) are actually exceeded.
-| Connections in inspector | top 40 | Connections with packet detail (by packet count) |
-| Ports shown per node | 30 | Open ports listed in the detail panel |
-| DNS names per node | 5 | Resolved hostnames shown in the detail panel |
-| DNS queries per node | 10 | DNS queries shown in the detail panel |
-| Port | 5000 | HTTP port (`--port` flag) |
 
 ## Security & self-containment
 
@@ -358,4 +408,4 @@ tcpdump -r big.pcap -w filtered.pcap 'tcp or udp'
 
 ## License
 
-MIT
+[MIT](./LICENSE) — Copyright (c) 2026 Sandeep Egalapati
