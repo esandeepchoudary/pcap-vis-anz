@@ -241,6 +241,11 @@ Sample `.pcap` files are also available at [https://www.malware-traffic-analysis
 pcap-vis-anz/
 ├── app.py                  # Flask backend + PCAP parser (scapy)
 ├── requirements.txt        # Python dependencies
+├── LICENSE                 # MIT
+├── docs/                   # Generated tutorial + product docs (Markdown)
+├── site/                   # Docusaurus site serving docs/ — see site/README.md
+├── tours/                  # Tour specs driving the docs generation
+├── fixtures/                # Demo capture used to generate doc screenshots
 ├── data/
 │   ├── dbip-country-lite.mmdb  # Bundled DB-IP Country Lite GeoIP DB (CC BY 4.0)
 │   └── DB-IP-LICENSE.txt       # Attribution and refresh instructions

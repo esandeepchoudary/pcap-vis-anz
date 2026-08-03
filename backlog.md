@@ -2,6 +2,7 @@
 
 ## Completed
 
+- [x] SEO/agent-friendly pass (2026-08-03, `feature/seo-agent-friendly`): added `LICENSE` (MIT, backing the existing README claim); de-duplicated `AGENTS.md`/`CLAUDE.md` (AGENTS.md now canonical, CLAUDE.md a pointer) and fixed stale branch name (`main`→`master`) and file line counts; added docstrings to `/`, `/upload`, `/gpu-status`; replaced the `/session-schema` stub with a real JSON Schema of the `/upload` response, verified field-for-field (names and types) against a live upload; docs site: `robots.txt`, a real social-card image generated from the app's own theme colors (`site/static/img/build_social_card.py`), `sitemap.ignorePatterns` for `/search`, removed the leftover `markdown-page.mdx` sample, added `twitter:card` meta, added `site/static/llms.txt`.
 - [x] Bug sweep: Partial/older session JSON is normalized at `loadGraph()` entry, including safe defaults for stats, nodes, edges, anomalies, packets, credentials, file transfers, OT commands, and warnings
 - [x] Bug sweep: Frontend filter, legend, connection-table, and VLAN-export paths no longer directly dereference missing `graphData.stats` fields
 - [x] Bug sweep: `/upload` frontend error handling reads the response body once as text, preserves non-JSON server diagnostics, and parses JSON manually to avoid empty single-use response bodies

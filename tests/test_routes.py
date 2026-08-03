@@ -219,11 +219,17 @@ def test_gpu_status_returns_json(client):
     assert "gpu" in body
 
 
-def test_session_schema_returns_ok(client):
+def test_session_schema_returns_json_schema(client):
     resp = client.get("/session-schema")
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body.get("status") == "ok"
+    assert body.get("$schema") == "https://json-schema.org/draft-07/schema#"
+    assert body.get("type") == "object"
+    # The properties this schema documents must actually match real /upload
+    # response keys, not just look like a schema.
+    for key in ("nodes", "edges", "packets", "anomalies", "stats"):
+        assert key in body["properties"]
+    assert set(body["required"]) <= set(body["properties"])
 
 
 def test_index_returns_html(client):
