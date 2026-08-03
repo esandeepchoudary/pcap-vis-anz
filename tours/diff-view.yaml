@@ -1,0 +1,74 @@
+id: diff-view
+title: Compare a baseline capture against a current capture (Diff view)
+intent: >
+  The Diff view compares two PCAP uploads — a baseline and a current
+  capture — and surfaces new/disappeared hosts, new connections,
+  traffic-volume changes, and new anomalies vs. the baseline. Driven by
+  renderDiff() in static/js/app.js.
+maturity: stable
+status: confirmed
+
+code_paths:
+  - static/js/app.js
+  - templates/index.html
+
+# preconditions:
+#   auth: TODO — no login exists on this app (single anonymous-only surface)
+#   seed: TODO
+#   voice: TODO
+
+steps:
+  - action: goto
+    path: /
+
+  - capture: empty-state
+    description: >
+      Initial state before any upload: full-page drop zone, header stats
+      all showing "—", no view tabs or "Set Baseline" button rendered yet.
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+    # First upload — becomes the working capture that gets marked as the
+    # baseline in the next step.
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+
+  - action: click
+    selector: "role=button[name='Set Baseline']"
+    # Snapshots the currently-loaded capture as the baseline. The button's
+    # own label then changes to "Baseline Set ✓", and a new "⊕ Diff" tab
+    # appears in the view-tab bar (neither exists pre-baseline).
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+    # Re-uses the SAME fixture as the "current" capture — this is the only
+    # fixture pcap available, so this demonstrates the diff mechanics
+    # reaching a working state rather than a richer, more realistic diff.
+    # Uploading again re-populates the working capture that gets compared
+    # against the already-set baseline; the input accepts a second
+    # selection the same way as the first.
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+
+  - action: click
+    selector: "role=button[name='⊕ Diff']"
+
+  - capture: diff-view
+    description: >
+      Diff view observed comparing fixtures/network-capture-demo.pcap
+      against itself (baseline == current, since only one fixture pcap was
+      available): a "Baseline vs Current Capture" panel with a "Clear
+      Baseline" action, and four columns — Hosts, Connections, Anomalies,
+      VLANs — each showing an empty/no-change state ("No host changes",
+      "No connection changes", "No new anomalies", "No VLAN changes")
+      because the two captures are identical. This confirms the Diff tab
+      and its four-column layout render correctly and reach a stable
+      state, but does not demonstrate an actual populated diff (added/
+      removed hosts, new connections, etc.) — that would require a second,
+      genuinely different capture file, which wasn't available.

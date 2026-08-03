@@ -1,0 +1,43 @@
+id: dashboard
+title: View the Dashboard summary
+intent: >
+  The Dashboard view — summary cards, a risk-score bar chart, protocol
+  distribution, and a clickable Top Anomalies list, giving an at-a-glance
+  overview of the analyzed capture.
+maturity: stable
+status: confirmed
+
+code_paths:
+  - static/js/app.js
+  - templates/index.html
+
+# preconditions:
+#   auth: TODO — no login exists on this app (single anonymous-only surface)
+#   seed: TODO
+#   voice: TODO
+
+steps:
+  - action: goto
+    path: /
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+    # #loading-overlay only gets its "hidden" class added (app.js) once the
+    # /upload response is parsed and rendered — the real stable signal
+    # (see upload-and-explore.yaml for the full rationale).
+
+  - action: click
+    selector: role=button[name='⊛ Dashboard']
+
+  - capture: dashboard-view
+    description: >
+      Resulting Dashboard state observed with fixtures/network-capture-demo.pcap:
+      summary cards (e.g. host/connection/anomaly counts), a risk-score bar
+      chart, a protocol distribution breakdown, and a clickable Top Anomalies
+      list (top entry observed: "Port scan from 198.51.100.77 → 1 target",
+      severity "Info", with "Click to inspect in graph" affordance).

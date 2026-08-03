@@ -1,0 +1,81 @@
+id: dns-map
+title: Explore DNS queries in the DNS Map view
+intent: >
+  The DNS Map view — a DNS query explorer showing hostnames resolved and
+  query logs extracted from captured DNS traffic. Upload a capture, switch
+  to the DNS Map tab, and select a host to see its resolved hostnames and
+  query log.
+
+maturity: stable
+status: confirmed
+
+code_paths:
+  - static/js/app.js
+  - templates/index.html
+  - static/css/style.css
+
+# preconditions:
+#   auth: TODO — no login exists on this app (single anonymous-only surface)
+#   seed: TODO
+#   voice: TODO
+
+steps:
+  - action: goto
+    path: /
+
+  - capture: empty-state
+    description: >
+      Initial state: full-page drop zone ("Drop one or more capture files
+      here or click to browse"), header stats all showing "—", no view tabs
+      rendered yet (DNS Map only appears post-upload).
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+    # #file-input is the hidden <input type="file" accept=".pcap,.pcapng,.cap"
+    # multiple> wired up behind the visible drop-zone element; clicking the
+    # drop zone opens this input's native file chooser.
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+    # #graph-svg is present (empty) in the static HTML shell from the start,
+    # so waiting on its role=img resolves immediately and races the actual
+    # upload/parse/render cycle. #loading-overlay only gets its "hidden"
+    # class added (app.js) once the /upload response is parsed and
+    # rendered, so this is the real stable signal.
+
+  - action: click
+    selector: "role=button[name='DNS Map']"
+
+  - action: wait
+    selector: "button[data-view='dns'].active"
+    state: visible
+    # A stable, explicit signal that setView("dns") has actually run, rather
+    # than relying on click's own post-action networkidle wait.
+
+  - capture: dns-map-host-list
+    description: >
+      DNS Map view observed with fixtures/network-capture-demo.pcap: a
+      "Hosts with DNS queries" panel lists the querying hosts (10.0.1.10 ×2,
+      10.0.1.11 ×1, 10.0.1.20 ×1, 10.0.1.30 ×1, 10.0.1.41 ×1, 10.0.2.10 ×1,
+      fd12:3456:789a::10 ×1) each with a query count badge, plus a
+      "Select a host to view DNS queries" placeholder in the main panel
+      before any host is chosen.
+
+  - action: click
+    selector: '.dns-host-row:has-text("10.0.1.10")'
+    # The host-list entries (.dns-host-row) are non-semantic divs with no
+    # accessible role/name (confirmed via the real DOM: an IP <span> and a
+    # count <span>, no combined accessible name) — a role=generic locator
+    # keyed on the pretty-printed "10.0.1.10 2" text doesn't actually match
+    # anything real (0 elements), so this uses Playwright's :has-text() CSS
+    # extension instead, verified against the live DOM.
+
+  - capture: dns-map-query-log
+    description: >
+      Resulting state observed after selecting host 10.0.1.10: the panel
+      header changes to "DNS queries from 10.0.1.10" and lists resolved
+      hostnames with their answers, e.g. erp.corp.local → 10.0.1.80 and
+      shop.example-corp.com, drawn from the real DNS query/response traffic
+      in the demo capture.

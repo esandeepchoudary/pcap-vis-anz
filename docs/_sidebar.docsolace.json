@@ -1,0 +1,23 @@
+{
+  "productPages": [
+    "overview",
+    "getting-started",
+    "concepts",
+    "configuration",
+    "troubleshooting",
+    "changelog"
+  ],
+  "sections": [],
+  "unsectionedTours": [
+    "dashboard",
+    "diff-view",
+    "dns-map",
+    "findings-workspace",
+    "graph-view",
+    "ot-log",
+    "ot-map",
+    "table-view",
+    "upload-and-explore",
+    "vlan-graph"
+  ]
+}
