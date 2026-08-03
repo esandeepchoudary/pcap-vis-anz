@@ -1,0 +1,68 @@
+id: table-view
+title: Browse the connection Table view and inspect packets
+intent: >
+  The Table view — a sortable connection table listing every network
+  connection observed in the capture (Source IP, Destination IP,
+  Protocol(s), Packets, Bytes, Ports, Duration columns, with sortable
+  column headers), plus a live packet-inspector search that filters by any
+  column text once a connection row is opened.
+maturity: stable
+status: confirmed
+
+code_paths:
+  - static/js/app.js
+  - templates/index.html
+
+# preconditions:
+#   auth: TODO — no login exists on this app (single anonymous-only surface)
+#   seed: TODO
+#   voice: TODO
+
+steps:
+  - action: goto
+    path: /
+
+  - capture: empty-state
+    description: >
+      Initial state: full-page drop zone ("Drop one or more capture files
+      here or click to browse"), header stats all showing "—", no view tabs
+      rendered yet (Table only appears post-upload).
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+
+  - action: click
+    selector: "role=button[name='Table']"
+
+  - action: wait
+    selector: "button[data-view='table'].active"
+    state: visible
+    # A stable, explicit signal that setView("table") has actually run,
+    # rather than relying on click's own post-action networkidle wait.
+
+  - capture: table-populated
+    description: >
+      Table view after uploading fixtures/network-capture-demo.pcap: a
+      sortable connection table with columns Source IP, Destination IP,
+      Protocol(s), Packets, Bytes, Ports, Duration (Source IP, Destination
+      IP, Packets, Bytes, and Duration column headers are clickable/
+      sortable). Rows observed include 10.0.1.12 → 198.51.100.200 (HTTPS,
+      189 packets, 10.3 MB), 10.0.2.10 → 10.0.2.50 (Modbus, 27 packets,
+      2.1 KB), 10.0.1.11 → 203.0.113.66 (Metasploit, 25 packets, 2.0 KB),
+      and 10.0.0.1 → 198.51.100.77 (a connection spanning many protocols:
+      Docker, FTP, HTTP, HTTPS, IMAP, IMAPS, LDAP, MSSQL, MySQL, NNTP,
+      NetBIOS-SSN, POP3, PostgreSQL, RDP, Redis, SMB, SMTP, SNMP, SSH,
+      Telnet, VNC), among the capture's 31 total connections. Clicking a
+      row opens a packet-inspector panel for that connection with its own
+      `#pkt-search` "Filter packets…" text input and a per-packet table
+      (No., Time, Source, Destination, Protocol, Len, Info) — confirmed
+      present on the DOM, but its live-filtering behavior on that packet
+      table was not verified interactively in this session (the click to
+      open the row's packet inspector triggered an unrelated page-state
+      reset before the filter input could be exercised), so no fill/
+      filter step is included here.

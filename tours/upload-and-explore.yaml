@@ -1,0 +1,57 @@
+id: upload-and-explore
+title: Upload a capture and explore the network graph
+intent: >
+  Upload a .pcap/.pcapng/.cap capture file (via the drop zone's click-to-browse
+  file picker) and see it rendered as an interactive network graph. This is the
+  app's entry point — every other view (Table, DNS Map, OT Map, VLAN, Findings,
+  Dashboard, etc.) depends on having uploaded a capture first.
+maturity: stable
+status: confirmed
+
+code_paths:
+  - static/js/app.js
+  - app.py
+  - templates/index.html
+
+# preconditions:
+#   auth: TODO — no login exists on this app (single anonymous-only surface)
+#   seed: TODO
+#   voice: TODO
+
+steps:
+  - action: goto
+    path: /
+
+  - capture: empty-state
+    description: >
+      Initial state: full-page drop zone ("Drop one or more capture files
+      here or click to browse"), header stats all showing "—", no view tabs
+      rendered yet (Graph/Table/DNS Map/OT Map only appear post-upload).
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+    # #file-input is the hidden <input type="file" accept=".pcap,.pcapng,.cap"
+    # multiple> wired up behind the visible drop-zone element; clicking the
+    # drop zone opens this input's native file chooser.
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+    # #graph-svg is present (empty) in the static HTML shell from the start,
+    # so waiting on its role=img resolves immediately and races the actual
+    # upload/parse/render cycle — captured a mid-upload spinner frame instead
+    # of the finished graph. #loading-overlay only gets its "hidden" class
+    # added (app.js) once the /upload response is parsed and rendered, so
+    # this is the real stable signal.
+
+  - capture: graph-view
+    description: >
+      Resulting state observed with fixtures/network-capture-demo.pcap:
+      header stats populate (Hosts: 29, Connections: 31, Packets: 401,
+      VLANs: 2, IPv6: 7%), the view-tab bar appears (Graph/Table/DNS Map/
+      OT Map/OT Log/VLAN/Dashboard/Findings), the left sidebar gains
+      Protocols/Host Types/VLANs/IP Version filters plus an Anomalies list
+      (31 findings) and Credentials/File Transfers panels, and the main
+      canvas renders the interactive force-directed graph on the Graph tab
+      (the default view after upload).

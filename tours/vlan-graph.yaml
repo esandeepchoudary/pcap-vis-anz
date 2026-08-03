@@ -1,0 +1,63 @@
+id: vlan-graph
+title: Explore the VLAN view (super-nodes and cross-VLAN traffic)
+intent: >
+  The VLAN view — shows VLANs as super-nodes with hosts clustered inside,
+  cross-VLAN traffic highlighted, plus a VLAN Matrix toggle (VLAN×VLAN flow
+  adjacency grid). This tour covers reaching the VLAN tab after uploading a
+  capture and observing the clustered-graph state; the Matrix toggle itself
+  is not yet covered.
+maturity: stable
+status: confirmed
+
+code_paths:
+  - static/js/app.js
+  - templates/index.html
+
+# preconditions:
+#   auth: TODO — no login exists on this app (single anonymous-only surface)
+#   seed: TODO
+#   voice: TODO
+
+# suggestedPrerequisite: upload-and-explore
+
+steps:
+  - action: goto
+    path: /
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+    # #graph-svg is present (empty) in the static HTML shell from the start,
+    # so waiting on its role=img resolves immediately and races the actual
+    # upload/parse/render cycle. #loading-overlay only gets its "hidden"
+    # class added (app.js) once the /upload response is parsed and
+    # rendered, so this is the real stable signal (reused verbatim from
+    # upload-and-explore.yaml).
+
+  - action: click
+    selector: "role=button[name='VLAN']"
+    # Header view-tab bar button, present alongside Graph/Table/DNS Map/OT
+    # Map/OT Log/Dashboard/Findings once a capture is uploaded.
+
+  - capture: vlan-view
+    description: >
+      Resulting state observed with fixtures/network-capture-demo.pcap:
+      the VLAN tab is active and the main canvas renders VLANs as large
+      circular super-nodes with member hosts clustered inside — VLAN 10
+      (18 hosts), VLAN 20 (6 hosts), and an Untagged cluster (9 hosts
+      shown) — connected by a thick red cross-VLAN traffic line between
+      the two tagged VLANs. A stats bar above the canvas shows Cross-VLAN
+      flows: 3, Cross-VLAN bytes: 20.6 MB, Untagged hosts: 17,
+      Multi-VLAN/hopping: 4, Singleton VLANs: 0, Isolated VLANs: 0, and
+      Segmentation: 55/100 (Poor). A "VLAN Segments" legend panel (top
+      right of canvas) lists VLAN 10/VLAN 20/Untagged/Cross-VLAN
+      traffic/Untagged-native color keys. The canvas toolbar includes a
+      "Matrix" toggle button (not exercised in this tour) alongside the
+      usual pan/zoom/layout controls. The left sidebar gains a "VLAN
+      Health" panel (VLANs: 2, Cross-VLAN flows: 2, VLAN anomalies: 11,
+      Segmentation: 55/100 Poor) above the existing Protocols/Host
+      Types/VLANs/IP Version filters.

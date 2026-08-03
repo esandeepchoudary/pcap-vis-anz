@@ -1,0 +1,80 @@
+id: graph-view
+title: Graph view — network visualization surface
+intent: >
+  The Graph view is the default view after uploading a capture: an
+  interactive force-directed graph of hosts and connections, with
+  filtering, search, a node detail panel, layout switching (Force/Radial/
+  Cluster), pin/isolate, and a minimap. This is the app's primary network
+  visualization surface.
+maturity: stable
+status: confirmed
+
+code_paths:
+  - static/js/app.js
+  - templates/index.html
+  - static/css/style.css
+
+# preconditions:
+#   auth: TODO — no login exists on this app (single anonymous-only surface)
+#   seed: TODO
+#   voice: TODO
+
+steps:
+  - action: goto
+    path: /
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+    # Same upload mechanism documented in tours/upload-and-explore.yaml — this
+    # tour reaches the populated Graph view via that same flow, since Graph
+    # is the default view rendered right after a successful upload.
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+    # #loading-overlay only gets its "hidden" class added once the /upload
+    # response is parsed and rendered — the reliable "upload finished" signal
+    # (waiting on #graph-svg's role=img resolves immediately against the
+    # empty pre-render SVG and races the real render).
+
+  - capture: graph-force-default
+    description: >
+      Default Graph view immediately after upload, observed with
+      fixtures/network-capture-demo.pcap: force-directed layout (⊙ Force
+      button active in the top-right graph-controls cluster) showing all 29
+      hosts as colour-coded nodes (by host type — DNS Server, Linux Host,
+      Web Server, PLC, IP Camera, etc.) connected by protocol-coloured
+      edges. Left sidebar shows Search / VLAN Health / Protocols / Host
+      Types / VLANs / IP Version filters plus Anomalies (31), Credentials
+      (4) and File Transfers (1) panels. Graph-area controls include layout
+      toggles (⊙ Force / ◎ Radial / ⊞ Cluster), zoom (+ / −), fit (⊡), a
+      VLAN colour-by toggle (⬡ VLAN), a colour-blind palette toggle (◑),
+      and an isolate toggle (⊕). A minimap appears in the top-right corner
+      of the canvas.
+
+  - action: click
+    selector: "#graph-controls button[title='Radial layout']"
+    # Role-based selector wasn't usable here — Playwright's a11y snapshot
+    # doesn't expose a distinguishing accessible name for the icon-only "◎"
+    # button (there are two identical "◎" buttons on the page — one in
+    # #graph-controls for the Graph tab, one in #vlan-graph-controls for the
+    # VLAN tab) — grounded via inspecting the real DOM (button[title="Radial
+    # layout"][data-layout="radial"]) rather than guessing.
+
+  - action: wait
+    selector: "#graph-controls button[data-layout='radial'].active"
+    state: visible
+    # No time-based wait exists in this pipeline's step schema (only
+    # selector+state). This selector matches zero elements before the click
+    # (the "active" class is on the force button instead) and exactly one
+    # once the radial button gains "active" — verified against the live DOM
+    # — so it's a real signal the layout switch completed, not a fixed delay.
+
+  - capture: graph-radial-layout
+    description: >
+      Same 29-host graph re-rendered in radial layout after clicking the ◎
+      Radial layout toggle: nodes arranged in a tree/radial pattern radiating
+      from a central hub host, ◎ shown active (highlighted) in the
+      graph-controls cluster instead of ⊙ Force. Filters, minimap and other
+      canvas controls are unchanged from the force-layout state.

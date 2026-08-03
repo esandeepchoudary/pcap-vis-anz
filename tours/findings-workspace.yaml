@@ -1,0 +1,67 @@
+id: findings-workspace
+title: Findings — analyst triage workspace
+intent: >
+  The Findings view is an analyst triage workspace that automatically derives
+  reviewable findings from anomalies, captured credentials, file transfers,
+  OT write/error command groups, and high-risk hosts. Each finding supports a
+  status (Open/etc.), severity, a "Report" include/exclude checkbox, and
+  free-text notes, so an analyst can triage a capture's results into a
+  report-ready set.
+maturity: stable
+status: confirmed
+
+code_paths:
+  - static/js/app.js
+  - templates/index.html
+
+# preconditions:
+#   auth: TODO — no login exists on this app (single anonymous-only surface)
+#   seed: TODO
+#   voice: TODO
+
+steps:
+  - action: goto
+    path: /
+
+  - capture: empty-state
+    description: >
+      Initial state: full-page drop zone ("Drop one or more capture files
+      here or click to browse"), header stats all showing "—", no view tabs
+      rendered yet (Findings only appears post-upload).
+
+  - action: upload
+    selector: "input#file-input"
+    file: fixtures/network-capture-demo.pcap
+    # #file-input is the hidden <input type="file" accept=".pcap,.pcapng,.cap"
+    # multiple> wired up behind the visible drop-zone element; clicking the
+    # drop zone opens this input's native file chooser.
+
+  - action: wait
+    selector: "#loading-overlay"
+    state: hidden
+    # #loading-overlay only gets its "hidden" class added (app.js) once the
+    # /upload response is parsed and rendered, so this is the real stable
+    # signal (waiting on any always-present element races the upload).
+
+  - action: click
+    selector: role=button[name='Findings']
+    # Verified via accessibility snapshot: the view-tab bar (Graph/Table/DNS
+    # Map/OT Map/OT Log/VLAN/Diff/Dashboard/Findings) that appears in the
+    # header after upload includes a "Findings" tab button.
+
+  - capture: findings-view
+    description: >
+      Resulting state observed with fixtures/network-capture-demo.pcap:
+      the Findings view header shows "49 active / 49 total / 49 in report"
+      plus filter dropdowns (Active/All severities/All sources), and the
+      main list renders one card per derived finding — e.g. "Data
+      exfiltration from 10.0.1.12 (1 connection)" (Anomaly), "FTP credential
+      captured for ftpadmin" (Credential), "High-risk host 10.0.1.30" /
+      10.0.2.10 / 10.0.2.50 / 10.0.2.51 (Risk Host), "HTTP credential
+      captured for admin" (Credential) — each tagged with a source-type
+      badge (Anomaly/Credential/Risk Host) and severity badge (HIGH), and
+      each row exposes a status dropdown ("Open"), a severity dropdown
+      ("high"), a "Report" include/exclude checkbox (checked by default),
+      a "Note" button, and a "Copy Evidence" button. The left sidebar
+      retains the same Protocols/VLAN Health/Search panels seen on other
+      views.

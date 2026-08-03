@@ -5,3 +5,14 @@ uploads/
 *.pcapng
 *.cap
 *.png
+
+# DocSolace (added automatically by /docsolace:document)
+.docsolace/artifacts/
+.env
+.playwright-mcp/
+# Generated doc screenshots are real deliverables, not the *.png rule above's
+# target (that's for upload/test artifacts) — un-ignore them explicitly.
+!docs/images/**/*.png
+# Same for the demo capture DocSolace tours upload to drive the app — a real
+# fixture, not a user-uploaded test capture.
+!fixtures/*.pcap
