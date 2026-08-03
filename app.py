@@ -3639,11 +3639,22 @@ def set_security_headers(response):
 
 @app.route("/")
 def index():
+    """Render the single-page app shell (templates/index.html)."""
     return render_template("index.html")
 
 
 @app.route("/upload", methods=["POST"])
 def upload():
+    """Analyze one or more uploaded capture files and return the merged graph data.
+
+    Request: multipart/form-data with one or more files under the "file" field
+    (repeat the field for multiple files). Allowed extensions: .pcap, .pcapng, .cap.
+    Max MAX_UPLOAD_FILES files per request, MAX_CONTENT_LENGTH total bytes.
+
+    Response: 200 with the JSON body described by GET /session-schema (nodes,
+    edges, packets, anomalies, credentials, files, ot_commands, stats, warnings),
+    or 400/413 with {"error": "..."} on validation failure or an oversized upload.
+    """
     files = request.files.getlist("file")
     if not files:
         single = request.files.get("file")
@@ -3739,6 +3750,7 @@ def download_file(sha256):
 
 @app.route("/gpu-status")
 def gpu_status():
+    """Report whether GPU (CUDA/cupy) acceleration is available, and device info if so."""
     info = {"gpu": GPU_AVAILABLE}
     if GPU_AVAILABLE:
         try:
@@ -3750,9 +3762,210 @@ def gpu_status():
     return jsonify(info)
 
 
+_SESSION_SCHEMA = {
+    "$schema": "https://json-schema.org/draft-07/schema#",
+    "title": "PCAP Network Visualizer / upload response",
+    "description": (
+        "Shape of the JSON returned by POST /upload (and, unless noted, of the "
+        "session JSON produced by the browser's Export/Save Session feature, "
+        "which serializes this same in-memory client-side state). There is no "
+        "server-side session store — analysis results live only in the "
+        "browser's graphData variable until the page is reloaded."
+    ),
+    "type": "object",
+    "properties": {
+        "nodes": {
+            "type": "array",
+            "description": "One entry per host observed in the capture.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "Same as ip; used as the graph node key."},
+                    "ip": {"type": "string"},
+                    "mac": {"type": ["string", "null"]},
+                    "mac_vendor": {"type": ["string", "null"]},
+                    "hostname": {"type": ["string", "null"]},
+                    "dns_names": {"type": "array", "items": {"type": "string"}},
+                    "protocols": {"type": "array", "items": {"type": "string"}},
+                    "services": {"type": "array", "items": {"type": "string"}},
+                    "open_ports": {"type": "array", "items": {"type": "integer"}},
+                    "os_hint": {"type": ["string", "null"], "description": "TTL/hop-limit-derived OS guess."},
+                    "host_type": {"type": "string", "description": "One of ~38 classified host types (Router, PLC, IP Camera, ...)."},
+                    "packet_count": {"type": "integer"},
+                    "bytes_sent": {"type": "integer"},
+                    "bytes_recv": {"type": "integer"},
+                    "dns_queries": {"type": "array", "items": {"type": "string"}},
+                    "is_private": {"type": "boolean"},
+                    "flags": {"type": "array", "items": {"type": "string"}},
+                    "geo": {"type": ["object", "null"], "description": "GeoIP country lookup result, or null if unavailable/private IP."},
+                    "ot_role": {"type": "string", "enum": ["master", "outstation", "unknown"]},
+                    "modbus_unit_ids": {"type": "array", "items": {"type": "integer"}},
+                    "tls_sni": {"type": "array", "items": {"type": "string"}},
+                    "tls_ja3": {"type": "array", "items": {"type": "string"}, "description": "TLS ClientHello JA3 fingerprints observed from this host."},
+                    "dnp3_addresses": {"type": "array", "items": {"type": "integer"}},
+                    "has_s7_download": {"type": "boolean", "description": "True if an S7comm code-download (PLC program change) involving this host was observed."},
+                    "vlans": {"type": "array", "items": {"type": "integer"}},
+                    "vlan_outer": {"type": "array", "items": {"type": "integer"}, "description": "QinQ outer VLAN IDs, if any."},
+                    "vlan_pcps": {"type": "array", "items": {"type": "integer"}, "description": "802.1Q priority code points observed."},
+                    "vlan_untagged": {"type": "boolean"},
+                    "vlan_qinq": {"type": "boolean"},
+                    "purdue_level": {"type": "number", "enum": [-1, 0, 1, 2, 3, 3.5, 4, 5, 6], "description": "Purdue Model level; -1 means unassigned/unclassifiable, 3.5 is the IT/OT DMZ."},
+                    "risk_score": {"type": "integer", "minimum": 0, "maximum": 100},
+                    "ip_version": {"type": "integer", "enum": [4, 6]},
+                    "host_type_hints": {"type": "object", "description": "Raw counter of {service_or_hint: count} used to resolve host_type."},
+                },
+                "required": ["id", "ip", "host_type", "ip_version"],
+            },
+        },
+        "edges": {
+            "type": "array",
+            "description": "One entry per undirected host-pair connection.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "IP address, references a nodes[].id."},
+                    "target": {"type": "string", "description": "IP address, references a nodes[].id."},
+                    "protocols": {"type": "array", "items": {"type": "string"}},
+                    "packet_count": {"type": "integer"},
+                    "bytes": {"type": "integer"},
+                    "ports": {"type": "array", "items": {"type": "integer"}},
+                    "first_seen": {"type": "number", "description": "Seconds relative to capture start."},
+                    "last_seen": {"type": "number"},
+                    "ot_reads": {"type": "integer"},
+                    "ot_writes": {"type": "integer"},
+                    "ot_errors": {"type": "integer"},
+                    "fc_counts": {"type": "object", "description": "{'Modbus:FC3 Read Holding Registers': count, ...}"},
+                    "vlans": {"type": "array", "items": {"type": "integer"}},
+                },
+                "required": ["source", "target", "packet_count"],
+            },
+        },
+        "packets": {
+            "type": "object",
+            "description": (
+                "Stored per-packet detail, keyed \"srcIP|dstIP\" (matching an edge's "
+                "source/target), capped at MAX_STORED_PER_CONN packets per connection. "
+                "Each value is an array of packet objects with time/src/dst/protocol/len/"
+                "layers (protocol-tree for the inspector UI) plus an optional deep-"
+                "inspection field (http/modbus/mqtt/coap/dnp3/s7comm/enip/iec104/bacnet/tls) "
+                "populated when that protocol's parser matched."
+            ),
+        },
+        "anomalies": {
+            "type": "array",
+            "description": "Flat list of detected anomalies across all categories (network/credentials/OT/IoT/VLAN).",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "description": "Anomaly rule id, e.g. \"port_scan\", \"ot_modbus_write\", \"vlan_hopping\"."},
+                    "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
+                    "src": {"type": ["string", "null"]},
+                    "dst": {"type": ["string", "null"]},
+                    "description": {"type": "string", "description": "Human-readable summary shown in the UI."},
+                    "first_seen": {"type": ["number", "null"], "description": "Seconds relative to capture start."},
+                    "last_seen": {"type": ["number", "null"]},
+                },
+                "required": ["type", "severity", "description"],
+            },
+        },
+        "anomaly_error": {"type": "boolean", "description": "True if anomaly detection itself raised an exception (analysis still completes without it)."},
+        "credentials": {
+            "type": "array",
+            "description": "Cleartext credentials captured from HTTP Basic Auth, HTML form POSTs, FTP, Telnet, MQTT CONNECT, or CoAP.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "protocol": {"type": "string"},
+                    "type": {"type": "string", "description": "e.g. \"Basic Auth\", \"Form POST\", \"Login\", \"USER/PASS\"."},
+                    "username": {"type": ["string", "null"]},
+                    "password": {"type": ["string", "null"]},
+                    "time": {"type": "number"},
+                    "rel_time": {"type": "number"},
+                    "src": {"type": "string"},
+                    "dst": {"type": "string"},
+                    "dport": {"type": "integer"},
+                },
+                "required": ["protocol", "type"],
+            },
+        },
+        "files": {
+            "type": "array",
+            "description": "HTTP file transfers detected (Content-Disposition: attachment or a recognized file MIME type). Bodies are cached server-side and downloadable via GET /download/<sha256>.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string"},
+                    "mime_type": {"type": "string"},
+                    "size": {"type": "integer"},
+                    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                    "time": {"type": "number"},
+                    "rel_time": {"type": "number"},
+                    "src": {"type": "string"},
+                    "dst": {"type": "string"},
+                },
+                "required": ["filename", "mime_type", "size", "sha256"],
+            },
+        },
+        "ot_commands": {
+            "type": "array",
+            "description": "Chronological OT/ICS command log (Modbus, S7comm, etc.) shown in the OT Log view.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "time": {"type": "number"},
+                    "rel_time": {"type": "number"},
+                    "src": {"type": "string"},
+                    "dst": {"type": "string"},
+                    "protocol": {"type": "string", "description": "e.g. \"Modbus\", \"S7comm\"."},
+                    "function_code": {"type": ["integer", "null"]},
+                    "function_name": {"type": "string"},
+                    "direction": {"type": "string", "enum": ["read", "write", "error", "diagnostic"]},
+                    "register": {"type": ["integer", "null"], "description": "Modbus register/address, when applicable."},
+                    "quantity": {"type": ["integer", "null"], "description": "Modbus register/coil count, when applicable."},
+                    "unit_id": {"type": ["integer", "null"]},
+                },
+                "required": ["time", "src", "dst", "protocol", "direction"],
+            },
+        },
+        "stats": {
+            "type": "object",
+            "properties": {
+                "total_packets": {"type": "integer"},
+                "total_hosts": {"type": "integer"},
+                "total_connections": {"type": "integer"},
+                "protocols": {"type": "array", "items": {"type": "string"}},
+                "host_types": {"type": "array", "items": {"type": "string"}},
+                "vlans": {"type": "array", "items": {"type": "integer"}},
+                "vlans_detected": {"type": "integer"},
+                "ip_versions": {"type": "array", "items": {"type": "integer"}},
+                "has_untagged": {"type": "boolean"},
+                "ipv4_count": {"type": "integer"},
+                "ipv6_count": {"type": "integer"},
+                "cdp_lldp_discovered": {"type": "integer"},
+                "truncated": {"type": "boolean", "description": "True if MAX_PACKETS was hit."},
+                "hosts_truncated": {"type": "boolean"},
+                "connections_truncated": {"type": "boolean"},
+                "capture_start": {"type": ["number", "null"]},
+                "capture_end": {"type": ["number", "null"]},
+                "parse_errors": {"type": "integer", "description": "Count of files that hit a parse error, when this capture came from a multi-file upload merge."},
+                "geoip_available": {"type": "boolean"},
+                "gpu": {"type": "boolean", "description": "Whether GPU (CUDA/cupy) acceleration was available for this analysis. Same value as GET /gpu-status's \"gpu\" key."},
+            },
+        },
+        "warnings": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Per-file parse warnings when uploading multiple files and some failed (added by the /upload route itself, not analyze_pcap).",
+        },
+    },
+    "required": ["nodes", "edges", "anomalies", "stats"],
+}
+
+
 @app.route("/session-schema")
 def session_schema():
-    return jsonify({"status": "ok", "note": "Sessions are handled client-side only."})
+    """Return a JSON Schema describing the shape of the /upload response (and the client-side session state it populates)."""
+    return jsonify(_SESSION_SCHEMA)
 
 
 if __name__ == "__main__":

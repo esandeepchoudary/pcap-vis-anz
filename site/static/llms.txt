@@ -1,0 +1,27 @@
+# PCAP Network Visualizer
+
+> Interactive web-based tool for visualizing network packet captures: upload a .pcap/.pcapng/.cap file and explore it as a live force-directed graph, with host classification, protocol detection, OS fingerprinting, DNS resolution, OT/ICS and IoT protocol support, and anomaly detection.
+
+Single-page Flask + vanilla JS (D3.js v7) application. Source: https://github.com/esandeepchoudary/pcap-vis-anz (MIT licensed). Runs entirely offline/air-gapped — no CDN dependencies. API details: fetch `/session-schema` on a running instance for a real JSON Schema of the `/upload` response shape.
+
+## Product docs
+
+- [Overview](/pcap-vis-anz/docs/overview): PCAP Network Visualizer is an interactive web-based tool for visualizing network packet captures. It is a single-page Flask application: you upload a .pcap, .pcapng, or .cap file and it renders the traffic as a live graph.
+- [Getting started](/pcap-vis-anz/docs/getting-started): Installation and first-run instructions — Python 3.8+, pip install, `python app.py`.
+- [Concepts](/pcap-vis-anz/docs/concepts): How captures are parsed — hosts, connections, host classification (38 types), and the anomaly detection model.
+- [Configuration](/pcap-vis-anz/docs/configuration): Backend constants in app.py that control upload limits, packet caps, and output truncation.
+- [Troubleshooting](/pcap-vis-anz/docs/troubleshooting): Common setup issues (Python environment/dependency problems, etc.).
+- [Changelog](/pcap-vis-anz/docs/changelog): Version history — none tagged yet; see the README for the current hardening pass.
+
+## Tutorials (one per feature, with real screenshots)
+
+- [Upload a capture and explore the network graph](/pcap-vis-anz/docs/upload-and-explore): Upload a .pcap/.pcapng/.cap file via the drop zone and land on the rendered network graph — the app's entry point.
+- [Graph view](/pcap-vis-anz/docs/graph-view): The default view after upload — interactive force-directed graph with filtering, search, node detail panel, and Force/Radial/Cluster layout switching.
+- [Table view](/pcap-vis-anz/docs/table-view): Sortable connection table (Source IP, Destination IP, Protocol(s), Packets, Bytes, Ports, Duration) with a live packet-inspector search.
+- [DNS Map](/pcap-vis-anz/docs/dns-map): DNS query explorer — resolved hostnames and per-host query logs extracted from captured DNS traffic.
+- [OT Map](/pcap-vis-anz/docs/ot-map): Purdue Model swimlane view (L0 Field to L6 Public Internet) grouping OT/ICS devices by network zone, with an OT Communication Matrix toggle.
+- [OT Log](/pcap-vis-anz/docs/ot-log): Chronological OT command history (Modbus/S7comm reads, writes, errors) with protocol and direction filters.
+- [VLAN view](/pcap-vis-anz/docs/vlan-graph): VLANs shown as super-nodes with hosts clustered inside, cross-VLAN traffic highlighted, plus a VLAN Matrix toggle.
+- [Diff view](/pcap-vis-anz/docs/diff-view): Compares two PCAP uploads — a baseline and a current capture — surfacing new/disappeared hosts, new connections, and new anomalies.
+- [Dashboard](/pcap-vis-anz/docs/dashboard): Summary cards, risk-score bar chart, protocol distribution, and a clickable Top Anomalies list.
+- [Findings workspace](/pcap-vis-anz/docs/findings-workspace): Analyst triage workspace — derives reviewable findings from anomalies, credentials, file transfers, and high-risk hosts, with status/severity/notes and report include/exclude.
