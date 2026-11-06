@@ -14,6 +14,7 @@ from pcapvis.api import (
     routes_auth,
     routes_captures,
     routes_engagements,
+    routes_forensics,
     routes_links,
     routes_system,
     routes_users,
@@ -169,6 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_assets.router)
     app.include_router(routes_links.router)
     app.include_router(routes_zones.router)
+    app.include_router(routes_forensics.router)
 
     @app.api_route(
         "/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False

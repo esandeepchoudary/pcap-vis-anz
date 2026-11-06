@@ -466,3 +466,60 @@ class NetworkOut(BaseModel):
     gateways: list[int] = Field(description="Routers and firewalls with an address in this subnet")
     zones: list[str]
     purdue_levels: list[float]
+
+
+# ── Flows, forensics, dashboard (M7) ─────────────────────────────────────────
+
+
+class PacketRowOut(BaseModel):
+    number: int
+    time: float
+    src: str
+    dst: str
+    protocol: str
+    length: int
+    info: str
+
+
+class PacketListOut(BaseModel):
+    packets: list[PacketRowOut]
+    truncated: bool = Field(description="More packets matched than were returned")
+
+
+class PacketDetailOut(BaseModel):
+    number: int
+    text: str
+
+
+class DiffLinkOut(BaseModel):
+    src: int
+    dst: int
+    protocol: str
+    packets: int
+
+
+class DiffOut(BaseModel):
+    """What changed between two captures, in asset terms."""
+
+    new_assets: list[int]
+    gone_assets: list[int]
+    new_links: list[DiffLinkOut]
+    gone_links: list[DiffLinkOut]
+
+
+class DashboardOut(BaseModel):
+    captures: int
+    captures_done: int
+    packets: int
+    assets: int
+    assets_edited: int
+    assets_by_level: dict[str, int]
+    assets_by_type: dict[str, int]
+    ot_connections: int
+    ot_writes: int
+    zones: int
+    conduits: int
+    violations: int
+    findings: dict[str, int]
+    credentials: int
+    files: int
