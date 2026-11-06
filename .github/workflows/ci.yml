@@ -22,10 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install tshark
-        timeout-minutes: 8 # apt mirrors occasionally hang; fail fast and rerun
-        run: |
-          echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
-          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tshark
+        timeout-minutes: 14
+        run: .github/scripts/install-tshark.sh
       - uses: astral-sh/setup-uv@v6
         with: { python-version: "3.12" }
       - run: uv sync --frozen --extra postgres
@@ -84,10 +82,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install tshark
-        timeout-minutes: 8 # apt mirrors occasionally hang; fail fast and rerun
-        run: |
-          echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
-          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tshark
+        timeout-minutes: 14
+        run: .github/scripts/install-tshark.sh
       - uses: actions/setup-node@v4
         with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
       - uses: astral-sh/setup-uv@v6
@@ -108,10 +104,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install tshark
-        timeout-minutes: 8 # apt mirrors occasionally hang; fail fast and rerun
-        run: |
-          echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
-          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tshark
+        timeout-minutes: 14
+        run: .github/scripts/install-tshark.sh
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Legacy engine in its own environment
