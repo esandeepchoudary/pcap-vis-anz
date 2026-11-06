@@ -358,10 +358,11 @@ def test_openapi_has_no_python_version_dependent_texts(laptop):
     for path, ops in schema["paths"].items():
         for op in ops.values():
             for code, resp in op.get("responses", {}).items():
-                if code in ("413", "416"):
-                    assert resp["description"] not in (
-                        "Content Too Large",
-                        "Request Entity Too Large",
-                        "Range Not Satisfiable",
-                        "Requested Range Not Satisfiable",
-                    ), f"{path} {code}: give this response an explicit description"
+                assert resp["description"] not in (
+                    "Content Too Large",
+                    "Request Entity Too Large",
+                    "Range Not Satisfiable",
+                    "Requested Range Not Satisfiable",
+                    "Unprocessable Content",
+                    "Unprocessable Entity",
+                ), f"{path} {code}: Python-version-dependent description"

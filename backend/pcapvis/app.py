@@ -75,6 +75,34 @@ def _bootstrap_users(settings: Settings, session_factory) -> None:
                 )
 
 
+# Python 3.13 renamed some HTTP status phrases, which FastAPI uses as default response descriptions.
+# Pin them so the generated frontend types are identical whichever Python generates them.
+_PHRASE_VARIANTS = {
+    "Content Too Large": "Content too large",
+    "Request Entity Too Large": "Content too large",
+    "Range Not Satisfiable": "Range not satisfiable",
+    "Requested Range Not Satisfiable": "Range not satisfiable",
+    "Unprocessable Content": "Unprocessable content",
+    "Unprocessable Entity": "Unprocessable content",
+}
+
+
+def _stable_openapi(app: FastAPI) -> None:
+    generate = app.openapi
+
+    def openapi() -> dict:
+        if app.openapi_schema is None:
+            schema = generate()
+            for ops in schema.get("paths", {}).values():
+                for op in ops.values():
+                    for resp in op.get("responses", {}).values():
+                        if resp.get("description") in _PHRASE_VARIANTS:
+                            resp["description"] = _PHRASE_VARIANTS[resp["description"]]
+        return app.openapi_schema
+
+    app.openapi = openapi
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
@@ -109,6 +137,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url="/api/openapi.json",
     )
+    _stable_openapi(app)
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory
