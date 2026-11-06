@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v0.2.0 -- 2026-11-06
+
+- v2 rebuild M0 foundations: FastAPI backend, React workbench shell with light/dark themes, local accounts and roles, laptop and team-server modes, container image, CI
+
 ## v0.1.0 -- 2026-11-06
 
 - First versioned release. Baseline of the existing app: multi-protocol PCAP

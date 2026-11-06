@@ -118,7 +118,7 @@ _To be filled in as we decide, one item at a time._
 |---|---|---|---|
 | D1 | Frontend stack | **React + TypeScript** (Vite build; built static bundle shipped so client sites need no internet or Node) | Chosen for ecosystem depth: React Flow for editable Purdue and architecture diagrams, mature data grids for the asset inventory, and the widest contributor and tooling familiarity. D3 kept where custom charts need it. Decided 2026-11-06 |
 | D2 | Primary workflow and navigation | **Engagement-first, plus a Quick look mode** | Main path: create engagement → add captures (tagged with capture point) → Assets → Purdue map → Architecture → Findings → Report. Quick look analyzes a pcap without an engagement and can be promoted to one later. Decided 2026-11-06 |
-| D3 | Persistence and deployment | **Two deployment modes, one codebase.** Laptop mode: SQLite per engagement (`project.db` + `captures/` + `exports/` folder, zipped to `.pcapvis` for handover). Team server mode: PostgreSQL + server/S3-compatible capture storage, Docker Compose | SQLAlchemy + Alembic so both databases share code and migrations. Server mode adds user accounts and roles, per-engagement membership, a per-field audit trail (who, when, old, new, reason), optimistic locking for concurrent edits, live updates, a background parse worker with progress and cancel, and laptop→server engagement import with merge. Optional SQLCipher encryption in laptop mode. Never run the SQLite file from a network share. Login: **local accounts** with roles to start; authentication sits behind an interface so SSO (Entra ID, Okta, LDAP) can be added later. Real-time: **edits appear for others within seconds** (server push) with conflict detection; live presence and co-editing are out of scope for now. Decided 2026-11-06 |
+| D3 | Persistence and deployment | **Two deployment modes, one codebase.** Laptop mode: one local SQLite database for all engagements (in the data folder, next to `captures/` and `exports/`); each engagement exports as a self-contained `.pcapvis` bundle (its data + original pcaps) for handover. *(Refined during M0 from "one SQLite file per engagement" so laptop and server modes share the identical schema.)* Team server mode: PostgreSQL + server/S3-compatible capture storage, Docker Compose | SQLAlchemy + Alembic so both databases share code and migrations. Server mode adds user accounts and roles, per-engagement membership, a per-field audit trail (who, when, old, new, reason), optimistic locking for concurrent edits, live updates, a background parse worker with progress and cancel, and laptop→server engagement import with merge. Optional SQLCipher encryption in laptop mode. Never run the SQLite file from a network share. Login: **local accounts** with roles to start; authentication sits behind an interface so SSO (Entra ID, Okta, LDAP) can be added later. Real-time: **edits appear for others within seconds** (server push) with conflict detection; live presence and co-editing are out of scope for now. Decided 2026-11-06 |
 | D4 | Look and feel | **Workbench layout; light and dark themes, light by default** | Left rail = workflow stages (Overview, Captures, Assets, Purdue, Architecture, Flows, Findings, Report); center = canvas or table; right = editable inspector for the selection (fields, evidence, change history); bottom = timeline. Minimal header (engagement switcher, search, user). Light default suits client screen-shares and exports. A proper icon set replaces emoji; colours come from a design-token system so every view supports both themes. Decided 2026-11-06 |
 | D5 | Migration approach | **Full rewrite from scratch**, including the parsing engine, in new folders on `develop` | Today's app stays on `master` as the **reference oracle** until parity: the existing 375 tests are ported as behaviour specs, and a differential harness runs old and new engines on the same pcaps (demo fixture + a growing regression corpus) and diffs hosts, flows, protocols, and anomalies. Old app retired only when the diff is clean or each difference is an intentional fix. Decided 2026-11-06 |
 | D6 | Backend framework | **FastAPI** | Pydantic models → OpenAPI → generated TypeScript client, so frontend and backend types can't drift. Server-sent events/WebSockets for live updates. Background parse worker with progress and cancel. Decided 2026-11-06 |
@@ -163,7 +163,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 
 | M | Content |
 |---|---|
-| M0 | Foundations: repo layout, FastAPI + React skeleton, design tokens and both themes, DB + migrations, local accounts, CI (tests, lint, type-check, build) |
+| M0 ✅ | Foundations: repo layout, FastAPI + React skeleton, design tokens and both themes, DB + migrations, local accounts, CI (tests, lint, type-check, build) |
 | M1 | Engine: capture reader, directional flows, host and asset identity, IT/OT/IoT protocol parsers, anomaly rules; differential harness against legacy |
 | M2 | Engagements and captures: create and open engagements, upload with background parsing and progress, capture points, Quick look, `.pcapvis` export and import |
 | M3 | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
@@ -173,3 +173,21 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M7 | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
 | M8 | Findings and reports: findings workspace, asset register XLSX, SVG/draw.io, DOCX/PDF report, engagement bundle |
 | M9 | Server mode hardening, laptop→server import with merge, docs rewrite, legacy retirement |
+
+### 4.4 Milestone log
+
+**M0, foundations: done (v0.2.0, 2026-11-06).**
+- Repo split: `backend/` (FastAPI, `uv`), `frontend/` (React 19 + TypeScript 5.9, Vite), `legacy/` (v1, still green).
+- Backend: settings via `PCAPVIS_*`; tshark startup gate with OS-specific install hints; SQLAlchemy 2 +
+  Alembic (SQLite WAL / PostgreSQL), UTC-aware datetimes; local accounts (argon2id), DB-backed sessions
+  storing only token hashes, login throttling, roles with last-admin protection, session revocation on
+  role/password/deactivation changes; CSRF header guard, strict CSP and security headers; SPA serving
+  with path-traversal protection; CLI (`serve`, `check`, `create-user`, `db-upgrade`, `openapi`).
+- Frontend: workbench shell (header, stage rail, inspector, timeline), design tokens with light (default)
+  and dark themes and no-flash theme restore, sign-in, account (password change), user admin; API
+  types generated from OpenAPI.
+- Packaging: multi-stage Dockerfile (tshark 4.4 in Debian, non-root, health check; ~700 MB, mostly
+  Wireshark libraries, so trimming is a later task); `docker-compose.yml` for team server + PostgreSQL.
+- CI: backend on SQLite and PostgreSQL, ruff, frontend lint/types/tests/build, API-types drift check,
+  Playwright e2e against the production build, legacy suite, container build + health check.
+- Tests: backend 104 (SQLite) / 103 + 1 SQLite-only skip (PostgreSQL), frontend 35, e2e 7, legacy 375.

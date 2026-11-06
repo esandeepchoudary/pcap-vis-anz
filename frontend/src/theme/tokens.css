@@ -1,0 +1,89 @@
+/* Design tokens. Every colour in the app comes from here so both themes stay complete. */
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12.5px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --header-h: 52px;
+  --rail-w: 76px;
+  --inspector-w: 320px;
+  --timeline-h: 44px;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Purdue levels and severities are data colours: same in both themes, tuned for contrast on each. */
+  --sev-critical: #dc2626;
+  --sev-high: #ea580c;
+  --sev-medium: #ca8a04;
+  --sev-low: #16a34a;
+  --sev-info: #2563eb;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --surface-hover: #eceff3;
+  --border: #e2e5ea;
+  --border-strong: #cdd2da;
+  --text: #111827;
+  --text-2: #4b5563;
+  --text-3: #6b7280;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: #e8efff;
+  --accent-text: #ffffff;
+  --ok: #15803d;
+  --ok-soft: #e7f6ec;
+  --warn: #b45309;
+  --warn-soft: #fdf3e2;
+  --danger: #b91c1c;
+  --danger-soft: #fdeaea;
+  --focus: #2563eb66;
+  --shadow-sm: 0 1px 2px #1118270d;
+  --shadow-md: 0 4px 16px #11182714, 0 1px 3px #1118270f;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --surface: #151b23;
+  --surface-2: #1b222c;
+  --surface-hover: #222a35;
+  --border: #2a313c;
+  --border-strong: #3a4350;
+  --text: #e6edf3;
+  --text-2: #a7b1bd;
+  --text-3: #7d8794;
+  --accent: #4c8dff;
+  --accent-hover: #6aa1ff;
+  --accent-soft: #16233d;
+  --accent-text: #ffffff;
+  --ok: #3fb950;
+  --ok-soft: #12261a;
+  --warn: #e3a33b;
+  --warn-soft: #2b2112;
+  --danger: #f26b6b;
+  --danger-soft: #2d1517;
+  --focus: #4c8dff73;
+  --shadow-sm: 0 1px 2px #00000040;
+  --shadow-md: 0 6px 20px #00000059, 0 1px 3px #00000040;
+}

@@ -2,40 +2,54 @@
 
 This file provides guidance to coding agents when working with code in this repository. It's the canonical, detailed agent-facing doc — `CLAUDE.md` just points here (Claude Code looks for that filename by convention).
 
+> **A full rebuild (v2) is in progress on the `develop` branch.** The plan and every agreed decision live in
+> [`REFACTOR.md`](REFACTOR.md) — read it before changing architecture. New work goes into `backend/` and
+> `frontend/`. Today's app lives in `legacy/`, frozen as the **reference oracle** the new engine is compared
+> against; only fix it if a legacy bug blocks comparison.
+
+## Repository layout
+
+| Path | What |
+|---|---|
+| `backend/` | v2 FastAPI backend (Python package `pcapvis`, managed with `uv`) |
+| `frontend/` | v2 React + TypeScript app (Vite), API types generated from the backend |
+| `legacy/` | v1 Flask app + its 375 tests (reference oracle until v2 reaches parity) |
+| `Dockerfile`, `docker-compose.yml` | Container image (tshark + backend + built frontend); compose = team server with PostgreSQL |
+| `REFACTOR.md` | Feature inventory, gap analysis, decisions D1–D9, target design, milestones M0–M9 |
+| `VERSION`, `CHANGELOG.md`, `scripts/` | Versioning (see Workflow) |
+| `docs/`, `site/`, `tours/`, `fixtures/` | Docs site + demo capture (see "Beyond the core app") |
+
 ## Branching
 
-Before making major changes (new features, protocol additions, refactors touching multiple files, changes to core data flow), create and check out a feature branch:
+- `master` — released code. `develop` — the v2 integration branch.
+- Do v2 work on `feature/<short-description>` branched from `develop`, and open the PR into `develop`.
+- Major changes (new protocol/rule, data-model or API changes, cross-cutting refactors) always get a feature branch.
+  Minor changes (typos, CSS tweaks) can go straight onto `develop`.
 
 ```bash
-git checkout -b feature/<short-description>
+git checkout develop && git checkout -b feature/<short-description>
 ```
 
-Major changes include:
-- Adding a new protocol parser or anomaly rule
-- Modifying `analyze_pcap()`, `merge_results()`, or `analyze_anomalies()`
-- Restructuring the frontend rendering pipeline or global state
-- Changing the JSON schema returned by `/upload`
+Once a feature is fully implemented and tests pass, ask the user to review and merge:
 
-Minor changes (typo fixes, constant tweaks, CSS-only edits) can go directly on `master`.
-
-Once a feature is fully implemented and tests pass, ask the user to review and merge the branch into `master`:
-
-> "Feature is complete and tests pass. Please review and merge `feature/<name>` into `master` when ready."
+> "Feature is complete and tests pass. Please review and merge `feature/<name>` into `develop` when ready."
 
 ## Workflow
 
 After completing any change:
-1. Update `README.md` to reflect the change (new protocols, updated limits, new features, etc.)
+1. Update `README.md` to reflect the change, and `REFACTOR.md` if a decision or milestone changed.
 2. Update `backlog.md` -- mark completed items `[x]`, add newly discovered bugs or ideas.
 3. **Bump the version** -- every change, on every branch, before it is merged:
    `python scripts/bump_version.py <patch|minor|major> "one-line summary"`.
    Use `patch` for fixes/tweaks, `minor` for new features, `major` for breaking changes
-   (session/project file format, `/upload` JSON schema). This updates `VERSION` and
+   (project/session file format, public API schema). This updates `VERSION` and
    `CHANGELOG.md`; commit both. Bump once per branch/PR, not per commit -- if the branch
    already bumped, edit its `CHANGELOG.md` entry instead. CI (`.github/workflows/version.yml`)
-   fails PRs that don't raise the version and tags `master` as `v<VERSION>` on merge.
-4. Run any relevant unit tests: `python -m pytest tests/ -q` (create tests in `tests/` if they don't exist yet).
-5. Start the app and verify it runs without errors: `python app.py` -- check the terminal for startup errors before reporting the task complete.
+   fails PRs into `master` that don't raise the version and tags `master` as `v<VERSION>` on merge.
+   During the v2 rebuild each milestone is one minor bump (M0 = 0.2.0, …); v2 ships as 1.0.0.
+4. **Test as you build, rigorously** -- write tests alongside the code (happy paths, edge cases, failure
+   and security paths) and run every suite you touched (see Testing). Never leave a failing test.
+5. Start the app and check it runs without errors (see Running the app) before reporting the task complete.
 6. Commit and push to GitHub:
 
 ```bash
@@ -46,29 +60,68 @@ git push
 
 ## Testing
 
-Write unit tests in `tests/` (19 files, including `conftest.py`) using `pytest`. Tests cover:
-- Protocol parsers (`parse_modbus`, `parse_dnp3`, `parse_s7comm`, HTTP/MQTT/CoAP, etc.) in `tests/test_parsers.py`, `tests/test_http_mqtt_coap.py`
-- Anomaly detection rules (general + OT-specific) in `tests/test_anomalies.py`, `tests/test_anomalies_ot.py`
-- Helper functions (`is_private`, `mac_vendor`, `geo_lookup`) in `tests/test_helpers.py`
-- Credential extraction, file-transfer caching/extraction, VLAN handling, pcapng parsing, IPv6 extension headers, multi-file merge, output serialization, and `/upload` route behavior in the remaining `test_*.py` files
+| Suite | Command | Notes |
+|---|---|---|
+| Backend | `cd backend && uv run pytest -q` | SQLite by default |
+| Backend on PostgreSQL | `PCAPVIS_TEST_DATABASE_URL=postgresql+psycopg://u:p@host/db uv run pytest -q` | Wipes that DB's `public` schema per test — use a throwaway DB |
+| Backend lint | `cd backend && uv run ruff check .` | |
+| Frontend | `cd frontend && npm test` (vitest), `npm run typecheck`, `npm run lint` | Component tests stub `fetch` via `src/test/utils.tsx` |
+| API types | `cd frontend && npm run gen:api` | Regenerate after any backend schema change and commit `src/api/schema.d.ts`; CI fails if stale |
+| End-to-end | `cd frontend && npm run build && npm run e2e` | Playwright against the production build served by the real backend (server mode, tshark required) |
+| Legacy | `cd legacy && python -m pytest tests/ -q` | Reference oracle; must stay green |
 
-Run tests before committing:
-```bash
-python -m pytest tests/ -q
-```
+CI (`.github/workflows/ci.yml`) runs all of these plus a container build/health check on every push and PR.
 
 ## Running the app
 
+**v2 (development, hot reload):**
+
 ```bash
-pip install -r requirements.txt          # first time; add --break-system-packages on Kali/Debian
-python app.py                            # serves on http://localhost:5000
-python app.py --public                   # bind to 0.0.0.0 (LAN-reachable)
-python app.py --port 8080                # use a different port
+cd backend && uv sync && uv run pcapvis serve --reload            # API on 127.0.0.1:8000 (laptop mode)
+cd frontend && npm ci && npm run dev                                # UI on http://<host>:5173, proxies /api
+PCAPVIS_MODE=server PCAPVIS_ADMIN_USERNAME=admin PCAPVIS_ADMIN_PASSWORD='…10+ chars…' uv run pcapvis serve --reload
 ```
 
-No build step for the Flask app itself. Changes to Python or JS/CSS take effect on the next request (Flask debug mode is on). `ruff` is listed in `requirements-dev.txt` as an available linter, though no `ruff.toml`/lint config exists yet — running it is optional, not enforced by any CI check.
+`pcapvis serve` refuses to start without tshark 4.0+ (`uv run pcapvis check` to diagnose). Settings are
+`PCAPVIS_*` environment variables — see `backend/pcapvis/config.py`.
 
-## Architecture
+**v2 (container):** `docker build -t pcapvis . && docker run -p 8080:8080 -v ./engagements:/data pcapvis`
+(laptop mode), or `docker compose up -d` for team-server mode with PostgreSQL (configure `.env` from `.env.example`).
+
+**Legacy v1:**
+
+```bash
+pip install -r legacy/requirements.txt   # first time; add --break-system-packages on Kali/Debian
+python legacy/app.py                     # serves on http://localhost:5000 (--public, --port 8080 also work)
+```
+
+## v2 architecture (M0 foundations)
+
+- **Backend (`backend/pcapvis/`)**: `app.py` is the factory (`create_app(settings)`): tshark gate → Alembic
+  migrations → user bootstrap → routers → CSRF + security-header middleware → SPA serving. `config.py`
+  (pydantic-settings), `tshark.py` (detection/version check), `db/` (SQLAlchemy models, `UTCDateTime`,
+  engine with SQLite WAL pragmas, programmatic migrations in `pcapvis/migrations/`), `auth/service.py`
+  (argon2 passwords, DB-backed sessions storing only token hashes, login throttle), `api/` (routers +
+  Pydantic schemas), `cli.py` (`serve`, `check`, `create-user`, `db-upgrade`, `openapi`).
+- **Modes**: `laptop` (no sign-in; a built-in `local` admin user) and `server` (local accounts, roles
+  admin > lead > consultant > viewer). Same code; only `PCAPVIS_MODE` / `PCAPVIS_DATABASE_URL` differ.
+- **Security invariants** — keep these when adding routes: every unsafe `/api/` request must carry
+  `X-PcapVis-Client: 1` (CSRF guard; the frontend client adds it); session cookie is httpOnly +
+  SameSite=Strict; strict CSP (no inline scripts — `public/theme-init.js` exists for that reason); never
+  store raw session tokens; never return password hashes; admin-only routes use `require_role(Role.admin)`.
+- **Schema changes**: edit `db/models.py`, then `cd backend && uv run alembic revision --autogenerate -m "…"`
+  and review the file. `tests/test_db.py::test_models_match_migrations` fails if they drift.
+- **Frontend (`frontend/src/`)**: `App.tsx` (auth gate + routes), `components/AppShell.tsx` (workbench:
+  header, stage rail, main, inspector, timeline), `stages.ts` (the workflow stages and their milestones),
+  `api/client.ts` (typed `openapi-fetch` client) + `api/hooks.ts` (TanStack Query), `theme/` (light default,
+  dark optional; **all colours come from `theme/tokens.css`** so both themes stay complete), icons from
+  `lucide-react` (no emoji).
+
+## Legacy app (v1, in `legacy/`)
+
+Everything below describes the legacy app. Paths are relative to `legacy/`.
+
+### Architecture
 
 A single-page Flask app with three files of substance:
 
@@ -79,7 +132,7 @@ A single-page Flask app with three files of substance:
 
 D3.js v7 is bundled locally at `static/js/d3.v7.min.js` for air-gapped use; don't CDN-ify it.
 
-### Backend (`app.py`)
+#### Backend (`app.py`)
 
 **Data flow:** `POST /upload` -> save to `tempfile` -> `analyze_pcap()` per file -> `merge_results()` -> JSON response -> `GET /` renders the shell.
 
@@ -104,7 +157,7 @@ Key functions in call order:
 
 **Other routes** beyond `/` and `/upload`: `GET /version` returns `{"version": ...}` from the `VERSION` file; `GET /download/<sha256>` serves a cached file transfer by hash; `GET /gpu-status` reports whether CUDA/cupy acceleration is available; `GET /session-schema` returns a real JSON Schema describing the `/upload` response shape (nodes/edges/anomalies/stats/etc.) -- fetch it directly rather than reverse-engineering the shape from `app.py` if you're integrating against the API.
 
-### Frontend (`static/js/app.js`)
+#### Frontend (`static/js/app.js`)
 
 **Global state:**
 - `graphData` -- the parsed JSON from `/upload` (`nodes`, `edges`, `packets`, `anomalies`, `stats`, `credentials`, `files`, `ot_commands`)
@@ -120,7 +173,7 @@ Key functions in call order:
 
 **Color maps** (`HOST_COLORS`, `PROTO_COLORS`) at the top of `app.js` must stay in sync with any new host types or protocols added to `PORT_MAP`.
 
-## Key limits (change in `app.py`)
+### Key limits (change in `legacy/app.py`)
 
 | Limit | Default | Location |
 |---|---|---|

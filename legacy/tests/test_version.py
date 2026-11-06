@@ -4,8 +4,9 @@ import sys
 
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+LEGACY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(LEGACY)  # repo root: VERSION, CHANGELOG.md, scripts/
+sys.path.insert(0, LEGACY)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import bump_version  # noqa: E402
