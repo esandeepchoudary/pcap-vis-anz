@@ -1,9 +1,15 @@
 """Engagements, members, capture points, audit log."""
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+import os
+import tempfile
+from pathlib import Path as Path_
+
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from pcapvis.api.deps import current_user, get_db, get_settings_dep
 from pcapvis.api.schemas import (
@@ -32,7 +38,8 @@ from pcapvis.db.models import (
     User,
 )
 from pcapvis.engagements import access, audit
-from pcapvis.engagements.storage import Storage
+from pcapvis.engagements.bundle import BundleError, export_bundle, import_bundle
+from pcapvis.engagements.storage import Storage, safe_filename
 
 router = APIRouter(prefix="/api", tags=["engagements"])
 NOT_FOUND = "Engagement not found."
@@ -384,3 +391,81 @@ def audit_log(limit: int = Query(default=100, ge=1, le=1000), ctx=Depends(as_vie
         AuditEventOut(id=e.id, at=e.at, user=name, action=e.action, target=e.target, details=e.details)
         for e, name in rows
     ]
+
+
+# ── export / import (.pcapvis bundles) ────────────────────────────────────────
+
+
+@router.get(
+    "/engagements/{engagement_id}/export",
+    responses={200: {"content": {"application/zip": {}}, "description": "A .pcapvis bundle"}},
+)
+def export_engagement(
+    request: Request,
+    captures: bool = Query(default=True, description="Include the original capture files"),
+    files: bool = Query(default=True, description="Include files extracted from traffic"),
+    ctx=Depends(as_viewer),
+    store: Storage = Depends(storage),
+):
+    eng, _role, user, db = ctx
+    tmp_dir = Path_(request.app.state.settings.data_dir) / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="export-", suffix=".pcapvis", dir=tmp_dir)
+    os.close(fd)
+    export_bundle(store, eng, Path_(tmp), include_captures=captures, include_files=files)
+    audit.record(
+        db,
+        user,
+        "engagement.export",
+        engagement_id=eng.id,
+        target=eng.name,
+        details={"captures": captures, "files": files},
+    )
+    db.commit()
+    return FileResponse(
+        tmp,
+        media_type="application/zip",
+        filename=f"{safe_filename(eng.name)}.pcapvis",
+        background=BackgroundTask(os.unlink, tmp),
+    )
+
+
+@router.post(
+    "/engagements/import",
+    response_model=EngagementOut,
+    status_code=201,
+    responses={400: {"model": ErrorOut}, 403: {"model": ErrorOut}},
+)
+def import_engagement(
+    request: Request,
+    file: UploadFile = File(...),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    store: Storage = Depends(storage),
+) -> EngagementOut:
+    if not access.can_create_engagement(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only leads and admins can import engagements.")
+    settings = request.app.state.settings
+    tmp_dir = Path_(settings.data_dir) / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="import-", suffix=".pcapvis", dir=tmp_dir)
+    try:
+        size = 0
+        with os.fdopen(fd, "wb") as out:
+            while chunk := file.file.read(1 << 20):
+                size += len(chunk)
+                if size > settings.max_upload_bytes:
+                    raise HTTPException(
+                        status.HTTP_413_CONTENT_TOO_LARGE, "Bundle is larger than the upload limit."
+                    )
+                out.write(chunk)
+        try:
+            eng = import_bundle(db, store, user, Path_(tmp), max_total=settings.max_upload_bytes * 4)
+        except BundleError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    finally:
+        os.unlink(tmp)
+    runner = getattr(request.app.state, "job_runner", None)
+    if runner is not None:
+        runner.wake.set()  # captures imported without results get analysed
+    return engagement_out(db, eng, MemberRole.lead)
