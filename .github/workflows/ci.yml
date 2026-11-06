@@ -145,3 +145,28 @@ jobs:
           curl -sf localhost:8080/api/system | tee /dev/stderr | grep -q '"ok":true'
           curl -sf localhost:8080/ | grep -q "<title>PCAP Network Visualizer"
           docker rm -f app
+
+  # Routine: once every check above passes, merge the PR into develop automatically.
+  # Only for PRs into develop, opened by the repo owner, not drafts, not labelled "no-automerge".
+  # Releases to master stay manual. --match-head-commit merges exactly the commit that was tested.
+  auto-merge:
+    name: Auto-merge into develop
+    needs: [backend, backend-postgres, frontend, e2e, parity, legacy, docker]
+    if: >-
+      github.event_name == 'pull_request'
+      && github.base_ref == 'develop'
+      && github.event.pull_request.user.login == github.repository_owner
+      && !github.event.pull_request.draft
+      && !contains(github.event.pull_request.labels.*.name, 'no-automerge')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge "$PR" --repo "${{ github.repository }}" --merge --match-head-commit "$SHA"
+

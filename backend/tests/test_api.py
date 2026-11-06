@@ -349,3 +349,19 @@ def test_missing_frontend_gives_503(make_settings, tmp_path):
     s = make_settings(frontend_dist=tmp_path / "nowhere")
     with make_client(s) as c:
         assert c.get("/").status_code == 503
+
+
+def test_openapi_has_no_python_version_dependent_texts(laptop):
+    """Python 3.13 renamed some HTTP status phrases (413, 416, 422). Responses for those codes must
+    carry explicit descriptions, or the generated frontend types differ between Python versions."""
+    schema = laptop.get("/api/openapi.json").json()
+    for path, ops in schema["paths"].items():
+        for op in ops.values():
+            for code, resp in op.get("responses", {}).items():
+                if code in ("413", "416"):
+                    assert resp["description"] not in (
+                        "Content Too Large",
+                        "Request Entity Too Large",
+                        "Range Not Satisfiable",
+                        "Requested Range Not Satisfiable",
+                    ), f"{path} {code}: give this response an explicit description"

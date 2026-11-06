@@ -138,3 +138,9 @@
 .auth-card .brand { justify-content: center; font-size: var(--text-lg); }
 .auth-card form { display: grid; gap: var(--space-3); }
 .auth-card .btn { height: 38px; justify-content: center; }
+
+.switcher { position: relative; margin-left: var(--space-3); }
+.engagement-switch { margin-left: 0; cursor: pointer; max-width: 320px; }
+.switch-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-left { left: 0; right: auto; top: 38px; min-width: 280px; }
+.menu-sep { border: 0; border-top: 1px solid var(--border); margin: var(--space-1) 0; }

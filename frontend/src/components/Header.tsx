@@ -1,16 +1,17 @@
-import { Briefcase, ChevronDown, KeyRound, LogOut, Moon, Search, Sun } from 'lucide-react'
+import { ChevronDown, KeyRound, LogOut, Moon, Search, Sun } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { SystemInfo, User } from '../api/client'
 import { useLogout } from '../api/hooks'
 import { useTheme } from '../theme/context'
+import { EngagementSwitcher } from './EngagementSwitcher'
 
 function initials(user: User) {
   const name = user.display_name || user.username
   return name.split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase()
 }
 
-export function Header({ system, user }: { system: SystemInfo; user: User }) {
+export function Header({ system, user, eid }: { system: SystemInfo; user: User; eid: number | null }) {
   const { theme, toggle } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -38,9 +39,7 @@ export function Header({ system, user }: { system: SystemInfo; user: User }) {
         <span>PCAP Visualizer</span>
         <small>v{system.version}</small>
       </div>
-      <span className="engagement-switch" title="Engagements arrive in M2">
-        <Briefcase size={15} aria-hidden /> No engagement open <ChevronDown size={14} aria-hidden />
-      </span>
+      <EngagementSwitcher eid={eid} />
       <label className="header-search">
         <span className="sr-only">Search</span>
         <Search size={15} aria-hidden />

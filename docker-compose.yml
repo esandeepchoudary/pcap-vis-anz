@@ -1,4 +1,4 @@
-# Team server mode: app + PostgreSQL.
+# Team server mode: web app + analysis worker + PostgreSQL.
 #   cp .env.example .env   # set POSTGRES_PASSWORD and PCAPVIS_ADMIN_PASSWORD
 #   docker compose up -d
 #   open http://<server>:8080 and sign in as the admin user
@@ -16,10 +16,30 @@ services:
       PCAPVIS_ADMIN_USERNAME: ${PCAPVIS_ADMIN_USERNAME:-admin}
       PCAPVIS_ADMIN_PASSWORD: ${PCAPVIS_ADMIN_PASSWORD:-}
       PCAPVIS_COOKIE_SECURE: ${PCAPVIS_COOKIE_SECURE:-false}
+      PCAPVIS_RUN_JOBS_IN_APP: "false"  # analysis runs in the worker service below
     ports:
       - "${PCAPVIS_PUBLISH_PORT:-8080}:8080"
     volumes:
       - captures:/data
+
+  # Analyses uploaded captures. Scale with: docker compose up -d --scale worker=2
+  worker:
+    image: pcapvis:latest
+    restart: unless-stopped
+    command: ["worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    environment:
+      PCAPVIS_MODE: server
+      PCAPVIS_DATABASE_URL: postgresql+psycopg://pcapvis:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/pcapvis
+      PCAPVIS_JOB_CONCURRENCY: ${PCAPVIS_JOB_CONCURRENCY:-1}
+    volumes:
+      - captures:/data
+    healthcheck:
+      disable: true
 
   db:
     image: postgres:17-alpine

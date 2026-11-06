@@ -30,9 +30,13 @@ This file provides guidance to coding agents when working with code in this repo
 git checkout develop && git checkout -b feature/<short-description>
 ```
 
-Once a feature is fully implemented and tests pass, ask the user to review and merge:
-
-> "Feature is complete and tests pass. Please review and merge `feature/<name>` into `develop` when ready."
+Once a feature is fully implemented and tests pass locally, push it and open a PR into `develop`.
+**Auto-merge routine:** CI's final `auto-merge` job merges PRs into `develop` automatically once every
+check passes (owner's PRs only; skipped for drafts and PRs labelled `no-automerge`; it merges exactly the
+tested commit). After opening the PR, watch CI; when it has merged, sync local `develop`
+(`git checkout develop && git merge --ff-only origin/develop`) and branch the next feature from it.
+If CI fails, fix it on the branch (a new push re-runs CI). Merges into `master` (releases) stay manual:
+ask the user.
 
 ## Workflow
 
@@ -117,6 +121,19 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
   `api/client.ts` (typed `openapi-fetch` client) + `api/hooks.ts` (TanStack Query), `theme/` (light default,
   dark optional; **all colours come from `theme/tokens.css`** so both themes stay complete), icons from
   `lucide-react` (no emoji).
+
+### Engagements and jobs (M2)
+
+- **Access:** every engagement route goes through `EngagementAccess` (`as_viewer` / `as_editor` /
+  `as_lead`) in `api/routes_engagements.py`; non-members get **404**, never 403, so names don't leak.
+  Engagement roles are capped by global role (`MAX_MEMBER_ROLE`); Quick looks belong only to their creator.
+- **Mutations call `eng.touch()`** (bumps `revision`) and `audit.record(...)`. The live-update stream
+  (`/events`) and the frontend's cache invalidation depend on the revision changing.
+- **Jobs:** `jobs/runner.py`. Claim with a conditional UPDATE (never "select then update"); progress,
+  heartbeat and cancel go through the DB so `pcapvis worker` processes behave like the in-app runner.
+- **Storage layout:** `engagements/storage.py` is the only place that builds paths; user-supplied names
+  go through `safe_filename`. Imported bundles are untrusted: extend `bundle.py`'s whitelist and
+  validation, never bypass it.
 
 ### Packet engine (`backend/pcapvis/engine/`, M1)
 

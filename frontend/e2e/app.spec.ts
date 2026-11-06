@@ -14,7 +14,7 @@ async function signIn(page: Page, username = E2E_ADMIN.username, password = E2E_
   await page.getByLabel('Username').fill(username)
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Engagements', exact: true })).toBeVisible()
 }
 
 test('sign-in page, wrong password, then sign in', async ({ page }) => {
@@ -27,23 +27,18 @@ test('sign-in page, wrong password, then sign in', async ({ page }) => {
   await expect(page.getByRole('alert')).toHaveText(/Wrong username or password/)
   await page.getByLabel('Password').fill(E2E_ADMIN.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Engagements', exact: true })).toBeVisible()
   await expect(page.getByText(/tshark \d+\.\d+\.\d+/)).toBeVisible()
   expect(problems.filter((p) => !p.includes('401'))).toEqual([])
 })
 
-test('workbench navigation, deep links, and reload keep the session', async ({ page }) => {
-  await signIn(page) // the pre-sign-in "who am I" 401 is expected, so watch from here on
+test('deep links and reload keep the session', async ({ page }) => {
+  await signIn(page)
   const problems = watchConsole(page)
-  const rail = page.getByRole('navigation', { name: 'Workflow stages' })
-  for (const [label, heading] of [['Assets', 'Asset inventory'], ['Purdue', 'Purdue map'], ['Report', 'Report & exports']]) {
-    await rail.getByRole('link', { name: label }).click()
-    await expect(page.getByRole('heading', { name: heading })).toBeVisible()
-  }
-  await page.goto('/architecture') // deep link served by the SPA fallback
-  await expect(page.getByRole('heading', { name: 'Network architecture' })).toBeVisible()
+  await page.goto('/quicklook')
+  await expect(page.getByRole('heading', { name: /Quick look/ })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Network architecture' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Quick look/ })).toBeVisible()
   expect(problems).toEqual([])
 })
 
@@ -73,7 +68,7 @@ test('admin creates a user who can then sign in with restricted access', async (
   await signIn(other, username, 'viewer password 1')
   await expect(other.getByRole('link', { name: 'Users' })).toHaveCount(0)
   await other.goto('/admin/users')
-  await expect(other.getByRole('heading', { name: 'Welcome' })).toBeVisible()
+  await expect(other.getByRole('heading', { name: 'Engagements', exact: true })).toBeVisible()
   // The API refuses too, not just the UI.
   const r = await other.request.get('/api/users')
   expect(r.status()).toBe(403)

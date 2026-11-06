@@ -433,3 +433,15 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Multiple MACs sending from one IP (not via ARP) is not yet a finding; needs VLAN- and gateway-aware logic
 - [ ] Parity corpus: add real-world captures (permission-cleared) next to the synthetic ones
 
+### v2 rebuild: M2 engagements and captures (2026-11-06, feature/m2-engagements)
+
+- [x] Engagements, members, capture points, audit log; permission matrix tested
+- [x] Uploads + background job queue (in-app or separate worker), cancel, re-analyse, crash recovery
+- [x] Live updates (server-sent events), Quick look, `.pcapvis` export/import (hardened)
+- [x] UI: engagements home, switcher, overview, captures, capture report with inspector, Quick look
+- [x] Bugs caught while building: Alembic rendered the custom datetime type with an import it didn't have; Quick look creators were capped by their global role and couldn't manage their own Quick look; the header asked for engagement "0" when none was open; failed (4xx) requests were retried for ~7 s before showing "no access"
+- [ ] Large uploads are written twice (Starlette spools to temp, then we copy); stream straight to the capture folder
+- [ ] Engagement totals add up per capture (hosts double-count across captures) until the merged asset inventory (M3)
+- [ ] Bundle export builds the whole zip before sending; stream it for multi-GB engagements
+- [ ] Upgrade `gh` CLI on the dev machine (2.46 fails on `gh pr edit` because of retired Projects-classic API)
+
