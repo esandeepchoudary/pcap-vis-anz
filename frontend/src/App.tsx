@@ -6,6 +6,7 @@ import { AppShell } from './components/AppShell'
 import { Account } from './pages/Account'
 import { ArchitecturePage } from './pages/ArchitecturePage'
 import { AssetsPage } from './pages/AssetsPage'
+import { FindingsPage } from './pages/FindingsPage'
 import { FlowsPage } from './pages/FlowsPage'
 import { PurduePage } from './pages/PurduePage'
 import { CaptureReport } from './pages/CaptureReport'
@@ -15,6 +16,7 @@ import { EngagementOverview } from './pages/EngagementOverview'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { QuickLook } from './pages/QuickLook'
+import { ReportPage } from './pages/ReportPage'
 import { StagePage } from './pages/StagePage'
 import { Users } from './pages/Users'
 import { STAGES } from './stages'
@@ -23,7 +25,7 @@ function FullPage({ children }: { children: React.ReactNode }) {
   return <div className="auth-page"><div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>{children}</div></div>
 }
 
-const BUILT = new Set(['overview', 'captures', 'assets', 'purdue', 'architecture', 'flows'])
+const BUILT = new Set(['overview', 'captures', 'assets', 'purdue', 'architecture', 'flows', 'findings', 'report'])
 const LATER_STAGES = STAGES.filter((s) => !BUILT.has(s.id))
 
 export default function App() {
@@ -66,6 +68,8 @@ export default function App() {
           <Route path="purdue" element={<PurduePage />} />
           <Route path="architecture" element={<ArchitecturePage />} />
           <Route path="flows" element={<FlowsPage />} />
+          <Route path="findings" element={<FindingsPage />} />
+          <Route path="report" element={<ReportPage />} />
           {LATER_STAGES.map((s) => <Route key={s.id} path={s.segment} element={<StagePage stage={s} />} />)}
         </Route>
         {sys.auth_required && <Route path="account" element={<Account />} />}

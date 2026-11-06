@@ -48,11 +48,11 @@ export const STAGES: Stage[] = [
   {
     id: 'findings', segment: 'findings', label: 'Findings', title: 'Findings', icon: ShieldAlert, milestone: 'M8',
     summary: 'Anomalies and analyst findings with triage, evidence, and report inclusion.',
-    plans: ['Findings from rules and manual entries', 'Status, severity, notes', 'Evidence bundles'],
+    plans: [],
   },
   {
     id: 'report', segment: 'report', label: 'Report', title: 'Report & exports', icon: FileText, milestone: 'M8',
     summary: 'Client-ready deliverables.',
-    plans: ['Asset register (XLSX)', 'Editable diagrams (SVG, draw.io)', 'DOCX/PDF report', 'One-click engagement bundle'],
+    plans: [],
   },
 ]

@@ -43,6 +43,7 @@ from pcapvis.db.models import (
     Conduit,
     Engagement,
     EngagementMember,
+    Finding,
     MemberRole,
     User,
     Zone,
@@ -52,7 +53,7 @@ from pcapvis.engagements.storage import Storage, safe_filename
 from pcapvis.engine.model import AnalysisResult
 
 FORMAT = "pcapvis-engagement"
-FORMAT_VERSION = 3  # 2: asset inventory (M3); 3: zones and conduits (M6)
+FORMAT_VERSION = 4  # 2: asset inventory (M3); 3: zones and conduits (M6); 4: findings triage (M8)
 MAX_RATIO = 200  # uncompressed/compressed, per deflated member
 CHUNK = 1 << 20
 _CAPTURE_PATH = re.compile(r"^captures/(\d{1,12})/([A-Za-z0-9._ -]{1,200})$")
@@ -149,6 +150,21 @@ class _ConduitMeta(BaseModel):
     description: str = Field(default="", max_length=5000)
 
 
+class _FindingMeta(BaseModel):
+    key: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    source: Literal["rule", "manual"]
+    title: str = Field(default="", max_length=300)
+    description: str = Field(default="", max_length=20_000)
+    severity: Literal["critical", "high", "medium", "low", "info"] | None = None
+    severity_override: Literal["critical", "high", "medium", "low", "info"] | None = None
+    status: Literal["open", "confirmed", "false_positive", "accepted_risk", "resolved"] = "open"
+    notes: str = Field(default="", max_length=20_000)
+    recommendation: str = Field(default="", max_length=20_000)
+    include_in_report: bool | None = None
+    asset_keys: list[int] = Field(default_factory=list, max_length=1000)
+    updated_by: str = Field(default="", max_length=64)
+
+
 class Manifest(BaseModel):
     format: Literal["pcapvis-engagement"]
     format_version: int = Field(ge=1, le=FORMAT_VERSION)
@@ -161,6 +177,7 @@ class Manifest(BaseModel):
     assets: list[_AssetMeta] | None = Field(default=None, max_length=200_000)  # None: v1, derive from results
     zones: list[_ZoneMeta] = Field(default_factory=list, max_length=10_000)
     conduits: list[_ConduitMeta] = Field(default_factory=list, max_length=50_000)
+    findings: list[_FindingMeta] = Field(default_factory=list, max_length=100_000)
 
 
 # ── export ────────────────────────────────────────────────────────────────────
@@ -249,6 +266,23 @@ def export_bundle(
                     description=c.description,
                 )
                 for c in object_session(eng).scalars(select(Conduit).where(Conduit.engagement_id == eng.id))
+            ],
+            findings=[
+                _FindingMeta(
+                    key=f.key,
+                    source=f.source,
+                    title=f.title,
+                    description=f.description,
+                    severity=f.severity,
+                    severity_override=f.severity_override,
+                    status=f.status,
+                    notes=f.notes,
+                    recommendation=f.recommendation,
+                    include_in_report=f.include_in_report,
+                    asset_keys=f.asset_ids or [],
+                    updated_by=f.updated_by,
+                )
+                for f in object_session(eng).scalars(select(Finding).where(Finding.engagement_id == eng.id))
             ],
         )
         z.writestr("manifest.json", manifest.model_dump_json(indent=2), compress_type=zipfile.ZIP_DEFLATED)
@@ -431,8 +465,11 @@ def import_bundle(db: Session, storage: Storage, user: User, bundle: Path, *, ma
                 cap_ids[cm.key] = _import_capture(db, z, members, storage, eng, user, cm, point_ids)
             done = {k: c for k, c in cap_ids.items() if c.status == CaptureStatus.done}
             if manifest.assets is not None:
-                _import_assets(db, storage, eng, manifest.assets, done)
+                asset_ids = _import_assets(db, storage, eng, manifest.assets, done)
+            else:
+                asset_ids = {}
             _import_zones(db, eng, manifest)
+            _import_findings(db, eng, manifest.findings, asset_ids)
             for cap in done.values():  # hosts the manifest didn't map (and every host for v1 bundles)
                 asset_merge.ingest_capture(
                     db, cap, _load_result(storage, cap), keep_existing=True, actor="import", record_auto=False
@@ -525,11 +562,41 @@ def _clean_values(values: dict[str, Any], what: str) -> dict[str, Any]:
         raise BundleError(f"Invalid asset {what}: {exc}") from exc
 
 
-def _import_assets(db, storage: Storage, eng, metas: list[_AssetMeta], done: dict[int, Capture]) -> None:
+def _import_findings(db, eng, metas: list[_FindingMeta], asset_ids: dict[int, int]) -> None:
+    keys = [m.key for m in metas]
+    if len(set(keys)) != len(keys):
+        raise BundleError("Invalid manifest: duplicate findings.")
+    for m in metas:
+        if m.source == "manual" and (not m.title or m.severity is None):
+            raise BundleError("Invalid manifest: a manual finding needs a title and a severity.")
+        db.add(
+            Finding(
+                engagement_id=eng.id,
+                key=m.key,
+                source=m.source,
+                title=m.title,
+                description=m.description,
+                severity=m.severity,
+                severity_override=m.severity_override,
+                status=m.status,
+                notes=m.notes,
+                recommendation=m.recommendation,
+                include_in_report=m.include_in_report,
+                asset_ids=sorted({asset_ids[k] for k in m.asset_keys if k in asset_ids}),
+                updated_by=m.updated_by,
+            )
+        )
+    db.flush()
+
+
+def _import_assets(
+    db, storage: Storage, eng, metas: list[_AssetMeta], done: dict[int, Capture]
+) -> dict[int, int]:
     keys = [m.key for m in metas]
     if len(set(keys)) != len(keys):
         raise BundleError("Invalid manifest: duplicate asset keys.")
     by_capture: dict[int, list[tuple[Asset, _SightingMeta]]] = {}
+    key_to_id: dict[int, int] = {}
     for m in metas:
         try:
             ips, macs = parse_identifiers(m.ips, m.macs, limit=2000)
@@ -552,6 +619,7 @@ def _import_assets(db, storage: Storage, eng, metas: list[_AssetMeta], done: dic
         )
         db.add(a)
         db.flush()
+        key_to_id[m.key] = a.id
         for h in m.history:
             if h.field is not None and h.field not in F.FIELDS:
                 raise BundleError(f"Invalid asset history: unknown field {h.field[:32]!r}.")
@@ -587,6 +655,7 @@ def _import_assets(db, storage: Storage, eng, metas: list[_AssetMeta], done: dic
                 )
             )
     db.flush()
+    return key_to_id
 
 
 def _jsonable(v: Any) -> Any:

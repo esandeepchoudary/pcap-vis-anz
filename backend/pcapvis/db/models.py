@@ -378,3 +378,40 @@ class Conduit(Base):
     allowed: Mapped[list] = mapped_column(JSON, default=list)  # protocol names; empty = anything
     description: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class FindingHit(Base):
+    """A rule finding (anomaly) as one capture produced it; rebuilt on every merge of the capture (M8)."""
+
+    __tablename__ = "finding_hits"
+    __table_args__ = (UniqueConstraint("capture_id", "key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("engagements.id", ondelete="CASCADE"), index=True)
+    capture_id: Mapped[int] = mapped_column(ForeignKey("captures.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(64), index=True)  # the anomaly id: stable across captures
+    data: Mapped[dict] = mapped_column(JSON)  # the engine's Anomaly + src/dst asset ids
+
+
+class Finding(Base):
+    """Analyst state for a finding: triage of a rule finding (by key), or a finding written by hand (M8)."""
+
+    __tablename__ = "findings"
+    __table_args__ = (UniqueConstraint("engagement_id", "key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("engagements.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(8))  # rule | manual
+    title: Mapped[str] = mapped_column(String(300), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    severity: Mapped[str | None] = mapped_column(String(10), nullable=True)  # manual findings
+    severity_override: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    recommendation: Mapped[str] = mapped_column(Text, default="")
+    include_in_report: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # None: by status
+    asset_ids: Mapped[list] = mapped_column(JSON, default=list)
+    updated_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
