@@ -44,11 +44,14 @@ def new_engagement(c, name="ACME Plant 3", **kw):
 
 # ── laptop mode ───────────────────────────────────────────────────────────────
 
+
 def test_laptop_crud_and_listing(laptop):
     e = new_engagement(laptop, client="ACME", site="Plant 3", description="SPAN on core switch")
     assert e["my_role"] == "lead" and e["capture_count"] == 0 and e["member_count"] == 1
     assert [x["id"] for x in laptop.get("/api/engagements").json()] == [e["id"]]
-    r = laptop.patch(f"/api/engagements/{e['id']}", json={"name": "  ACME P3  ", "site": "Plant 3B"}, headers=H)
+    r = laptop.patch(
+        f"/api/engagements/{e['id']}", json={"name": "  ACME P3  ", "site": "Plant 3B"}, headers=H
+    )
     assert r.json()["name"] == "ACME P3" and r.json()["revision"] > e["revision"]
     assert laptop.get(f"/api/engagements/{e['id']}").json()["site"] == "Plant 3B"
     assert laptop.delete(f"/api/engagements/{e['id']}", headers=H).status_code == 204
@@ -59,8 +62,12 @@ def test_validation(laptop):
     assert laptop.post("/api/engagements", json={"name": ""}, headers=H).status_code == 422
     assert laptop.post("/api/engagements", json={"name": "x" * 201}, headers=H).status_code == 422
     e = new_engagement(laptop)
-    assert laptop.patch(f"/api/engagements/{e['id']}", json={"status": "deleted"}, headers=H).status_code == 422
-    assert laptop.patch(f"/api/engagements/{e['id']}", json={"is_quicklook": True}, headers=H).status_code == 422
+    assert (
+        laptop.patch(f"/api/engagements/{e['id']}", json={"status": "deleted"}, headers=H).status_code == 422
+    )
+    assert (
+        laptop.patch(f"/api/engagements/{e['id']}", json={"is_quicklook": True}, headers=H).status_code == 422
+    )
     assert laptop.get("/api/engagements/0").status_code == 422
     assert laptop.get("/api/engagements/99999").status_code == 404
 
@@ -74,7 +81,10 @@ def test_archive_hides_from_default_list(laptop):
 
 def test_members_endpoints_are_server_only(laptop):
     e = new_engagement(laptop)
-    assert laptop.put(f"/api/engagements/{e['id']}/members/1", json={"role": "editor"}, headers=H).status_code == 400
+    assert (
+        laptop.put(f"/api/engagements/{e['id']}/members/1", json={"role": "editor"}, headers=H).status_code
+        == 400
+    )
     assert laptop.get("/api/directory").status_code == 400
 
 
@@ -84,7 +94,10 @@ def test_csrf_header_required(laptop):
 
 # ── creation rights ───────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("role,allowed", [("admin", True), ("lead", True), ("consultant", False), ("viewer", False)])
+
+@pytest.mark.parametrize(
+    "role,allowed", [("admin", True), ("lead", True), ("consultant", False), ("viewer", False)]
+)
 def test_who_can_create(server, role, allowed):
     c, _ = as_user(server, f"u{role}", role)
     r = c.post("/api/engagements", json={"name": "x"}, headers=H)
@@ -101,14 +114,30 @@ def test_creator_becomes_lead_member(server):
 
 # ── visibility and the role matrix ────────────────────────────────────────────
 
+
 def test_non_members_cannot_see_or_probe(server):
     lead, _ = as_user(server, "lea", "lead")
     outsider, _ = as_user(server, "out", "consultant")
     e = new_engagement(lead, name="Secret Plant")
     assert outsider.get("/api/engagements").json() == []
-    for method, url in (("get", ""), ("patch", ""), ("delete", ""), ("get", "/members"), ("get", "/capture-points"),
-                        ("get", "/audit")):
-        r = getattr(outsider, method)(f"/api/engagements/{e['id']}{url}", **({"headers": H, "json": {}} if method == "patch" else {"headers": H} if method == "delete" else {}))
+    for method, url in (
+        ("get", ""),
+        ("patch", ""),
+        ("delete", ""),
+        ("get", "/members"),
+        ("get", "/capture-points"),
+        ("get", "/audit"),
+    ):
+        r = getattr(outsider, method)(
+            f"/api/engagements/{e['id']}{url}",
+            **(
+                {"headers": H, "json": {}}
+                if method == "patch"
+                else {"headers": H}
+                if method == "delete"
+                else {}
+            ),
+        )
         assert r.status_code == 404 and "Secret" not in r.text  # same answer as a missing engagement
 
 
@@ -120,8 +149,10 @@ def test_admin_sees_everything(server):
     assert admin.get(f"/api/engagements/{e['id']}").json()["my_role"] == "lead"
 
 
-@pytest.mark.parametrize("member_role,can_view,can_edit,can_lead", [
-    ("viewer", True, False, False), ("editor", True, True, False), ("lead", True, True, True)])
+@pytest.mark.parametrize(
+    "member_role,can_view,can_edit,can_lead",
+    [("viewer", True, False, False), ("editor", True, True, False), ("lead", True, True, True)],
+)
 def test_engagement_role_matrix(server, member_role, can_view, can_edit, can_lead):
     lead, _ = as_user(server, "lea", "lead")
     other_global = "lead" if member_role == "lead" else "consultant"
@@ -137,12 +168,22 @@ def test_engagement_role_matrix(server, member_role, can_view, can_edit, can_lea
     r = other.put(f"/api/engagements/{eid}/members/{other_id}", json={"role": member_role}, headers=H)
     assert (r.status_code == 200) is can_lead
     if not can_edit:
-        assert "editor role" in other.post(f"/api/engagements/{eid}/capture-points", json={"name": "y"}, headers=H).text
+        assert (
+            "editor role"
+            in other.post(f"/api/engagements/{eid}/capture-points", json={"name": "y"}, headers=H).text
+        )
 
 
-@pytest.mark.parametrize("global_role,requested,ok", [
-    ("viewer", "viewer", True), ("viewer", "editor", False), ("consultant", "editor", True),
-    ("consultant", "lead", False), ("lead", "lead", True)])
+@pytest.mark.parametrize(
+    "global_role,requested,ok",
+    [
+        ("viewer", "viewer", True),
+        ("viewer", "editor", False),
+        ("consultant", "editor", True),
+        ("consultant", "lead", False),
+        ("lead", "lead", True),
+    ],
+)
 def test_global_role_caps_engagement_role(server, global_role, requested, ok):
     lead, _ = as_user(server, "lea", "lead")
     _, uid = as_user(server, "cap", global_role)
@@ -162,7 +203,10 @@ def test_global_demotion_caps_existing_membership(server):
     admin.patch(f"/api/users/{bob_id}", json={"role": "viewer"}, headers=H)  # signs bob out
     bob = login(TestClient(server.app), "bob")
     assert bob.get(f"/api/engagements/{e['id']}").json()["my_role"] == "viewer"
-    assert bob.post(f"/api/engagements/{e['id']}/capture-points", json={"name": "z"}, headers=H).status_code == 403
+    assert (
+        bob.post(f"/api/engagements/{e['id']}/capture-points", json={"name": "z"}, headers=H).status_code
+        == 403
+    )
 
 
 def test_last_lead_protected(server):
@@ -193,7 +237,12 @@ def test_cannot_add_unknown_or_disabled_user(server):
     admin.patch(f"/api/users/{gone_id}", json={"is_active": False}, headers=H)
     e = new_engagement(lead)
     for uid in (gone_id, 99999):
-        assert lead.put(f"/api/engagements/{e['id']}/members/{uid}", json={"role": "viewer"}, headers=H).status_code == 404
+        assert (
+            lead.put(
+                f"/api/engagements/{e['id']}/members/{uid}", json={"role": "viewer"}, headers=H
+            ).status_code
+            == 404
+        )
 
 
 def test_directory_for_leads_only(server):
@@ -205,6 +254,7 @@ def test_directory_for_leads_only(server):
 
 
 # ── capture points ────────────────────────────────────────────────────────────
+
 
 def test_capture_points_crud_and_unique_names(laptop):
     e = new_engagement(laptop)
@@ -224,8 +274,12 @@ def test_capture_points_crud_and_unique_names(laptop):
 def test_capture_point_of_other_engagement_is_404(laptop):
     a, b = new_engagement(laptop, name="A"), new_engagement(laptop, name="B")
     p = laptop.post(f"/api/engagements/{a['id']}/capture-points", json={"name": "x"}, headers=H).json()
-    assert laptop.patch(f"/api/engagements/{b['id']}/capture-points/{p['id']}", json={"name": "y"},
-                        headers=H).status_code == 404
+    assert (
+        laptop.patch(
+            f"/api/engagements/{b['id']}/capture-points/{p['id']}", json={"name": "y"}, headers=H
+        ).status_code
+        == 404
+    )
 
 
 def test_audit_log_records_actions(laptop):

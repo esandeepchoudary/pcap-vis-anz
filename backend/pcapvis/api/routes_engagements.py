@@ -163,6 +163,10 @@ def get_engagement(ctx=Depends(as_viewer)) -> EngagementOut:
 def update_engagement(body: EngagementUpdate, ctx=Depends(as_lead)) -> EngagementOut:
     eng, role, user, db = ctx
     changes = body.model_dump(exclude_unset=True)
+    if eng.is_quicklook and changes.get("is_quicklook") is False and not access.can_create_engagement(user):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only leads and admins can turn a Quick look into an engagement."
+        )
     for key, value in changes.items():
         setattr(eng, key, value.strip() if isinstance(value, str) and key != "description" else value)
     eng.touch()

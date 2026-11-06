@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     run_jobs_in_app: bool = True
     job_concurrency: int = 1  # captures analysed at the same time per process
     analysis_workers: int | None = None  # tshark workers per capture (None = automatic by size)
+    events_poll_s: float = 1.0  # how often the live-update stream checks for changes
 
     # Server mode first run: create this admin if no users exist yet.
     admin_username: str | None = None

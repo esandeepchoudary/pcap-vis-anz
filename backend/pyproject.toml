@@ -59,7 +59,7 @@ ignore = [
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency-injection idiom
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body"]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.File", "fastapi.Form", "fastapi.Path"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S"]

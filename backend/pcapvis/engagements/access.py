@@ -10,6 +10,9 @@ def member_role(db: Session, user: User, engagement: Engagement) -> MemberRole |
     """The user's effective role in this engagement, or None if they can't see it at all."""
     if user.role == Role.admin:
         return MemberRole.lead
+    if engagement.is_quicklook:
+        # Quick looks are personal: the creator leads it (whatever their global role); nobody else sees it.
+        return MemberRole.lead if engagement.created_by == user.id else None
     m = db.get(EngagementMember, (engagement.id, user.id))
     if m is None:
         return None

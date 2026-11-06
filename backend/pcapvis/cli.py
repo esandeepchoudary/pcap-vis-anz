@@ -182,6 +182,40 @@ def _cmd_analyze(args) -> int:
     return 0
 
 
+def _cmd_worker(args) -> int:
+    """Run analysis jobs in this process (team server: set PCAPVIS_RUN_JOBS_IN_APP=false on the web app)."""
+    import signal
+    import threading
+
+    from pcapvis.config import get_settings
+    from pcapvis.db.migrate import upgrade_to_head
+    from pcapvis.db.session import make_engine, make_session_factory
+    from pcapvis.jobs.runner import JobRunner
+    from pcapvis.tshark import check_tshark, install_hint
+
+    s = get_settings()
+    st = check_tshark(s.tshark_path, s.tshark_min_version)
+    if not st.ok:
+        print(f"Cannot start worker: {st.message}\n\nInstall it:\n{install_hint()}", file=sys.stderr)
+        return 1
+    s.data_dir.mkdir(parents=True, exist_ok=True)
+    upgrade_to_head(s.resolved_database_url)
+    engine = make_engine(s.resolved_database_url)
+    runner = JobRunner(s, make_session_factory(engine), concurrency=args.concurrency)
+    done = threading.Event()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: done.set())
+    runner.start()
+    print(
+        f"pcapvis {__version__} worker {runner.name}: {runner.concurrency} job(s) at a time. Ctrl+C to stop."
+    )
+    done.wait()
+    print("Stopping: running analyses go back to the queue.")
+    runner.stop()
+    engine.dispose()
+    return 0
+
+
 def _cmd_openapi(args) -> int:
     import tempfile
     from pathlib import Path
@@ -217,6 +251,10 @@ def main(argv: list[str] | None = None) -> int:
     cu.set_defaults(func=_cmd_create_user)
 
     sub.add_parser("db-upgrade", help="Apply database migrations").set_defaults(func=_cmd_db_upgrade)
+
+    wk = sub.add_parser("worker", help="Run capture analysis jobs (team server)")
+    wk.add_argument("--concurrency", type=int, help="Captures analysed at the same time")
+    wk.set_defaults(func=_cmd_worker)
 
     an = sub.add_parser("analyze", help="Analyse a capture file and print a summary")
     an.add_argument("capture")
