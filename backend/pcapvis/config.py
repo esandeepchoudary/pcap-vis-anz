@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # Set true when served over HTTPS so the session cookie is only sent on TLS.
     cookie_secure: bool = False
 
+    # Captures
+    max_upload_bytes: int = 8 * 1024 * 1024 * 1024  # per file
+    # Analysis jobs: run inside the web process (simple), or set false and run `pcapvis worker` separately.
+    run_jobs_in_app: bool = True
+    job_concurrency: int = 1  # captures analysed at the same time per process
+    analysis_workers: int | None = None  # tshark workers per capture (None = automatic by size)
+
     # Server mode first run: create this admin if no users exist yet.
     admin_username: str | None = None
     admin_password: str | None = None

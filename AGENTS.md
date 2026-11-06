@@ -30,9 +30,13 @@ This file provides guidance to coding agents when working with code in this repo
 git checkout develop && git checkout -b feature/<short-description>
 ```
 
-Once a feature is fully implemented and tests pass, ask the user to review and merge:
-
-> "Feature is complete and tests pass. Please review and merge `feature/<name>` into `develop` when ready."
+Once a feature is fully implemented and tests pass locally, push it and open a PR into `develop`.
+**Auto-merge routine:** CI's final `auto-merge` job merges PRs into `develop` automatically once every
+check passes (owner's PRs only; skipped for drafts and PRs labelled `no-automerge`; it merges exactly the
+tested commit). After opening the PR, watch CI; when it has merged, sync local `develop`
+(`git checkout develop && git merge --ff-only origin/develop`) and branch the next feature from it.
+If CI fails, fix it on the branch (a new push re-runs CI). Merges into `master` (releases) stay manual:
+ask the user.
 
 ## Workflow
 

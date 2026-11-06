@@ -9,12 +9,22 @@ config = context.config
 target_metadata = Base.metadata
 
 
+def render_item(type_, obj, autogen_context):
+    """Render our UTCDateTime as a plain timezone-aware DateTime so migrations don't import app code."""
+    from pcapvis.db.base import UTCDateTime
+
+    if type_ == "type" and isinstance(obj, UTCDateTime):
+        return "sa.DateTime(timezone=True)"
+    return False
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
         literal_binds=True,
         render_as_batch=True,
+        render_item=render_item,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -31,6 +41,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             render_as_batch=True,  # SQLite needs batch mode for ALTER TABLE
+            render_item=render_item,
             compare_type=True,
         )
         with context.begin_transaction():

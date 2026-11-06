@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from pcapvis import __version__
-from pcapvis.api import routes_auth, routes_system, routes_users
+from pcapvis.api import routes_auth, routes_engagements, routes_system, routes_users
 from pcapvis.auth import service as auth
 from pcapvis.config import Settings, get_settings
 from pcapvis.db.migrate import upgrade_to_head
@@ -111,6 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_system.router)
     app.include_router(routes_auth.router)
     app.include_router(routes_users.router)
+    app.include_router(routes_engagements.router)
 
     @app.api_route(
         "/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
