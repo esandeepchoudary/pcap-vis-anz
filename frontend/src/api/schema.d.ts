@@ -1958,7 +1958,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description Content Too Large */
+            /** @description Too large */
             413: {
                 headers: {
                     [name: string]: unknown;

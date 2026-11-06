@@ -151,7 +151,7 @@ def _store_upload(
     "/engagements/{engagement_id}/captures",
     response_model=list[UploadResult],
     status_code=201,
-    responses={400: {"model": ErrorOut}, 413: {"model": ErrorOut}},
+    responses={400: {"model": ErrorOut}, 413: {"model": ErrorOut, "description": "Too large"}},
 )
 def upload_captures(
     request: Request,
