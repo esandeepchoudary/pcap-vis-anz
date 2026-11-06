@@ -1,4 +1,5 @@
 """Shared FastAPI dependencies: settings, DB session, current user, role checks."""
+
 from collections.abc import Callable, Iterator
 
 from fastapi import Depends, HTTPException, Request, status

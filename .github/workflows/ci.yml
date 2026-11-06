@@ -28,6 +28,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: uv sync --frozen --extra postgres
       - run: uv run ruff check .
+      - run: uv run ruff format --check .
       - run: uv run pytest -q
 
   backend-postgres:
@@ -92,6 +93,32 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with: { name: playwright-traces, path: frontend/test-results, retention-days: 7 }
+
+  parity:
+    name: Parity with legacy engine
+    runs-on: ubuntu-latest
+    needs: [backend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tshark
+        run: |
+          echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
+          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tshark
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Legacy engine in its own environment
+        run: |
+          python -m venv /tmp/legacy-venv
+          /tmp/legacy-venv/bin/pip install -q -r legacy/requirements.txt
+      - uses: astral-sh/setup-uv@v6
+        with: { python-version: "3.12" }
+      - name: Every difference from legacy must be explained
+        working-directory: backend
+        env:
+          PCAPVIS_LEGACY_PYTHON: /tmp/legacy-venv/bin/python
+        run: |
+          uv sync --frozen
+          uv run pytest tests/test_legacy_parity.py -v
 
   legacy:
     name: Legacy app (reference oracle)

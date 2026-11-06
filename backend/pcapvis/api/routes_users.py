@@ -22,8 +22,13 @@ def list_users(_: User = Depends(admin_only), db: Session = Depends(get_db)) -> 
     return list(db.scalars(select(User).where(User.password_hash.is_not(None)).order_by(User.username)))
 
 
-@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED,
-             dependencies=[Depends(_server_only)], responses={400: {"model": ErrorOut}})
+@router.post(
+    "",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_server_only)],
+    responses={400: {"model": ErrorOut}},
+)
 def create_user(body: UserCreate, _: User = Depends(admin_only), db: Session = Depends(get_db)) -> User:
     try:
         return auth.create_user(db, body.username, body.password, body.role, body.display_name)
@@ -31,8 +36,12 @@ def create_user(body: UserCreate, _: User = Depends(admin_only), db: Session = D
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
-@router.patch("/{user_id}", response_model=UserOut, dependencies=[Depends(_server_only)],
-              responses={400: {"model": ErrorOut}, 404: {"model": ErrorOut}})
+@router.patch(
+    "/{user_id}",
+    response_model=UserOut,
+    dependencies=[Depends(_server_only)],
+    responses={400: {"model": ErrorOut}, 404: {"model": ErrorOut}},
+)
 def update_user(
     user_id: int, body: UserUpdate, admin: User = Depends(admin_only), db: Session = Depends(get_db)
 ) -> User:

@@ -69,6 +69,7 @@ git push
 | API types | `cd frontend && npm run gen:api` | Regenerate after any backend schema change and commit `src/api/schema.d.ts`; CI fails if stale |
 | End-to-end | `cd frontend && npm run build && npm run e2e` | Playwright against the production build served by the real backend (server mode, tshark required) |
 | Legacy | `cd legacy && python -m pytest tests/ -q` | Reference oracle; must stay green |
+| Legacy parity | `PCAPVIS_LEGACY_PYTHON=… uv run pytest tests/test_legacy_parity.py` | Every v2-vs-legacy difference must be explained |
 
 CI (`.github/workflows/ci.yml`) runs all of these plus a container build/health check on every push and PR.
 
@@ -116,6 +117,26 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
   `api/client.ts` (typed `openapi-fetch` client) + `api/hooks.ts` (TanStack Query), `theme/` (light default,
   dark optional; **all colours come from `theme/tokens.css`** so both themes stay complete), icons from
   `lucide-react` (no emoji).
+
+### Packet engine (`backend/pcapvis/engine/`, M1)
+
+- **Flow:** `analyze.analyze_capture(path)` → `runner.stream_packets` (tshark `-T ek`, capture fed via
+  **stdin** because tshark's AppArmor profile blocks most paths) → `packet.decode` → `aggregate.Aggregator`
+  → `finish()` → `rules.run_rules` → `model.AnalysisResult`. Large captures go through
+  `split.py` + `parallel.py` + `worker.py` (host-pair partitions, worker processes, `Aggregator.merge`).
+- **Order independence is a hard invariant:** the Aggregator must give the same result whether it sees the
+  whole capture or merged partitions. "First seen" uses packet timestamps (`_first`), ties break by value,
+  flows are numbered in `finish()`. `tests/test_parallel.py` asserts parallel == serial; keep it green.
+- **Adding a tshark field:** add it to `fields.py`; `test_every_requested_field_exists_in_installed_tshark`
+  fails on typos. Enumerated values get names from Wireshark via `tshark_env.NAMED_FIELDS`, never from
+  hand-written tables.
+- **Adding a protocol/command type:** `ot.py` (one OtEvent per request; responses only add errors).
+  **Adding a rule:** a function in `rules.py` decorated with `@rule(...)`; group hits with `Group`.
+- **Tests build captures with scapy** (`tests/pcapgen.py`, byte-accurate payload builders) and run real
+  tshark. Verify a new builder decodes in Wireshark (`tshark -V`) before asserting on it.
+- **Legacy parity:** `PCAPVIS_LEGACY_PYTHON=<python with legacy deps> uv run pytest tests/test_legacy_parity.py`.
+  A new difference must be fixed or given a specific, evidence-based explanation in
+  `devtools/legacy_parity.py`, never a blanket one.
 
 ## Legacy app (v1, in `legacy/`)
 

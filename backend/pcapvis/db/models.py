@@ -1,4 +1,5 @@
 """Database models. M0: users and login sessions. Engagement data arrives in M2."""
+
 import enum
 from datetime import datetime
 
@@ -40,9 +41,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
-    sessions: Mapped[list["AuthSession"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
+    sessions: Mapped[list["AuthSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class AuthSession(Base):

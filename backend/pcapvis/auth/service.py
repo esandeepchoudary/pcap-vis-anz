@@ -3,6 +3,7 @@
 Kept behind plain functions so an SSO provider (Entra ID, Okta, LDAP) can be added later
 as another way to produce an authenticated User without touching the routes.
 """
+
 import hashlib
 import re
 import secrets
@@ -93,16 +94,23 @@ def ensure_local_user(db: Session) -> User:
     """Laptop mode: a single built-in admin user that never needs a password."""
     user = db.scalar(select(User).where(User.username == LOCAL_USERNAME))
     if user is None:
-        user = User(username=LOCAL_USERNAME, display_name="Local user", password_hash=None,
-                    role=Role.admin, is_active=True)
+        user = User(
+            username=LOCAL_USERNAME,
+            display_name="Local user",
+            password_hash=None,
+            role=Role.admin,
+            is_active=True,
+        )
         db.add(user)
         db.commit()
     return user
 
 
 def count_active_admins(db: Session, exclude_user_id: int | None = None) -> int:
-    q = select(func.count()).select_from(User).where(
-        User.role == Role.admin, User.is_active.is_(True), User.password_hash.is_not(None)
+    q = (
+        select(func.count())
+        .select_from(User)
+        .where(User.role == Role.admin, User.is_active.is_(True), User.password_hash.is_not(None))
     )
     if exclude_user_id is not None:
         q = q.where(User.id != exclude_user_id)
@@ -121,6 +129,7 @@ def authenticate(db: Session, username: str, password: str) -> User | None:
 
 # ── Sessions ───────────────────────────────────────────────────────────────────
 
+
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -128,8 +137,15 @@ def _hash_token(token: str) -> str:
 def create_session(db: Session, user: User, ttl_hours: int, user_agent: str = "") -> str:
     token = secrets.token_urlsafe(32)
     now = utcnow()
-    db.add(AuthSession(token_hash=_hash_token(token), user_id=user.id, created_at=now,
-                       expires_at=now + timedelta(hours=ttl_hours), user_agent=user_agent[:256]))
+    db.add(
+        AuthSession(
+            token_hash=_hash_token(token),
+            user_id=user.id,
+            created_at=now,
+            expires_at=now + timedelta(hours=ttl_hours),
+            user_agent=user_agent[:256],
+        )
+    )
     user.last_login_at = now
     db.commit()
     return token
@@ -150,8 +166,10 @@ def user_for_token(db: Session, token: str | None) -> User | None:
 
 def delete_session(db: Session, token: str | None) -> None:
     if token:
-        db.execute(delete(AuthSession).where(AuthSession.token_hash == _hash_token(token)),
-                   execution_options={"synchronize_session": False})
+        db.execute(
+            delete(AuthSession).where(AuthSession.token_hash == _hash_token(token)),
+            execution_options={"synchronize_session": False},
+        )
         db.commit()
 
 
@@ -165,14 +183,17 @@ def delete_user_sessions(db: Session, user_id: int, keep_token: str | None = Non
 
 
 def purge_expired_sessions(db: Session) -> int:
-    result = db.execute(delete(AuthSession).where(AuthSession.expires_at <= utcnow()),
-                        execution_options={"synchronize_session": False})
+    result = db.execute(
+        delete(AuthSession).where(AuthSession.expires_at <= utcnow()),
+        execution_options={"synchronize_session": False},
+    )
     db.expire_all()
     db.commit()
     return result.rowcount or 0
 
 
 # ── Login throttling ───────────────────────────────────────────────────────────
+
 
 class LoginThrottle:
     """Blocks a (username, client) pair after too many failures within a window. In-memory."""

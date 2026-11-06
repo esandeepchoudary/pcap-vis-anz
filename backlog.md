@@ -420,3 +420,16 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Docs site (`docs/`, `site/`, `tours/`) still describes v1; rewrite at M9
 - [ ] GitHub reports 55 Dependabot alerts on `master` (likely `site/` npm deps); review and fix
 
+### v2 rebuild: M1 packet engine (2026-11-06, feature/m1-engine)
+
+- [x] tshark engine core: stdin feeding (AppArmor-safe), EK parsing, field list validated against the installed tshark, value names from Wireshark
+- [x] Directional flows, hosts, classification and Purdue levels with evidence and confidence
+- [x] OT command extraction (Modbus, DNP3, S7comm, EtherNet/IP/CIP, IEC-104, BACnet), credentials, app notes, file extraction
+- [x] 34 anomaly rules, grouped, direction-aware, ATT&CK-mapped
+- [x] Parallel, memory-bounded analysis identical to single-process
+- [x] Legacy parity harness + CI job; `pcapvis analyze` CLI
+- [x] **Legacy bugs found** (documented, not fixed in `legacy/`, which is frozen): DNP3 parser reads the transport byte as the function code ("Unknown FC 192"); EtherNet/IP parser reports every CIP service as 0x0; BACnet parser reads the service from the wrong byte and its service table is shifted (readProperty treated as a write); DNP3 "unusual FC" table mislabels FC 4 (Operate); legacy port-scan and exfiltration direction bugs (already listed above) confirmed fixed in v2
+- [ ] Engine throughput ~10k packets/s per core: profile field extraction (fewer tshark fields per pass?) and Python decode/aggregate
+- [ ] Multiple MACs sending from one IP (not via ARP) is not yet a finding; needs VLAN- and gateway-aware logic
+- [ ] Parity corpus: add real-world captures (permission-cleared) next to the synthetic ones
+

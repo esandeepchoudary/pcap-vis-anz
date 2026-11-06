@@ -23,7 +23,9 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     url = config.get_main_option("sqlalchemy.url")
     # SQLite: reuse the app engine (WAL + FK pragmas). Others: no pooling for a one-off run.
-    connectable = make_engine(url) if url.startswith("sqlite") else create_engine(url, poolclass=pool.NullPool)
+    connectable = (
+        make_engine(url) if url.startswith("sqlite") else create_engine(url, poolclass=pool.NullPool)
+    )
     with connectable.connect() as connection:
         context.configure(
             connection=connection,

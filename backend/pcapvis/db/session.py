@@ -1,4 +1,5 @@
 """Engine and session factory. SQLite gets WAL, foreign keys, and a busy timeout."""
+
 from collections.abc import Iterator
 from pathlib import Path
 

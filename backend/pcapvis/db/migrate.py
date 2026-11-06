@@ -1,4 +1,5 @@
 """Run Alembic migrations programmatically (on startup and from the CLI)."""
+
 from pathlib import Path
 
 from alembic import command
