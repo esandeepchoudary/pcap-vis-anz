@@ -118,8 +118,57 @@ _To be filled in as we decide, one item at a time._
 |---|---|---|---|
 | D1 | Frontend stack | **React + TypeScript** (Vite build; built static bundle shipped so client sites need no internet or Node) | Chosen for ecosystem depth: React Flow for editable Purdue and architecture diagrams, mature data grids for the asset inventory, and the widest contributor and tooling familiarity. D3 kept where custom charts need it. Decided 2026-11-06 |
 | D2 | Primary workflow and navigation | **Engagement-first, plus a Quick look mode** | Main path: create engagement → add captures (tagged with capture point) → Assets → Purdue map → Architecture → Findings → Report. Quick look analyzes a pcap without an engagement and can be promoted to one later. Decided 2026-11-06 |
-| D3 | Persistence and deployment | **Two deployment modes, one codebase.** Laptop mode: SQLite per engagement (`project.db` + `captures/` + `exports/` folder, zipped to `.pcapvis` for handover). Team server mode: PostgreSQL + server/S3-compatible capture storage, Docker Compose | SQLAlchemy + Alembic so both databases share code and migrations. Server mode adds user accounts and roles, per-engagement membership, a per-field audit trail (who, when, old, new, reason), optimistic locking for concurrent edits, live updates, a background parse worker with progress and cancel, and laptop→server engagement import with merge. Optional SQLCipher encryption in laptop mode. Never run the SQLite file from a network share. Decided 2026-11-06; login method and real-time depth still open |
-| D4 | Look and feel | _open_ | |
-| D5 | Migration approach (rewrite vs. incremental) | _open_ | |
-| D6 | Backend structure | _open_ | |
-| D7 | Scope of v1.0 of the rebuild | _open_ | |
+| D3 | Persistence and deployment | **Two deployment modes, one codebase.** Laptop mode: SQLite per engagement (`project.db` + `captures/` + `exports/` folder, zipped to `.pcapvis` for handover). Team server mode: PostgreSQL + server/S3-compatible capture storage, Docker Compose | SQLAlchemy + Alembic so both databases share code and migrations. Server mode adds user accounts and roles, per-engagement membership, a per-field audit trail (who, when, old, new, reason), optimistic locking for concurrent edits, live updates, a background parse worker with progress and cancel, and laptop→server engagement import with merge. Optional SQLCipher encryption in laptop mode. Never run the SQLite file from a network share. Login: **local accounts** with roles to start; authentication sits behind an interface so SSO (Entra ID, Okta, LDAP) can be added later. Real-time: **edits appear for others within seconds** (server push) with conflict detection; live presence and co-editing are out of scope for now. Decided 2026-11-06 |
+| D4 | Look and feel | **Workbench layout; light and dark themes, light by default** | Left rail = workflow stages (Overview, Captures, Assets, Purdue, Architecture, Flows, Findings, Report); center = canvas or table; right = editable inspector for the selection (fields, evidence, change history); bottom = timeline. Minimal header (engagement switcher, search, user). Light default suits client screen-shares and exports. A proper icon set replaces emoji; colours come from a design-token system so every view supports both themes. Decided 2026-11-06 |
+| D5 | Migration approach | **Full rewrite from scratch**, including the parsing engine, in new folders on `develop` | Today's app stays on `master` as the **reference oracle** until parity: the existing 375 tests are ported as behaviour specs, and a differential harness runs old and new engines on the same pcaps (demo fixture + a growing regression corpus) and diffs hosts, flows, protocols, and anomalies. Old app retired only when the diff is clean or each difference is an intentional fix. Decided 2026-11-06 |
+| D6 | Backend framework | **FastAPI** | Pydantic models → OpenAPI → generated TypeScript client, so frontend and backend types can't drift. Server-sent events/WebSockets for live updates. Background parse worker with progress and cancel. Decided 2026-11-06 |
+| D7 | Scope of v1.0 | **All four groups:** feature parity + core workflow; passive device fingerprinting; zones, conduits and architecture diagram; report-ready exports | Large scope, so it ships through the milestones in section 4; each milestone is usable on its own. Decided 2026-11-06 |
+| D8 | Packet dissection engine | _open_ | |
+
+---
+
+## 4. Target design (draft)
+
+### 4.1 Repository layout
+
+```
+backend/                 FastAPI app (Python package `pcapvis`)
+  pcapvis/
+    ingest/              capture reader, L2-L4 decoding, flow table (directional)
+    protocols/           one module per protocol: parse + fingerprint + OT command extraction
+    rules/               one module per anomaly rule, shared rule interface
+    assets/              asset identity (MAC/IP merge), classification with evidence, Purdue
+    zones/               zones, conduits, violation detection
+    reports/             XLSX, DOCX/PDF, SVG/draw.io, engagement bundle
+    db/                  SQLAlchemy models, Alembic migrations (SQLite + PostgreSQL)
+    api/                 routers, auth (local accounts behind an interface), SSE events
+    jobs/                background parse worker (progress, cancel)
+  tests/                 unit + differential tests against the legacy engine
+frontend/                React + TypeScript (Vite), generated API client
+legacy/                  today's app, frozen as the reference oracle until parity
+docs/, site/             docs site (rewritten for v2 at the end)
+```
+
+### 4.2 Core data model
+
+Engagement → Captures (file, hash, capture point, time range) → Observations (what each capture saw) →
+**Assets** (merged identity: MACs, IPs, names; each field has an auto value, an optional manual
+override, a reason, and evidence) → Flows (directional, per protocol, with provenance) →
+Zones and Conduits → Findings (from rules or manual) → Audit log (who, when, field, old, new, reason).
+
+Manual edits live on the asset, never on a capture, so new captures merge in without losing work.
+
+### 4.3 Milestones (each one usable on its own)
+
+| M | Content |
+|---|---|
+| M0 | Foundations: repo layout, FastAPI + React skeleton, design tokens and both themes, DB + migrations, local accounts, CI (tests, lint, type-check, build) |
+| M1 | Engine: capture reader, directional flows, host and asset identity, IT/OT/IoT protocol parsers, anomaly rules; differential harness against legacy |
+| M2 | Engagements and captures: create and open engagements, upload with background parsing and progress, capture points, Quick look, `.pcapvis` export and import |
+| M3 | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
+| M4 | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
+| M5 | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
+| M6 | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
+| M7 | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
+| M8 | Findings and reports: findings workspace, asset register XLSX, SVG/draw.io, DOCX/PDF report, engagement bundle |
+| M9 | Server mode hardening, laptop→server import with merge, docs rewrite, legacy retirement |
