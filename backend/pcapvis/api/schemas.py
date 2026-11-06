@@ -176,3 +176,156 @@ class CaptureUpdate(BaseModel):
 
 class RevisionOut(BaseModel):
     revision: int
+
+
+# ── Assets (M3) ───────────────────────────────────────────────────────────────
+
+from typing import Any  # noqa: E402
+
+from pcapvis.db.models import AssetOrigin  # noqa: E402
+from pcapvis.engine.model import Evidence, HostName, Service  # noqa: E402
+
+FieldValue = str | float | list[str] | None
+EditableField = Literal[
+    "name",
+    "asset_type",
+    "purdue_level",
+    "zone",
+    "criticality",
+    "vendor",
+    "model",
+    "firmware",
+    "serial",
+    "location",
+    "owner",
+    "tags",
+    "notes",
+]
+Criticality = Literal["low", "medium", "high", "critical"]
+
+
+class AssetOut(BaseModel):
+    """One row of the inventory: effective values plus the facts the grid shows."""
+
+    id: int
+    origin: AssetOrigin
+    version: int
+    ips: list[str]
+    macs: list[str]
+    name: str | None
+    asset_type: str | None
+    purdue_level: float
+    zone: str | None
+    criticality: Criticality | None
+    vendor: str | None
+    model: str | None
+    firmware: str | None
+    serial: str | None
+    location: str | None
+    owner: str | None
+    tags: list[str]
+    notes: str | None
+    overridden: list[EditableField] = Field(description="Fields with a manual value")
+    type_confidence: Literal["high", "medium", "low"] | None
+    mac_vendor: str | None
+    is_private: bool
+    protocols: list[str]
+    ot_role: str
+    os_hint: str | None
+    packets: int
+    bytes: int
+    first_seen: float | None
+    last_seen: float | None
+    capture_count: int
+    updated_at: datetime
+
+
+class OverrideOut(BaseModel):
+    value: FieldValue
+    reason: str
+    by: str
+    at: str
+
+
+class SightingOut(BaseModel):
+    capture_id: int
+    file_name: str
+    capture_point: str | None
+    ip: str
+    mac: str | None
+    first_seen: float | None
+    last_seen: float | None
+    packets: int
+    host_type: str
+    purdue_level: float
+
+
+class AssetDetail(AssetOut):
+    auto: dict[EditableField, FieldValue]
+    overrides: dict[EditableField, OverrideOut]
+    services: list[Service]
+    vlans: list[int]
+    identity: dict[str, str]
+    hostnames: list[HostName]
+    tls_sni: list[str]
+    modbus_unit_ids: list[int]
+    dnp3_addresses: list[int]
+    ttl: int | None
+    type_evidence: list[Evidence]
+    purdue_evidence: list[Evidence]
+    sightings: list[SightingOut]
+
+
+class AssetEdit(BaseModel):
+    version: int = Field(ge=1, description="The version you edited; a mismatch returns 409")
+    set: dict[EditableField, Any] = Field(default_factory=dict)
+    reset: list[EditableField] = Field(default_factory=list, max_length=20)
+    reason: str = Field(default="", max_length=1000)
+
+
+class AssetBulkEdit(BaseModel):
+    asset_ids: list[int] = Field(min_length=1, max_length=10_000)
+    set: dict[EditableField, Any] = Field(default_factory=dict)
+    reset: list[EditableField] = Field(default_factory=list, max_length=20)
+    reason: str = Field(default="", max_length=1000)
+
+
+class AssetBulkResult(BaseModel):
+    assets: int
+    changes: int
+
+
+class AssetCreate(BaseModel):
+    ips: list[str] = Field(default_factory=list, max_length=32)
+    macs: list[str] = Field(default_factory=list, max_length=32)
+    values: dict[EditableField, Any] = Field(default_factory=dict)
+    reason: str = Field(default="", max_length=1000)
+
+
+class AssetChangeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    at: datetime
+    actor: str
+    kind: Literal["created", "override", "reset", "auto", "import"]
+    field: EditableField | None
+    old: FieldValue
+    new: FieldValue
+    reason: str
+
+
+class AssetFieldOut(BaseModel):
+    name: EditableField
+    label: str
+    kind: Literal["text", "longtext", "level", "choice", "tags"]
+    max_len: int
+    auto: bool
+
+
+class AssetFieldsOut(BaseModel):
+    fields: list[AssetFieldOut]
+    purdue_levels: list[float]
+    purdue_names: dict[str, str]
+    criticalities: list[Criticality]
+    asset_types: list[str] = Field(description="Types the engine knows (suggestions; any text is allowed)")

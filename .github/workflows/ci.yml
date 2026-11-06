@@ -17,10 +17,12 @@ jobs:
   backend:
     name: Backend (SQLite)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults: { run: { working-directory: backend } }
     steps:
       - uses: actions/checkout@v4
       - name: Install tshark
+        timeout-minutes: 8 # apt mirrors occasionally hang; fail fast and rerun
         run: |
           echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
           sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tshark
@@ -34,6 +36,7 @@ jobs:
   backend-postgres:
     name: Backend (PostgreSQL)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults: { run: { working-directory: backend } }
     services:
       postgres:
@@ -54,6 +57,7 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults: { run: { working-directory: frontend } }
     steps:
       - uses: actions/checkout@v4
@@ -74,11 +78,13 @@ jobs:
   e2e:
     name: End-to-end (browser)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [backend, frontend]
     defaults: { run: { working-directory: frontend } }
     steps:
       - uses: actions/checkout@v4
       - name: Install tshark
+        timeout-minutes: 8 # apt mirrors occasionally hang; fail fast and rerun
         run: |
           echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
           sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tshark
@@ -97,10 +103,12 @@ jobs:
   parity:
     name: Parity with legacy engine
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [backend]
     steps:
       - uses: actions/checkout@v4
       - name: Install tshark
+        timeout-minutes: 8 # apt mirrors occasionally hang; fail fast and rerun
         run: |
           echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
           sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tshark
@@ -123,6 +131,7 @@ jobs:
   legacy:
     name: Legacy app (reference oracle)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults: { run: { working-directory: legacy } }
     steps:
       - uses: actions/checkout@v4
@@ -134,6 +143,7 @@ jobs:
   docker:
     name: Container image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t pcapvis:ci .
@@ -159,6 +169,7 @@ jobs:
       && !github.event.pull_request.draft
       && !contains(github.event.pull_request.labels.*.name, 'no-automerge')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write

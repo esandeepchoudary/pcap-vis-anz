@@ -135,6 +135,24 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
   go through `safe_filename`. Imported bundles are untrusted: extend `bundle.py`'s whitelist and
   validation, never bypass it.
 
+### Asset inventory (M3)
+
+- **Manual values live on the asset, never on a capture.** `Asset.auto` (derived from traffic) and
+  `Asset.overrides` (`{field: {value, reason, by, at}}`) are separate columns; merges only write `auto`,
+  `observed`, `macs`, `ips`. The effective value is the override when present (`assets/fields.py`).
+- **Editable fields are declared once** in `assets/fields.py` (`FIELDS`); `api/schemas.py`'s `EditableField`
+  literal must list the same names (a test of the API checks the fields endpoint).
+- **Identity** (`assets/merge.py`): the host's own MAC, else IP (router MACs and MACs carrying >16 IPs are
+  ignored). Every host becomes an `AssetSighting` (capture, IP, Host JSON); `recompute` re-derives
+  everything from sightings, so deleting or re-analysing a capture is exact. Assets that lose all sightings
+  are pruned unless someone edited them (then they keep their last identity so later captures re-match).
+- **Locking:** merges and edits first `lock_engagement()` (an UPDATE on the engagement row: a row lock on
+  PostgreSQL, the write lock on SQLite). Single edits use a conditional UPDATE on `Asset.version`
+  (optimistic lock → 409); merges never bump `version`.
+- **History:** every override, reset, detected-value change after creation, and creation is an
+  `AssetChange`. Bundles (format v2) carry assets, overrides, sightings and history; v1 bundles still import.
+- **CSV:** cells are formula-escaped (`csv_safe`): hostnames and identity strings come from untrusted traffic.
+
 ### Packet engine (`backend/pcapvis/engine/`, M1)
 
 - **Flow:** `analyze.analyze_capture(path)` → `runner.stream_packets` (tshark `-T ek`, capture fed via

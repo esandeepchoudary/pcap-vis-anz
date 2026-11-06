@@ -38,5 +38,7 @@ export function relativeTime(value: string, now: number = Date.now()): string {
 }
 
 export function purdueLabel(level: number): string {
-  return level < 0 ? 'Unclassified' : `L${level}`
+  if (level < 0) return 'Unclassified'
+  if (level >= 6) return 'External'
+  return `L${level}`
 }

@@ -1,4 +1,4 @@
-"""Database models: users and sessions (M0); engagements, captures, audit (M2)."""
+"""Database models: users and sessions (M0); engagements, captures, audit (M2); assets (M3)."""
 
 import enum
 from datetime import datetime
@@ -127,6 +127,9 @@ class Engagement(Base):
     captures: Mapped[list["Capture"]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan", order_by="Capture.id"
     )
+    assets: Mapped[list["Asset"]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan", passive_deletes=True
+    )
 
     def touch(self) -> None:
         self.revision = (self.revision or 0) + 1
@@ -206,13 +209,15 @@ class Capture(Base):
     engine_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Small summary for lists (packets, hosts, findings by severity…); the full result is a file.
     summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # When this capture's hosts were merged into the engagement's assets (NULL = not yet).
+    assets_merged_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     engagement: Mapped[Engagement] = relationship(back_populates="captures")
     capture_point: Mapped[CapturePoint | None] = relationship()
 
 
 class AuditEvent(Base):
-    """Who did what, when. Engagement-level actions now; per-field asset history arrives in M3."""
+    """Who did what, when, at engagement level. Per-field asset history is in ``AssetChange``."""
 
     __tablename__ = "audit_events"
 
@@ -225,3 +230,76 @@ class AuditEvent(Base):
     action: Mapped[str] = mapped_column(String(64))
     target: Mapped[str] = mapped_column(String(255), default="")
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class AssetOrigin(enum.StrEnum):
+    observed = "observed"  # created from traffic
+    manual = "manual"  # added by a consultant (e.g. a firewall never seen on the wire)
+
+
+class Asset(Base):
+    """One device in an engagement, merged across captures.
+
+    ``auto`` holds the values derived from traffic for editable fields; ``overrides`` holds manual
+    values ({field: {value, reason, by, at}}). The effective value is the override when present.
+    Edits live here, never on a capture, so new captures merge in without losing work.
+    """
+
+    __tablename__ = "assets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("engagements.id", ondelete="CASCADE"), index=True)
+    origin: Mapped[AssetOrigin] = mapped_column(
+        Enum(AssetOrigin, name="asset_origin", native_enum=False, length=16), default=AssetOrigin.observed
+    )
+    macs: Mapped[list] = mapped_column(JSON, default=list)
+    ips: Mapped[list] = mapped_column(JSON, default=list)
+    # Identifiers a consultant entered by hand (kept even when no capture shows them).
+    declared: Mapped[dict] = mapped_column(JSON, default=dict)
+    auto: Mapped[dict] = mapped_column(JSON, default=dict)
+    observed: Mapped[dict] = mapped_column(JSON, default=dict)
+    overrides: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Optimistic lock for manual edits; merges from captures don't bump it.
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    engagement: Mapped[Engagement] = relationship(back_populates="assets")
+    sightings: Mapped[list["AssetSighting"]] = relationship(
+        back_populates="asset", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class AssetSighting(Base):
+    """A host as one capture saw it, linked to the asset it was merged into (provenance)."""
+
+    __tablename__ = "asset_sightings"
+    __table_args__ = (UniqueConstraint("capture_id", "ip"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    capture_id: Mapped[int] = mapped_column(ForeignKey("captures.id", ondelete="CASCADE"), index=True)
+    ip: Mapped[str] = mapped_column(String(64))
+    mac: Mapped[str | None] = mapped_column(String(17), nullable=True)
+    host: Mapped[dict] = mapped_column(JSON)  # the engine's Host, as serialised
+
+    asset: Mapped[Asset] = relationship(back_populates="sightings")
+    capture: Mapped[Capture] = relationship()
+
+
+class AssetChange(Base):
+    """Per-field asset history: who changed what, when, from what, to what, and why."""
+
+    __tablename__ = "asset_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("engagements.id", ondelete="CASCADE"), index=True)
+    at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor: Mapped[str] = mapped_column(String(255), default="")  # username or "capture <name>"
+    kind: Mapped[str] = mapped_column(String(16))  # created | override | reset | auto | import
+    field: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    old: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    new: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")

@@ -1,6 +1,7 @@
 import { MousePointerClick, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useState } from 'react'
 import { useInspector } from '../inspector/context'
+import { AssetInspector } from './AssetInspector'
 import { HostDetails } from './HostDetails'
 
 const KEY = 'pcapvis.inspector.collapsed'
@@ -30,6 +31,11 @@ export function Inspector() {
       {!collapsed && selection?.kind === 'host' && (
         <div className="inspector-body">
           <HostDetails host={selection.host} onClose={() => select(null)} />
+        </div>
+      )}
+      {!collapsed && selection?.kind === 'asset' && (
+        <div className="inspector-body">
+          <AssetInspector key={`${selection.eid}-${selection.id}`} eid={selection.eid} id={selection.id} onClose={() => select(null)} />
         </div>
       )}
       {!collapsed && !selection && (

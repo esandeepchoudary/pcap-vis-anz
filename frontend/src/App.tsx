@@ -4,6 +4,7 @@ import { ApiError } from './api/client'
 import { useMe, useSystem } from './api/hooks'
 import { AppShell } from './components/AppShell'
 import { Account } from './pages/Account'
+import { AssetsPage } from './pages/AssetsPage'
 import { CaptureReport } from './pages/CaptureReport'
 import { CapturesPage } from './pages/CapturesPage'
 import { EngagementLayout } from './pages/EngagementLayout'
@@ -19,7 +20,8 @@ function FullPage({ children }: { children: React.ReactNode }) {
   return <div className="auth-page"><div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>{children}</div></div>
 }
 
-const LATER_STAGES = STAGES.filter((s) => s.id !== 'overview' && s.id !== 'captures')
+const BUILT = new Set(['overview', 'captures', 'assets'])
+const LATER_STAGES = STAGES.filter((s) => !BUILT.has(s.id))
 
 export default function App() {
   const system = useSystem()
@@ -57,6 +59,7 @@ export default function App() {
           <Route path="overview" element={<EngagementOverview system={sys} />} />
           <Route path="captures" element={<CapturesPage />} />
           <Route path="captures/:cid" element={<CaptureReport />} />
+          <Route path="assets" element={<AssetsPage />} />
           {LATER_STAGES.map((s) => <Route key={s.id} path={s.segment} element={<StagePage stage={s} />} />)}
         </Route>
         {sys.auth_required && <Route path="account" element={<Account />} />}

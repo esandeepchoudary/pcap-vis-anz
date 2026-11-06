@@ -23,6 +23,7 @@ from pcapvis.api.schemas import (
     ErrorOut,
     RevisionOut,
 )
+from pcapvis.assets import merge as asset_merge
 from pcapvis.db.models import Capture, CapturePoint, CaptureStatus, Engagement, MemberRole, User
 from pcapvis.engagements import access, audit
 from pcapvis.engagements.storage import Storage, safe_filename
@@ -277,6 +278,7 @@ def delete_capture(
     if c.status == CaptureStatus.processing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Cancel the analysis before deleting the capture.")
     eid, cid, name = eng.id, c.id, c.file_name
+    asset_merge.remove_capture(db, c)
     db.delete(c)
     eng.touch()
     audit.record(db, user, "capture.delete", engagement_id=eid, target=name)

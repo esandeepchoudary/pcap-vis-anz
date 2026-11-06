@@ -166,7 +166,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M0 ✅ | Foundations: repo layout, FastAPI + React skeleton, design tokens and both themes, DB + migrations, local accounts, CI (tests, lint, type-check, build) |
 | M1 ✅ | Engine: capture reader, directional flows, host and asset identity, IT/OT/IoT protocol parsers, anomaly rules; differential harness against legacy |
 | M2 ✅ | Engagements and captures: create and open engagements, upload with background parsing and progress, capture points, Quick look, `.pcapvis` export and import |
-| M3 | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
+| M3 ✅ | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
 | M4 | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
 | M5 | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
 | M6 | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
@@ -244,3 +244,25 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
 - Tests: backend 337, frontend 62, e2e 11 (journey with live analysis, export/re-import, Quick look,
   viewer/outsider permissions), legacy 375.
 - Routine: CI auto-merges owner PRs into `develop` once every check passes.
+
+**M3, asset inventory: done (v0.5.0, 2026-11-06).**
+- Assets merged across captures: identity by the host's own MAC (DHCP-safe), else IP; router MACs and
+  over-shared MACs never merge a subnet; IP-only assets adopt a MAC once seen directly. Each host is a
+  sighting (provenance: capture, capture point, IP, MAC), and detected values are recomputed from
+  sightings, so re-analysing or deleting a capture is exact.
+- Editable fields: name, type, Purdue level (0-5, 3.5, external), zone, criticality, vendor, model,
+  firmware, serial, location, owner, tags, notes. Detected values come from classification, fingerprints
+  (ENIP identity, BACnet, CDP) and MAC vendor; manual values carry who/when/why and survive new captures.
+- Per-field history (manual edits, resets, detected changes with the capture that caused them), audit
+  events for edits, optimistic locking (409 + "keep mine / discard mine" in the UI), bulk edit, manual
+  assets (firewalls, diodes) that later captures merge into.
+- Exports: CSV asset register (formula-escaped, Excel-friendly); `.pcapvis` format v2 carries the whole
+  inventory with history, and v1 bundles still import (inventory derived from results).
+- Existing finished captures are merged on upgrade (backfill at worker start); a merge failure never loses
+  an analysis and is retried.
+- UI: Assets stage with search, level/type filters, edited-only and external toggles, sorting, selection
+  and bulk bar; inspector with Details (auto vs manual, reset, reason), Evidence (classification evidence,
+  identity, services, sightings linked to capture reports) and History. Live updates between users.
+- Tests: backend 405 (merge identity and edge cases, API permissions and conflicts, PostgreSQL concurrency,
+  bundle v2 round trip and hostile asset data), frontend 75, e2e 13 (edit/bulk/CSV journey, live update
+  across two browser sessions), legacy 375.

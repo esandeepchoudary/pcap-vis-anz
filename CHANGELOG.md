@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v0.5.0 -- 2026-11-06
+
+- v2 rebuild M3 asset inventory: assets merged across captures with provenance, per-field manual overrides with reasons and history, bulk edit, manual assets, conflict detection, CSV asset register, inventory in .pcapvis bundles (format v2)
+
 ## v0.4.0 -- 2026-11-06
 
 - v2 rebuild M2 engagements and captures: engagements and members, capture points, uploads with background analysis (in-app or worker), live updates, capture report UI, Quick look, .pcapvis export/import, CI auto-merge routine
