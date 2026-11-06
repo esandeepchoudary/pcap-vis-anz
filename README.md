@@ -338,8 +338,15 @@ and a container build, on every push and pull request.
 
 ## v2 quick start (preview)
 
-The rebuild is at milestone **M0 (foundations)**: workbench UI, light/dark themes, local accounts,
-laptop and team-server modes, container packaging. Packet analysis arrives in M1–M2.
+The rebuild is at milestone **M1 (packet engine)**: workbench UI, accounts, laptop and team-server modes,
+container packaging, and the new tshark-based analysis engine. Uploading captures in the UI arrives in M2;
+until then, analyse a capture from the command line:
+
+```bash
+cd backend && uv run pcapvis analyze ../fixtures/network-capture-demo.pcap        # summary
+uv run pcapvis analyze capture.pcapng --json result.json --pretty                 # full result as JSON
+docker run --rm -v "$PWD":/caps pcapvis analyze /caps/capture.pcap               # in the container
+```
 
 ```bash
 # Laptop mode (single user, no sign-in), in a container:

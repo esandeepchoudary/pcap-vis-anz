@@ -34,6 +34,14 @@ APP_DISSECTORS = {"http", "mqtt", "coap"}
 CRED_DISSECTORS = {"ftp", "pop", "imap", "smtp", "http", "mqtt", "snmp", "telnet", "urlencoded-form"}
 
 
+def _is_group_mac(mac: str) -> bool:
+    """Broadcast/multicast MACs have the I/G bit set in the first octet."""
+    try:
+        return bool(int(mac[:2], 16) & 1)
+    except ValueError:
+        return True
+
+
 def _add_capped(s: set, value, cap: int = MAX_SET_ITEMS) -> None:
     if value is not None and len(s) < cap:
         s.add(value)
@@ -133,6 +141,7 @@ class HostAcc:
     __slots__ = (
         "ip",
         "macs",
+        "dst_macs",
         "ttls",
         "pkts_sent",
         "pkts_recv",
@@ -163,6 +172,7 @@ class HostAcc:
     def __init__(self, ip: str):
         self.ip = ip
         self.macs: Counter[str] = Counter()
+        self.dst_macs: Counter[str] = Counter()  # MACs this IP was *sent to* (fallback for silent hosts)
         self.ttls: Counter[int] = Counter()
         self.pkts_sent = self.pkts_recv = self.bytes_sent = self.bytes_recv = 0
         self.first = self.last = None
@@ -197,6 +207,7 @@ class HostAcc:
 
     def merge(self, o: "HostAcc") -> None:
         self.macs.update(o.macs)
+        self.dst_macs.update(o.dst_macs)
         self.ttls.update(o.ttls)
         self.pkts_sent += o.pkts_sent
         self.pkts_recv += o.pkts_recv
@@ -248,6 +259,7 @@ class Aggregator:
         self.hosts: dict[str, HostAcc] = {}
         self.flows: dict[tuple, FlowAcc] = {}
         self.mac_src_ips: dict[str, set[str]] = defaultdict(set)
+        self.mac_dst_ips: dict[str, set[str]] = defaultdict(set)
         self.arp_ip_for_mac: dict[str, set[str]] = defaultdict(set)
         self.mac_names: dict[str, dict[str, tuple[float, str]]] = defaultdict(dict)  # mac → name → (ts, src)
         self.mac_identity: dict[str, dict[str, tuple[float, str]]] = defaultdict(dict)
@@ -352,6 +364,9 @@ class Aggregator:
         if p.src_mac:
             sh.macs[p.src_mac] += 1
             self.mac_src_ips[p.src_mac].add(p.src)
+        if p.dst_mac and not _is_group_mac(p.dst_mac):
+            dh.dst_macs[p.dst_mac] += 1
+            self.mac_dst_ips[p.dst_mac].add(p.dst)
         if p.dst_mac == BROADCAST_MAC or p.dst == "255.255.255.255":
             dh.broadcast_dst = True
 
@@ -592,7 +607,11 @@ class Aggregator:
         self.app_protocols_seen |= o.app_protocols_seen
         for mac, vendor in o.mac_vendor.items():
             self.mac_vendor.setdefault(mac, vendor)
-        for src, dst in ((o.mac_src_ips, self.mac_src_ips), (o.arp_ip_for_mac, self.arp_ip_for_mac)):
+        for src, dst in (
+            (o.mac_src_ips, self.mac_src_ips),
+            (o.mac_dst_ips, self.mac_dst_ips),
+            (o.arp_ip_for_mac, self.arp_ip_for_mac),
+        ):
             for mac, ips in src.items():
                 dst[mac] |= ips
         for key, macs in o.arp_claims.items():
@@ -630,7 +649,8 @@ class Aggregator:
     def finish(self) -> tuple[list[Host], list[Flow]]:
         gateway_macs = {
             mac
-            for mac, ips in self.mac_src_ips.items()
+            for table in (self.mac_src_ips, self.mac_dst_ips)
+            for mac, ips in table.items()
             if len(ips) >= GATEWAY_MAC_MIN_IPS or any(not K.ip_info(ip)[1] for ip in ips)
         }
         ordered = sorted(self.flows.values(), key=FlowAcc.sort_key)
@@ -655,13 +675,23 @@ class Aggregator:
             for ip in (f.client, f.server):
                 self.hosts[ip].protocols.add(f.protocol)
             if f.transport in ("tcp", "udp"):
-                svc = served[f.server].setdefault(
-                    (f.transport, f.server_port),
-                    {"protocol": f.protocol, "packets": 0, "clients": set(), "detected": set()},
-                )
-                svc["packets"] += f.packets
-                svc["clients"].add(f.client)
-                svc["detected"].update(f.detected_protocols)
+                # UDP protocols where both peers use the well-known port (CoAP, BACnet, NTP…): both speak it.
+                speakers = [(f.server, f.client)]
+                if (
+                    f.transport == "udp"
+                    and f.client_port == f.server_port
+                    and f.protocol in K.SYMMETRIC_PEER_PROTOCOLS
+                    and not (f.ot_reads or f.ot_writes)  # a side issuing commands is the master, not a device
+                ):
+                    speakers.append((f.client, f.server))
+                for ip, peer in speakers:
+                    svc = served[ip].setdefault(
+                        (f.transport, f.server_port),
+                        {"protocol": f.protocol, "packets": 0, "clients": set(), "detected": set()},
+                    )
+                    svc["packets"] += f.packets
+                    svc["clients"].add(peer)
+                    svc["detected"].update(f.detected_protocols)
 
         hosts = [self._host_out(h, served.get(h.ip, {}), gateway_macs) for h in self.hosts.values()]
         hosts.sort(key=lambda h: (h.ip_version, _ip_sort_key(h.ip)))
@@ -705,8 +735,10 @@ class Aggregator:
         arp_macs = sorted((m for m, ips in self.arp_ip_for_mac.items() if h.ip in ips), key=by_count)
         candidates = sorted(h.macs, key=by_count)
         own = [m for m in candidates if m not in gateway_macs or m in arp_macs]
-        mac = arp_macs[0] if arp_macs else (own[0] if own else None)
-        mac_is_gateway = mac is None and bool(candidates)
+        # A host that never sends (e.g. a scan target) is still reachable at the MAC frames were sent to.
+        own_dst = [m for m in sorted(h.dst_macs, key=lambda m: (-h.dst_macs[m], m)) if m not in gateway_macs]
+        mac = arp_macs[0] if arp_macs else (own[0] if own else (own_dst[0] if own_dst else None))
+        mac_is_gateway = mac is None and bool(candidates or h.dst_macs)
 
         name_entries = dict(h.hostnames)
         if mac:
@@ -885,6 +917,15 @@ class Aggregator:
             host.purdue_evidence = [Evidence(kind="address", detail="Publicly routable address (internet)")]
             return
         level = K.PURDUE_LEVELS.get(host.host_type)
+        if level is None and host.ot_role in ("master", "both"):
+            host.purdue_level = 3
+            host.purdue_evidence = [
+                Evidence(
+                    kind="ot_master",
+                    detail="Sends commands to OT devices, so placed at Level 3 (supervisory)",
+                )
+            ]
+            return
         if level is None:
             host.purdue_level = -1
             host.purdue_evidence = [

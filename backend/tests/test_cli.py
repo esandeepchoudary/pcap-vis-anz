@@ -62,3 +62,38 @@ def test_openapi_output(capsys):
     assert cli.main(["openapi"]) == 0
     schema = json.loads(capsys.readouterr().out)
     assert {"/api/health", "/api/system", "/api/auth/login", "/api/users"} <= set(schema["paths"])
+
+
+needs_tshark = pytest.mark.skipif(not __import__("shutil").which("tshark"), reason="tshark not installed")
+DEMO = __import__("pathlib").Path(__file__).resolve().parents[2] / "fixtures" / "network-capture-demo.pcap"
+
+
+@needs_tshark
+def test_analyze_prints_summary_and_writes_json(tmp_path, capsys):
+    out = tmp_path / "r.json"
+    assert cli.main(["analyze", str(DEMO), "--json", str(out), "--top", "3"]) == 0
+    text = capsys.readouterr().out
+    assert "401 packets" in text and "Host types:" in text and "Findings:" in text and "critical" in text
+    data = json.loads(out.read_text())
+    assert data["capture"]["packets"] == 401 and data["anomalies"]
+
+
+@needs_tshark
+def test_analyze_quiet_and_missing_file(tmp_path, capsys):
+    assert cli.main(["analyze", str(DEMO), "--quiet", "--json", str(tmp_path / "q.json"), "--no-files"]) == 0
+    assert capsys.readouterr().out == ""
+    assert cli.main(["analyze", str(tmp_path / "nope.pcap")]) == 1
+
+
+@needs_tshark
+def test_analyze_bad_capture(tmp_path, capsys):
+    bad = tmp_path / "bad.pcap"
+    bad.write_bytes(b"not a capture")
+    assert cli.main(["analyze", str(bad)]) == 1
+    assert "could not read" in capsys.readouterr().err
+
+
+def test_analyze_refuses_without_tshark(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("PCAPVIS_TSHARK_PATH", str(tmp_path / "no-tshark"))
+    assert cli.main(["analyze", str(DEMO)]) == 1
+    assert "Install it" in capsys.readouterr().err

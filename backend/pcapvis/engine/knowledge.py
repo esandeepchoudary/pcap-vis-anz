@@ -215,6 +215,11 @@ _PRIORITY_RANK = {t: i for i, t in enumerate(HOST_TYPE_PRIORITY)}
 
 SUSPICIOUS_PORTS = {4444, 1337, 31337, 6666, 6667, 6668}
 
+# Device protocols whose peers both use the well-known UDP port, so *both* ends are devices speaking it
+# (a BACnet controller talking to another, a CoAP sensor posting to a gateway). Generic OS chatter such as
+# NetBIOS (137↔137) is deliberately excluded: it says little about what the device is.
+SYMMETRIC_PEER_PROTOCOLS = {"BACnet", "CoAP", "DNP3"}
+
 OT_PROTOCOLS = {
     "Modbus",
     "DNP3",
@@ -260,8 +265,6 @@ for _t in (
     "Smart Speaker",
     "CPE Device",
     "Discovery",
-    "Linux Host",
-    "News Server",
 ):
     PURDUE_LEVELS[_t] = 4
 for _t in ("VPN Gateway", "Security Tool", "Remote Desktop"):

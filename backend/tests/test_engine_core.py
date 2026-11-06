@@ -345,3 +345,56 @@ def test_result_is_json_serialisable(tmp_path):
     r = run(Cap().tcp_session(C, S, 50000, 80), tmp_path)
     data = r.model_dump_json()
     assert '"hosts"' in data and '"flows"' in data
+
+
+# ── Behaviours found by the legacy parity harness ─────────────────────────────
+
+
+def test_silent_host_gets_mac_from_frames_sent_to_it(tmp_path):
+    # A scan target that never answers: its MAC is still the destination MAC of frames sent to it.
+    r = run(Cap().udp(C, ("00:0c:29:00:00:99", "10.0.0.99"), 50000, 161), tmp_path)
+    h = host(r, "10.0.0.99")
+    assert h.packets_sent == 0 and h.mac == "00:0c:29:00:00:99" and not h.mac_is_gateway
+
+
+def test_router_mac_as_destination_is_not_given_to_remote_hosts(tmp_path):
+    cap = Cap()
+    for i in range(4):  # the router's MAC is the destination for several remote IPs
+        cap.udp(C, (R[0], f"10.9.{i}.1"), 50000, 161)
+    r = run(cap, tmp_path)
+    assert host(r, "10.9.0.1").mac is None and host(r, "10.9.0.1").mac_is_gateway
+
+
+def test_symmetric_port_peer_is_a_device_too(tmp_path):
+    # CoAP sensor posting to a gateway, both on udp/5683: the sensor is an IoT device, not "Linux Host".
+    from tests.pcapgen import coap_get
+
+    sensor = ("d8:eb:d3:00:00:40", "10.0.0.40")
+    gw = ("f4:f2:6d:00:00:60", "10.0.0.60")
+    r = run(Cap().udp(sensor, gw, 5683, 5683, coap_get(["temp"])), tmp_path)
+    assert host(r, "10.0.0.40").host_type == "IoT Sensor"
+    assert host(r, "10.0.0.60").host_type == "IoT Sensor"
+
+
+def test_symmetric_port_master_is_not_called_a_device(tmp_path):
+    # A BMS workstation *sending* BACnet writes from 47808 is the master, not a building controller.
+    from tests.pcapgen import bacnet_confirmed
+
+    bms = ("00:0c:29:00:00:05", "10.0.0.5")
+    ctrl = ("00:0c:29:00:00:80", "10.0.0.80")
+    r = run(Cap().udp(bms, ctrl, 47808, 47808, bacnet_confirmed(15)), tmp_path)
+    assert host(r, "10.0.0.80").host_type == "Building Controller"
+    assert host(r, "10.0.0.5").host_type != "Building Controller"
+    assert host(r, "10.0.0.5").purdue_level == 3  # it commands OT devices
+
+
+def test_netbios_from_port_137_does_not_make_a_windows_host(tmp_path):
+    lin = ("08:00:27:00:00:10", "10.0.0.10")
+    r = run(Cap().udp(lin, ("ff:ff:ff:ff:ff:ff", "10.0.0.255"), 137, 137, b"\x00" * 50, ttl=64), tmp_path)
+    assert host(r, "10.0.0.10").host_type == "Linux Host"
+
+
+def test_plain_linux_host_is_unclassified_for_purdue(tmp_path):
+    r = run(Cap().tcp_session(C, S, 50000, 50001, ttl_c=64), tmp_path)
+    h = host(r, "10.0.0.5")
+    assert h.host_type == "Linux Host" and h.purdue_level == -1  # consultant decides; no guessing

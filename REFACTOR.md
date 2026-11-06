@@ -164,7 +164,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M | Content |
 |---|---|
 | M0 ✅ | Foundations: repo layout, FastAPI + React skeleton, design tokens and both themes, DB + migrations, local accounts, CI (tests, lint, type-check, build) |
-| M1 | Engine: capture reader, directional flows, host and asset identity, IT/OT/IoT protocol parsers, anomaly rules; differential harness against legacy |
+| M1 ✅ | Engine: capture reader, directional flows, host and asset identity, IT/OT/IoT protocol parsers, anomaly rules; differential harness against legacy |
 | M2 | Engagements and captures: create and open engagements, upload with background parsing and progress, capture points, Quick look, `.pcapvis` export and import |
 | M3 | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
 | M4 | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
@@ -191,3 +191,36 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 - CI: backend on SQLite and PostgreSQL, ruff, frontend lint/types/tests/build, API-types drift check,
   Playwright e2e against the production build, legacy suite, container build + health check.
 - Tests: backend 104 (SQLite) / 103 + 1 SQLite-only skip (PostgreSQL), frontend 35, e2e 7, legacy 375.
+
+**M1, packet engine: done (v0.3.0, 2026-11-06).**
+- `pcapvis.engine`: tshark (EK JSON, fed through stdin) → typed packets → order-independent aggregator →
+  hosts, directional flows, OT commands, credentials, files, anomalies. `pcapvis analyze <capture>` CLI.
+- Directional flows (handshake, ICMP echo, port heuristics, late-SYN correction); per-direction counts.
+- Hosts with evidence and confidence for host type and Purdue level; Wireshark's full OUI database;
+  router-MAC detection; DNS/DHCP/LLDP/CDP names; TLS SNI/JA3/JA4; ENIP ListIdentity and BACnet I-Am identity.
+- OT command extraction for Modbus, DNP3, S7comm, EtherNet/IP/CIP, IEC-104, BACnet with spec-based
+  read/write classification; function names from Wireshark's tables (never hand-maintained).
+- Credentials (FTP, POP3, IMAP, SMTP, HTTP Basic/form/bearer, MQTT, SNMP, Telnet); file extraction via
+  tshark object export (HTTP, SMB, FTP-data, TFTP, IMF) with hashing and an interesting-file flag.
+- 34 anomaly rules: direction-aware, grouped per (rule, src, dst), MITRE ATT&CK IDs, new default-password rule.
+- Parallel, memory-bounded analysis (host-pair partitions in worker processes), byte-for-byte identical
+  to single-process analysis.
+- Legacy parity harness (`pcapvis.devtools.legacy_parity`, CI job `parity`): 0 unexplained differences on
+  the demo capture and two synthetic OT/IT captures; every difference carries its reason.
+- Tests: backend 257 (engine, protocols, rules, parallel, parity, CLI, plus M0's), frontend 35, e2e 7, legacy 375.
+
+Findings while building M1 (decisions taken, details in `backlog.md`):
+- **AppArmor:** Ubuntu's tshark profile only reads files under `/tmp`; the engine always feeds captures
+  through stdin, so native installs work with any data folder.
+- **TCP sequence analysis off:** with it on, tshark skips payloads of out-of-order segments, hiding
+  credentials and PLC commands in SPAN captures with reordering. True retransmissions are de-duplicated
+  by the engine instead.
+- **tshark memory:** about 1.5 KB per packet in one process (480 MB for 300k packets), which is why large
+  captures are split into ~64 MB host-pair partitions processed by a bounded worker pool.
+- **Throughput:** about 9-12k packets/s on a 4-core laptop CPU; parallelism is hardware-bound there
+  (~1.3x) and scales with physical cores on servers. Field extraction and Python decoding are the next
+  optimisation targets (M2+).
+- **Legacy bugs confirmed by the harness:** DNP3 parser reads the transport byte as the function code;
+  EtherNet/IP parser never decodes CIP services; BACnet parser reads the service from the wrong byte and its
+  service table is shifted (readProperty counted as a write); DNP3 "unusual function" labels wrong; port-scan
+  and exfiltration direction bugs; OT rules only saw the first 50 packets per connection.
