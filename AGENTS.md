@@ -177,6 +177,16 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
   each value came from (`observed.auto_sources`, labels in `SOURCE_LABELS`, mirrored in the frontend's
   `lib/assets.ts`). Add a protocol: fields in `fields.py`, extractor + builder + test (verify with `tshark -V`).
 
+### Zones, conduits, architecture (M6)
+
+- `pcapvis/zones/`: a `Zone` row adds metadata (level, SL-T, diagram position) to a zone **name**; assets
+  belong to a zone through their `zone` field, so zones used on assets but not defined are listed too.
+  Renaming a zone edits each member asset through `assets.service.edit` (history: "Zone renamed from …").
+- Violations are computed on read from `assets.links.aggregate_links` (shared with the Purdue map): traffic
+  between two zoned assets in different zones needs a conduit; a conduit with an `allowed` list flags other
+  protocols (empty list = anything). Bundles (format v3) carry zones and conduits.
+- Networks are inferred (private IPv4 /24 from asset addresses); manual firewalls/diodes are manual assets.
+
 ### Packet engine (`backend/pcapvis/engine/`, M1)
 
 - **Flow:** `analyze.analyze_capture(path)` → `runner.stream_packets` (tshark `-T ek`, capture fed via

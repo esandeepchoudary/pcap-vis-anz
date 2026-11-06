@@ -346,3 +346,35 @@ class AssetOtOp(Base):
     first_seen: Mapped[float] = mapped_column(Float)
     last_seen: Mapped[float] = mapped_column(Float)
     sample: Mapped[str] = mapped_column(String(300), default="")  # e.g. register range or block name
+
+
+class Zone(Base):
+    """An IEC 62443 zone. Assets join a zone by name (the asset's ``zone`` field) (M6)."""
+
+    __tablename__ = "zones"
+    __table_args__ = (UniqueConstraint("engagement_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("engagements.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    purdue_level: Mapped[float | None] = mapped_column(Float, nullable=True)
+    security_level: Mapped[int | None] = mapped_column(Integer, nullable=True)  # SL-T 1-4
+    description: Mapped[str] = mapped_column(Text, default="")
+    x: Mapped[float | None] = mapped_column(Float, nullable=True)  # position on the architecture diagram
+    y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class Conduit(Base):
+    """An approved path between two zones, with the protocols allowed through it (M6)."""
+
+    __tablename__ = "conduits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("engagements.id", ondelete="CASCADE"), index=True)
+    zone_a_id: Mapped[int] = mapped_column(ForeignKey("zones.id", ondelete="CASCADE"))
+    zone_b_id: Mapped[int] = mapped_column(ForeignKey("zones.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(100), default="")
+    allowed: Mapped[list] = mapped_column(JSON, default=list)  # protocol names; empty = anything
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
