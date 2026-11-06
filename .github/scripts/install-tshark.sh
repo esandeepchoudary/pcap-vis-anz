@@ -11,6 +11,9 @@ for attempt in 1 2 3; do
     exit 0
   fi
   echo "tshark install attempt $attempt failed; retrying" >&2
+  # The runner's Azure mirror is the usual culprit: fall back to the main Ubuntu archive.
+  sudo sed -i 's#http://azure.archive.ubuntu.com#http://archive.ubuntu.com#g' \
+    /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
   sleep 10
 done
 exit 1
