@@ -1,4 +1,5 @@
 """Detect tshark (Wireshark's CLI dissector) and check it meets the minimum version."""
+
 import platform
 import re
 import shutil

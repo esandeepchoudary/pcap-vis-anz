@@ -5,8 +5,9 @@ from pathlib import Path
 
 from pcapvis.engine.aggregate import Aggregator
 from pcapvis.engine.files import TRIGGER_PROTOCOLS, extract_files
-from pcapvis.engine.model import AnalysisResult, CaptureSummary, FileTransfer
+from pcapvis.engine.model import AnalysisResult, ArpClaim, CaptureSummary, FileTransfer, VlanStat
 from pcapvis.engine.packet import decode
+from pcapvis.engine.rules import run_rules
 from pcapvis.engine.runner import ProgressFn, RunStats, stream_packets
 from pcapvis.engine.tshark_env import load_env
 from pcapvis.tshark import check_tshark
@@ -73,7 +74,7 @@ def analyze_capture(
         tshark_version=check_tshark(tshark_path).version,
         warnings=warnings,
     )
-    return AnalysisResult(
+    result = AnalysisResult(
         capture=summary,
         hosts=hosts,
         flows=flows,
@@ -81,4 +82,14 @@ def analyze_capture(
         ot_commands_truncated=agg.ot_truncated,
         credentials=sorted(agg.credentials.values(), key=lambda c: c.first_seen),
         files=files,
+        vlan_stats=[
+            VlanStat(vlan=v, packets=n, broadcast=agg.vlan_broadcast.get(v, 0))
+            for v, n in sorted(agg.vlan_packets.items(), key=lambda kv: (kv[0] is None, kv[0] or 0))
+        ],
+        arp_claims=[
+            ArpClaim(vlan=vlan, ip=ip, macs=sorted(macs))
+            for (vlan, ip), macs in sorted(agg.arp_claims.items(), key=lambda kv: (str(kv[0][0]), kv[0][1]))
+        ],
     )
+    result.anomalies = run_rules(result)
+    return result

@@ -1,4 +1,5 @@
 """Runtime settings, read from environment variables prefixed with PCAPVIS_."""
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal

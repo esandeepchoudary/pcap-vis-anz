@@ -18,6 +18,8 @@ GATEWAY_MAC_MIN_IPS = 3
 ICMP_ECHO_REQUEST = {8, 128}  # ICMPv4, ICMPv6
 ICMP_ECHO_REPLY = {0, 129}
 MAX_OT_COMMANDS = 200_000
+MAX_FLOW_TIMES = 64  # per flow
+MAX_TIMED_FLOWS = 200_000  # bound memory on huge captures
 _L234_PREFIXES = ("frame_", "eth_", "sll_", "vlan_", "ieee8021ad_", "ip_", "ipv6_", "tcp_", "udp_", "_ws")
 MAX_TRACKED_SEGMENTS = 2_000_000  # only data segments of OT/credential/app protocols are tracked
 OT_DISSECTORS = {"modbus", "dnp3", "s7comm", "enip", "cip", "iec60870_asdu", "bacapp"}
@@ -53,6 +55,7 @@ class FlowAcc:
         "ot_writes",
         "ot_errors",
         "fc_counts",
+        "times",
     )
 
     def __init__(self, fid, transport, client, cport, server, sport, basis, ts):
@@ -69,6 +72,7 @@ class FlowAcc:
         self.resets = 0
         self.ot_reads = self.ot_writes = self.ot_errors = 0
         self.fc_counts: Counter[str] = Counter()
+        self.times: list[float] = []  # first client→server packet times, for beacon detection
 
     def flip(self, basis: str) -> None:
         """Swap client and server (a later SYN proved the first guess wrong)."""
@@ -195,6 +199,9 @@ class Aggregator:
         self.malformed = 0
         self.link_types: Counter[str] = Counter()
         self._next_flow_id = 1
+        self.vlan_packets: Counter = Counter()  # VLAN id (None = untagged) → frames
+        self.vlan_broadcast: Counter = Counter()  # VLAN id → frames to ff:ff:ff:ff:ff:ff
+        self.arp_claims: dict[tuple, set[str]] = defaultdict(set)  # (VLAN, IP) → MACs claiming it
 
     # ── helpers ────────────────────────────────────────────────────────────
     def host(self, ip: str) -> HostAcc:
@@ -260,6 +267,11 @@ class Aggregator:
         if p.src_mac and p.src_vendor:
             self.mac_vendor.setdefault(p.src_mac, p.src_vendor)
 
+        vlan_key = p.vlan_ids[-1] if p.vlan_ids else None
+        self.vlan_packets[vlan_key] += 1
+        if p.dst_mac == BROADCAST_MAC:
+            self.vlan_broadcast[vlan_key] += 1
+
         layers = p.layers
         self._discovery(p, layers)
 
@@ -304,6 +316,8 @@ class Aggregator:
         if c2s:
             f.pkts_c2s += 1
             f.bytes_c2s += p.length
+            if len(f.times) < MAX_FLOW_TIMES and f.id <= MAX_TIMED_FLOWS:
+                f.times.append(p.ts)
         else:
             f.pkts_s2c += 1
             f.bytes_s2c += p.length
@@ -447,6 +461,8 @@ class Aggregator:
             ip = layers["arp_src_proto_ipv4"][0]
             if mac and ip and ip != "0.0.0.0":  # noqa: S104 - ARP probe source, not a bind address
                 self.arp_ip_for_mac[mac].add(ip)
+                if len(self.arp_claims) < 100_000:
+                    self.arp_claims[(p.vlan_ids[-1] if p.vlan_ids else None, ip)].add(mac)
                 h = self.host(ip)
                 h.seen(p.ts)
                 h.macs[mac] += 1
@@ -547,6 +563,7 @@ class Aggregator:
             ot_errors=f.ot_errors,
             function_counts=dict(f.fc_counts),
             notes=self.notes.notes.get(f.id, {}),
+            c2s_times=f.times,
         )
 
     def _host_out(self, h: HostAcc, served: dict, gateway_macs: set[str]) -> Host:

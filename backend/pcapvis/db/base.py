@@ -1,4 +1,5 @@
 """Declarative base with a naming convention so migrations are stable on SQLite and PostgreSQL."""
+
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, MetaData

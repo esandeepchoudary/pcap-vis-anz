@@ -1,4 +1,5 @@
 """Request/response models. These feed OpenAPI, which generates the frontend's TypeScript types."""
+
 from datetime import datetime
 from typing import Literal
 

@@ -1,4 +1,5 @@
 """FastAPI application factory."""
+
 import logging
 from pathlib import Path
 
@@ -56,12 +57,14 @@ def _bootstrap_users(settings: Settings, session_factory) -> None:
             return
         if auth.count_active_admins(db) == 0:
             if settings.admin_username and settings.admin_password:
-                auth.create_user(db, settings.admin_username, settings.admin_password,
-                                 auth.Role.admin, "Administrator")
+                auth.create_user(
+                    db, settings.admin_username, settings.admin_password, auth.Role.admin, "Administrator"
+                )
                 log.warning("Created initial admin user '%s'.", settings.admin_username)
             else:
-                log.warning("Server mode has no admin yet. Create one with: "
-                            "pcapvis create-user <name> --role admin")
+                log.warning(
+                    "Server mode has no admin yet. Create one with: pcapvis create-user <name> --role admin"
+                )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -92,8 +95,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def csrf_and_headers(request: Request, call_next):
-        if (request.method in UNSAFE_METHODS and request.url.path.startswith("/api/")
-                and request.headers.get(CSRF_HEADER) != "1"):
+        if (
+            request.method in UNSAFE_METHODS
+            and request.url.path.startswith("/api/")
+            and request.headers.get(CSRF_HEADER) != "1"
+        ):
             return JSONResponse({"detail": "Missing X-PcapVis-Client header."}, status_code=403)
         response: Response = await call_next(request)
         for key, value in SECURITY_HEADERS.items():
@@ -106,8 +112,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_auth.router)
     app.include_router(routes_users.router)
 
-    @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-                   include_in_schema=False)
+    @app.api_route(
+        "/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
+    )
     def api_not_found(rest: str):
         return JSONResponse({"detail": "Not found."}, status_code=404)
 
@@ -126,9 +133,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return FileResponse(candidate)
             return FileResponse(index_html, headers={"Cache-Control": "no-cache"})
     else:
+
         @app.get("/", include_in_schema=False)
         def no_frontend():
-            return JSONResponse({"detail": "Frontend not built. Run: cd frontend && npm run build"},
-                                status_code=503)
+            return JSONResponse(
+                {"detail": "Frontend not built. Run: cd frontend && npm run build"}, status_code=503
+            )
 
     return app

@@ -27,8 +27,9 @@ def login(
     throttle: auth.LoginThrottle = request.app.state.login_throttle
     client = _client(request)
     if throttle.is_blocked(body.username, client):
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
-                            "Too many failed sign-in attempts. Try again in 15 minutes.")
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed sign-in attempts. Try again in 15 minutes."
+        )
     user = auth.authenticate(db, body.username, body.password)
     if user is None:
         throttle.record_failure(body.username, client)
@@ -36,9 +37,13 @@ def login(
     throttle.reset(body.username, client)
     token = auth.create_session(db, user, settings.session_ttl_hours, request.headers.get("user-agent", ""))
     response.set_cookie(
-        SESSION_COOKIE, token,
+        SESSION_COOKIE,
+        token,
         max_age=settings.session_ttl_hours * 3600,
-        httponly=True, samesite="strict", secure=settings.cookie_secure, path="/",
+        httponly=True,
+        samesite="strict",
+        secure=settings.cookie_secure,
+        path="/",
     )
     return user
 

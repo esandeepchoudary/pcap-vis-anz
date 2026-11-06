@@ -1,4 +1,5 @@
 """Command line: pcapvis serve | check | create-user | db-upgrade | openapi."""
+
 import argparse
 import getpass
 import json
@@ -33,8 +34,14 @@ def _cmd_serve(args) -> int:
     if args.reload:
         # Reload needs an import string; settings come from env vars in the child process.
         os.environ.setdefault("PCAPVIS_HOST", host)
-        uvicorn.run("pcapvis.cli:_reload_app", factory=True, host=host, port=port, reload=True,
-                    reload_dirs=[os.path.dirname(__file__)])
+        uvicorn.run(
+            "pcapvis.cli:_reload_app",
+            factory=True,
+            host=host,
+            port=port,
+            reload=True,
+            reload_dirs=[os.path.dirname(__file__)],
+        )
         return 0
     try:
         app = create_app(s)

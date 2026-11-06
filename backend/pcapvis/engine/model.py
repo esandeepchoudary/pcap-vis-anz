@@ -97,6 +97,7 @@ class Flow(BaseModel):
     ot_errors: int = 0
     function_counts: dict[str, int] = Field(default_factory=dict)
     notes: dict[str, list[str]] = Field(default_factory=dict)  # http_requests, mqtt_topics, …
+    c2s_times: list[float] = Field(default_factory=list, description="First client→server packet times")
 
     @property
     def packets(self) -> int:
@@ -147,6 +148,40 @@ class FileTransfer(BaseModel):
     stored_path: str | None = None
 
 
+Severity = Literal["critical", "high", "medium", "low", "info"]
+
+
+class Anomaly(BaseModel):
+    """A rule hit, grouped per (rule, source, destination) with counts and evidence samples."""
+
+    id: str  # stable: hash of rule + src + dst + key
+    rule: str
+    category: Literal["network", "credentials", "ot", "iot", "vlan"]
+    severity: Severity
+    title: str
+    description: str
+    src: str | None = None
+    dst: str | None = None
+    flow_ids: list[int] = Field(default_factory=list)
+    first_seen: float | None = None
+    last_seen: float | None = None
+    count: int = 1
+    evidence: list[str] = Field(default_factory=list)
+    attack: list[str] = Field(default_factory=list)  # MITRE ATT&CK technique IDs
+
+
+class VlanStat(BaseModel):
+    vlan: int | None  # None = untagged
+    packets: int
+    broadcast: int
+
+
+class ArpClaim(BaseModel):
+    vlan: int | None
+    ip: str
+    macs: list[str]
+
+
 class CaptureSummary(BaseModel):
     file_name: str
     file_size: int
@@ -169,3 +204,6 @@ class AnalysisResult(BaseModel):
     ot_commands_truncated: bool = False
     credentials: list[Credential] = Field(default_factory=list)
     files: list[FileTransfer] = Field(default_factory=list)
+    anomalies: list[Anomaly] = Field(default_factory=list)
+    vlan_stats: list[VlanStat] = Field(default_factory=list)
+    arp_claims: list[ArpClaim] = Field(default_factory=list)

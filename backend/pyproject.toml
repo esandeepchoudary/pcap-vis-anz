@@ -51,7 +51,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S"]
-ignore = ["S101"]  # assert is fine in tests
+ignore = [
+    "S101",  # assert is fine in tests
+    "E501",  # line length is enforced by `ruff format`; long message strings are left whole
+]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency-injection idiom

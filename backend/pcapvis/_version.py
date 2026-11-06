@@ -1,4 +1,5 @@
 """App version. The repo-root VERSION file is the single source of truth."""
+
 from importlib import metadata
 from pathlib import Path
 
