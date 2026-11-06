@@ -332,3 +332,16 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
   a refresh; open live-update streams no longer block a server restart (5 s graceful shutdown, streams
   recycled every 5 min).
 - Tests: backend 461, frontend 123, e2e 17.
+
+**Security and bug sweep after M8 (v0.10.1, 2026-11-06).**
+- Dependency audits clean (pip-audit on the locked backend set, npm audit). Ruff security (S) and bugbear
+  (B) rules already enforced in CI.
+- New regression sweep over every operation in the OpenAPI schema: sign-in required (found and fixed:
+  `/api/asset-fields`), non-members always get 404 on engagement routes, every unsafe request needs the
+  CSRF header.
+- Limits: JSON bodies capped at 2 MB (chunked bodies without a length refused); packet inspector bounded to
+  3 concurrent tshark runs (429); live-update streams recycled every 5 min and a 5 s graceful shutdown.
+- Headers: Permissions-Policy, Cross-Origin-Opener-Policy, and HSTS when served over HTTPS.
+- Reviewed: bundle import validation, cross-engagement ID checks on every ID-taking route, untrusted text in
+  every export format (CSV, XLSX, draw.io, SVG, HTML, DOCX), no raw-HTML sinks in the frontend, no secrets in
+  finding evidence or reports.

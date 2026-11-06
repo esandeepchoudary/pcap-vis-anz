@@ -195,6 +195,13 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
 - Per-capture views (flows, DNS, VLANs) read the stored result; engagement views (graph, diff, dashboard) come
   from assets, sightings and links. `lib/graph.ts` holds the deterministic ring layout.
 
+### Security invariants (sweep after M8)
+
+- `tests/test_security_sweep.py` walks the OpenAPI schema: a new route must require sign-in (or be added to
+  the explicit public allowlist), return 404 to non-members if engagement-scoped, and need the CSRF header if
+  unsafe. Don't weaken it to make a route pass.
+- JSON request bodies are capped (`MAX_JSON_BODY`); uploads/imports are multipart with their own limits.
+
 ### Findings and reports (M8)
 
 - Rule findings are collected per capture (`FindingHit`, rebuilt each merge) and merged by anomaly id across

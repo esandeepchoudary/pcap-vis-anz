@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v0.10.1 -- 2026-11-06
+
+- Security and bug sweep: access-control regression sweep over every API operation, request body caps, packet-inspector concurrency limit, extra security headers
+
 ## v0.10.0 -- 2026-11-06
 
 - v2 rebuild M8 findings and reports: findings workspace with triage and manual findings, Word and HTML (print to PDF) report, Excel asset register, editable draw.io and SVG Purdue diagram
