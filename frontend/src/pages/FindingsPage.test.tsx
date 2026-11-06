@@ -71,6 +71,21 @@ describe('Findings', () => {
     }))
   })
 
+  it('keeps an unsaved recommendation when the finding refreshes', async () => {
+    let status: Finding['status'] = 'open'
+    setup({
+      'GET /api/engagements/7/findings': () => json(200, [{ ...rule, status, updated_at: status === 'open' ? null : '2026-11-06T10:00:00Z' }, fp]),
+      'PATCH /api/engagements/7/findings/a1': () => { status = 'confirmed'; return json(200, { ...rule, status }) },
+    })
+    await userEvent.click(await screen.findByText('PLC program download (S7comm)'))
+    const panel = await screen.findByLabelText('Finding details')
+    await userEvent.type(within(panel).getByLabelText('Recommendation'), 'Restrict downloads')
+    await userEvent.selectOptions(within(panel).getByLabelText('Status'), 'confirmed')
+    await waitFor(() => expect(within(panel).getByLabelText('Status')).toHaveValue('confirmed'))
+    expect(within(panel).getByLabelText('Recommendation')).toHaveValue('Restrict downloads')
+    expect(within(panel).getByRole('button', { name: 'Save notes' })).toBeInTheDocument()
+  })
+
   it('viewers cannot triage', async () => {
     setup({}, '/e/7/findings', { ...engagement, my_role: 'viewer' })
     expect(screen.queryByRole('button', { name: /Add finding/ })).not.toBeInTheDocument()

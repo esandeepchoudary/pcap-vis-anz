@@ -16,6 +16,13 @@ function Triage({ f, eid, canEdit }: { f: Finding; eid: number; canEdit: boolean
   const del = useDeleteFinding(eid)
   const [notes, setNotes] = useState(f.notes)
   const [rec, setRec] = useState(f.recommendation)
+  const [saved, setSaved] = useState({ notes: f.notes, rec: f.recommendation })
+  // Follow server changes (another user, or this save) only where the text wasn't edited here.
+  if (saved.notes !== f.notes || saved.rec !== f.recommendation) {
+    if (notes === saved.notes) setNotes(f.notes)
+    if (rec === saved.rec) setRec(f.recommendation)
+    setSaved({ notes: f.notes, rec: f.recommendation })
+  }
   const dirty = notes !== f.notes || rec !== f.recommendation
   return (
     <div className="stack" style={{ gap: 'var(--space-3)' }}>
@@ -75,7 +82,7 @@ export function FindingDetails({ eid, findingKey, onClose }: { eid: number; find
           </div>
           <div className="inspector-section">
             <h3>Triage</h3>
-            <Triage key={`${f.key}-${f.updated_at}`} f={f} eid={eid} canEdit={canEdit} />
+            <Triage key={f.key} f={f} eid={eid} canEdit={canEdit} />
           </div>
         </>
       )}

@@ -189,7 +189,9 @@ def test_bundle_round_trip_keeps_triage_and_manual_findings(ac):
     from tests.test_bundles import _seed_with_result
 
     _seed_with_result(app, eid, host("10.0.0.5", "00:0c:29:00:00:77"))  # a MAC no other fixture uses
-    ingest(app, eid, with_anomalies(res([]), anomaly()), "rules.pcap")  # no stored result: triage still exported
+    ingest(
+        app, eid, with_anomalies(res([]), anomaly()), "rules.pcap"
+    )  # no stored result: triage still exported
     c.patch(
         f"/api/engagements/{eid}/findings/a1",
         json={"status": "accepted_risk", "notes": "Vendor maintenance"},

@@ -486,3 +486,10 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Packet inspector re-reads the capture from the start for each decode; index frame offsets for big files
 - [ ] Graph layout is rings by degree; switch to a force layout (d3-force) if large graphs get cluttered
 
+### v2 rebuild: M8 findings and reports (2026-11-06, feature/m8-reports)
+
+- [x] Findings workspace with triage and manual findings; DOCX/HTML report; XLSX register; draw.io/SVG diagram
+- [ ] Server-side PDF (needs a renderer in the image; today: print the HTML report)
+- [ ] Report templates and branding (logo, cover page, custom sections)
+- [ ] Diagram export of the architecture (zones/conduits) view, not only the Purdue map
+
