@@ -1,0 +1,57 @@
+name: Version
+
+# Every PR into master must bump VERSION (scripts/bump_version.py).
+# Every push to master tags the commit as v<VERSION> if that tag doesn't exist yet.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  check-bump:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Require a version bump
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if ! base_version=$(git show "origin/${BASE_REF}:VERSION" 2>/dev/null); then
+            echo "Base branch has no VERSION file yet; skipping bump check."
+            exit 0
+          fi
+          python scripts/check_version_bump.py "$base_version"
+
+  tag-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag v<VERSION>
+        run: |
+          tag="v$(tr -d '[:space:]' < VERSION)"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists; nothing to do."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "Release ${tag}"
+          git push origin "${tag}"

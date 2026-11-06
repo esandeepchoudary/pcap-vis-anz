@@ -27,9 +27,16 @@ Once a feature is fully implemented and tests pass, ask the user to review and m
 After completing any change:
 1. Update `README.md` to reflect the change (new protocols, updated limits, new features, etc.)
 2. Update `backlog.md` -- mark completed items `[x]`, add newly discovered bugs or ideas.
-3. Run any relevant unit tests: `python -m pytest tests/ -q` (create tests in `tests/` if they don't exist yet).
-4. Start the app and verify it runs without errors: `python app.py` -- check the terminal for startup errors before reporting the task complete.
-5. Commit and push to GitHub:
+3. **Bump the version** -- every change, on every branch, before it is merged:
+   `python scripts/bump_version.py <patch|minor|major> "one-line summary"`.
+   Use `patch` for fixes/tweaks, `minor` for new features, `major` for breaking changes
+   (session/project file format, `/upload` JSON schema). This updates `VERSION` and
+   `CHANGELOG.md`; commit both. Bump once per branch/PR, not per commit -- if the branch
+   already bumped, edit its `CHANGELOG.md` entry instead. CI (`.github/workflows/version.yml`)
+   fails PRs that don't raise the version and tags `master` as `v<VERSION>` on merge.
+4. Run any relevant unit tests: `python -m pytest tests/ -q` (create tests in `tests/` if they don't exist yet).
+5. Start the app and verify it runs without errors: `python app.py` -- check the terminal for startup errors before reporting the task complete.
+6. Commit and push to GitHub:
 
 ```bash
 git add <changed files>
@@ -39,7 +46,7 @@ git push
 
 ## Testing
 
-Write unit tests in `tests/` (18 files, including `conftest.py`) using `pytest`. Tests cover:
+Write unit tests in `tests/` (19 files, including `conftest.py`) using `pytest`. Tests cover:
 - Protocol parsers (`parse_modbus`, `parse_dnp3`, `parse_s7comm`, HTTP/MQTT/CoAP, etc.) in `tests/test_parsers.py`, `tests/test_http_mqtt_coap.py`
 - Anomaly detection rules (general + OT-specific) in `tests/test_anomalies.py`, `tests/test_anomalies_ot.py`
 - Helper functions (`is_private`, `mac_vendor`, `geo_lookup`) in `tests/test_helpers.py`
@@ -95,7 +102,7 @@ Key functions in call order:
 
 **GeoIP** (`geo_lookup`) is optional; silently returns `None` if `geoip2` can't open `/usr/share/GeoIP/GeoLite2-City.mmdb`.
 
-**Other routes** beyond `/` and `/upload`: `GET /download/<sha256>` serves a cached file transfer by hash; `GET /gpu-status` reports whether CUDA/cupy acceleration is available; `GET /session-schema` returns a real JSON Schema describing the `/upload` response shape (nodes/edges/anomalies/stats/etc.) -- fetch it directly rather than reverse-engineering the shape from `app.py` if you're integrating against the API.
+**Other routes** beyond `/` and `/upload`: `GET /version` returns `{"version": ...}` from the `VERSION` file; `GET /download/<sha256>` serves a cached file transfer by hash; `GET /gpu-status` reports whether CUDA/cupy acceleration is available; `GET /session-schema` returns a real JSON Schema describing the `/upload` response shape (nodes/edges/anomalies/stats/etc.) -- fetch it directly rather than reverse-engineering the shape from `app.py` if you're integrating against the API.
 
 ### Frontend (`static/js/app.js`)
 

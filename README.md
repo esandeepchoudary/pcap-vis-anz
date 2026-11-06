@@ -17,6 +17,7 @@ An interactive web-based tool for visualizing network packet captures. Upload a 
 - [Capturing your own traffic](#capturing-your-own-traffic)
 - [Project Structure](#project-structure)
 - [Testing](#testing)
+- [Versioning](#versioning)
 - [Configuration](#configuration)
 - [Security & self-containment](#security--self-containment)
 - [Troubleshooting](#troubleshooting)
@@ -290,6 +291,9 @@ Sample `.pcap` files are also available at [https://www.malware-traffic-analysis
 ```text
 pcap-vis-anz/
 ├── app.py                  # Flask backend + PCAP parser (scapy)
+├── VERSION                 # Current app version (semver), shown in the header
+├── CHANGELOG.md            # Per-version change log
+├── scripts/                # bump_version.py, check_version_bump.py
 ├── requirements.txt        # Python dependencies
 ├── LICENSE                 # MIT
 ├── docs/                   # Generated tutorial + product docs (Markdown)
@@ -332,7 +336,25 @@ pip install pytest            # or: pip install -r requirements-dev.txt
 pytest tests/ -q
 ```
 
-The suite contains 354 tests across 18 files covering protocol parsers, anomaly detection (including all 16 OT/IoT rules), credential extraction, file transfer detection, multi-file merging, full-fidelity serialization (no port/DNS truncation), GeoIP bundling, frontend regression guards, and the `/upload` HTTP endpoint.
+The suite contains 375 tests across 19 files covering protocol parsers, anomaly detection (including all 16 OT/IoT rules), credential extraction, file transfer detection, multi-file merging, full-fidelity serialization (no port/DNS truncation), GeoIP bundling, frontend regression guards, and the `/upload` HTTP endpoint.
+
+## Versioning
+
+The app follows [Semantic Versioning](https://semver.org/). The current version lives in
+[`VERSION`](VERSION), is shown next to the title in the app header, is returned by
+`GET /version`, and is stamped into saved session files and OT map JSON exports.
+
+Every change merged into `master` bumps the version:
+
+```bash
+python scripts/bump_version.py patch "Fix OT map label clipping"   # bug fix
+python scripts/bump_version.py minor "Add OT asset editor"         # new feature
+python scripts/bump_version.py major "Change session file format"  # breaking change
+```
+
+This updates `VERSION` and adds an entry to [`CHANGELOG.md`](CHANGELOG.md). A GitHub
+Actions check fails any pull request that doesn't raise the version, and each push to
+`master` is tagged `v<VERSION>` automatically.
 
 ## Configuration
 
