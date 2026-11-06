@@ -26,10 +26,14 @@ except Exception:
     import numpy as _xp
     GPU_AVAILABLE = False
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def _read_version():
     """Return the app version from the VERSION file (bumped via scripts/bump_version.py)."""
     try:
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")) as fh:
+        # VERSION lives at the repo root (one level above legacy/)
+        with open(os.path.join(_REPO_ROOT, "VERSION")) as fh:
             return fh.read().strip() or "0.0.0"
     except OSError:
         return "0.0.0"
@@ -488,8 +492,7 @@ _geoip_lock = threading.Lock()
 # 1. GEOIP_DB_PATH env var (gunicorn-safe override, any .mmdb format)
 # 2. System MaxMind/DB-IP City database (provides city names + coords)
 # 3. Bundled DB-IP Country Lite (CC BY 4.0, ships with the repo)
-_GEOIP_BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "data", "dbip-country-lite.mmdb")
+_GEOIP_BUNDLED = os.path.join(_REPO_ROOT, "data", "dbip-country-lite.mmdb")
 _GEOIP_CANDIDATES = [
     os.environ.get("GEOIP_DB_PATH", ""),
     "/usr/share/GeoIP/GeoLite2-City.mmdb",

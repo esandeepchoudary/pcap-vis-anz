@@ -4,6 +4,12 @@ An interactive web-based tool for visualizing network packet captures. Upload a 
 
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/) [![Flask](https://img.shields.io/badge/flask-2.3%2B-lightgrey)](https://flask.palletsprojects.com/) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE) [![Docs](https://img.shields.io/badge/docs-live-blue)](https://esandeepchoudary.github.io/pcap-vis-anz/)
 
+> **v2 rebuild in progress** on the [`develop`](https://github.com/esandeepchoudary/pcap-vis-anz/tree/develop) branch:
+> an engagement-based OT/ICS asset mapping tool (React + FastAPI, Wireshark's tshark as the packet engine,
+> laptop or team-server deployment, shipped as a container). See [`REFACTOR.md`](REFACTOR.md) for the plan
+> and [v2 quick start](#v2-quick-start-preview) below. Everything else in this README describes the current
+> app (v1), which now lives in [`legacy/`](legacy/).
+
 ## Table of Contents
 
 - [Documentation](#documentation)
@@ -17,6 +23,7 @@ An interactive web-based tool for visualizing network packet captures. Upload a 
 - [Capturing your own traffic](#capturing-your-own-traffic)
 - [Project Structure](#project-structure)
 - [Testing](#testing)
+- [v2 quick start (preview)](#v2-quick-start-preview)
 - [Versioning](#versioning)
 - [Configuration](#configuration)
 - [Security & self-containment](#security--self-containment)
@@ -246,20 +253,20 @@ venv\Scripts\activate           # Windows
 ### 3. Install dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install -r legacy/requirements.txt
 ```
 
 > **Note for Kali / Debian systems** — if pip complains about externally managed environments, add `--break-system-packages`:
 > ```bash
-> pip install -r requirements.txt --break-system-packages
+> pip install -r legacy/requirements.txt --break-system-packages
 > ```
 
 ## Usage
 
 ```bash
-python app.py                # localhost only (default, safe)
-python app.py --public       # expose to your local network — see warning below
-python app.py --port 8080    # use a different port
+python legacy/app.py                # localhost only (default, safe)
+python legacy/app.py --public       # expose to your local network — see warning below
+python legacy/app.py --port 8080    # use a different port
 ```
 
 Then open your browser and go to `http://localhost:5000` (or your machine's LAN IP if `--public` was used).
@@ -290,53 +297,63 @@ Sample `.pcap` files are also available at [https://www.malware-traffic-analysis
 
 ```text
 pcap-vis-anz/
-├── app.py                  # Flask backend + PCAP parser (scapy)
+├── backend/                # v2: FastAPI backend (package `pcapvis`), tests in backend/tests
+├── frontend/               # v2: React + TypeScript app, unit tests in src/, browser tests in e2e/
+├── Dockerfile              # v2: container image (tshark + backend + frontend)
+├── docker-compose.yml      # v2: team server with PostgreSQL
+├── REFACTOR.md             # v2: plan, decisions, milestones
+├── legacy/                 # v1 app, kept as the reference for v2
+│   ├── app.py              # Flask backend + PCAP parser (scapy)
+│   ├── requirements.txt    # Python dependencies
+│   ├── templates/index.html  # Single-page app shell
+│   ├── static/css/style.css  # Dark GitHub-style theme
+│   ├── static/js/app.js      # D3.js force graph + UI logic
+│   └── tests/              # 375 pytest tests: parsers, anomaly rules, credentials, VLAN, merge, routes, …
 ├── VERSION                 # Current app version (semver), shown in the header
 ├── CHANGELOG.md            # Per-version change log
 ├── scripts/                # bump_version.py, check_version_bump.py
-├── requirements.txt        # Python dependencies
-├── LICENSE                 # MIT
+├── data/
+│   ├── dbip-country-lite.mmdb  # Bundled DB-IP Country Lite GeoIP DB (CC BY 4.0)
+│   └── DB-IP-LICENSE.txt       # Attribution and refresh instructions
 ├── docs/                   # Generated tutorial + product docs (Markdown)
 ├── site/                   # Docusaurus site serving docs/ — see site/README.md
 ├── tours/                  # Tour specs driving the docs generation
 ├── fixtures/               # Demo capture used to generate doc screenshots
-├── data/
-│   ├── dbip-country-lite.mmdb  # Bundled DB-IP Country Lite GeoIP DB (CC BY 4.0)
-│   └── DB-IP-LICENSE.txt       # Attribution and refresh instructions
-├── templates/
-│   └── index.html          # Single-page app shell
-├── static/
-│   ├── css/style.css       # Dark GitHub-style theme
-│   └── js/app.js           # D3.js force graph + UI logic
-└── tests/
-    ├── conftest.py            # Shared pytest fixtures and packet builders
-    ├── test_parsers.py         # Protocol parser unit tests (Modbus, DNP3, S7, CoAP, …)
-    ├── test_anomalies.py       # Anomaly detection rule tests
-    ├── test_anomalies_ot.py    # OT/IoT anomaly rule tests (Modbus writes, DNP3 control, S7, EtherNet/IP, IEC-104, BACnet, IoT)
-    ├── test_credentials.py     # Credential extraction tests
-    ├── test_file_cache.py      # Captured file download-cache tests
-    ├── test_file_extraction.py # HTTP file transfer detection tests
-    ├── test_frontend_findings_static.py # Static frontend regression tests
-    ├── test_geoip.py           # GeoIP bundled-DB and geo_lookup() tests
-    ├── test_helpers.py         # Helper function tests (is_private, mac_vendor, geo_lookup)
-    ├── test_http_mqtt_coap.py  # HTTP / MQTT / CoAP parser tests
-    ├── test_ipv6_ext_headers.py # IPv6 extension-header parsing tests
-    ├── test_merge.py           # Multi-file merge tests
-    ├── test_pcapng.py          # pcapng parse and parity tests
-    ├── test_routes.py          # /upload endpoint HTTP tests (happy path, errors, file count cap)
-    ├── test_serialization.py   # Output schema and truncation-flag tests
-    ├── test_vlan.py            # VLAN parsing, merge, stats, and anomaly tests
-    └── test_utils.py           # Utility function tests
+└── LICENSE                 # MIT
 ```
 
 ## Testing
 
 ```bash
-pip install pytest            # or: pip install -r requirements-dev.txt
-pytest tests/ -q
+pip install pytest            # or: pip install -r legacy/requirements-dev.txt
+cd legacy && pytest tests/ -q
 ```
 
-The suite contains 375 tests across 19 files covering protocol parsers, anomaly detection (including all 16 OT/IoT rules), credential extraction, file transfer detection, multi-file merging, full-fidelity serialization (no port/DNS truncation), GeoIP bundling, frontend regression guards, and the `/upload` HTTP endpoint.
+The legacy suite contains 375 tests across 19 files covering protocol parsers, anomaly detection (including all 16 OT/IoT rules), credential extraction, file transfer detection, multi-file merging, full-fidelity serialization (no port/DNS truncation), GeoIP bundling, frontend regression guards, and the `/upload` HTTP endpoint.
+
+v2 has its own suites: `cd backend && uv run pytest` (also runs against PostgreSQL via
+`PCAPVIS_TEST_DATABASE_URL`), `cd frontend && npm test` (component tests), and `npm run e2e`
+(Playwright browser tests against the production build). CI runs all of them, plus the legacy suite
+and a container build, on every push and pull request.
+
+## v2 quick start (preview)
+
+The rebuild is at milestone **M0 (foundations)**: workbench UI, light/dark themes, local accounts,
+laptop and team-server modes, container packaging. Packet analysis arrives in M1–M2.
+
+```bash
+# Laptop mode (single user, no sign-in), in a container:
+docker build -t pcapvis .
+docker run -p 8080:8080 -v ./engagements:/data pcapvis          # http://localhost:8080
+
+# Team server with PostgreSQL:
+cp .env.example .env    # set POSTGRES_PASSWORD and PCAPVIS_ADMIN_PASSWORD
+docker compose up -d    # http://<server>:8080, sign in as admin
+
+# Without a container (needs tshark 4.0+, Python 3.12+, uv, Node 22):
+cd backend && uv sync && uv run pcapvis serve --reload
+cd frontend && npm ci && npm run dev                            # http://localhost:5173
+```
 
 ## Versioning
 
@@ -395,8 +412,8 @@ This tool is designed for **air-gapped / offline use**:
 **Using a richer GeoIP database:** The bundled DB-IP Country Lite resolves country only (city names are absent). If you have a city-level database (`GeoLite2-City.mmdb` or `dbip-city-lite.mmdb`), you can point the app at it:
 
 ```bash
-# Environment variable (works with both python app.py and gunicorn)
-GEOIP_DB_PATH=/path/to/GeoLite2-City.mmdb python app.py
+# Environment variable (works with both python legacy/app.py and gunicorn)
+GEOIP_DB_PATH=/path/to/GeoLite2-City.mmdb python legacy/app.py
 
 # Or place it at the default system path (checked before the bundled DB)
 /usr/share/GeoIP/GeoLite2-City.mmdb
@@ -419,7 +436,7 @@ Robustness hardening applied in v0.9: all API endpoints return JSON errors (incl
 
 **`scapy` import error** — Make sure you installed dependencies inside the correct Python environment (or virtualenv).
 
-**Permission denied reading pcap** — Some systems require root to read certain capture files. Try `sudo python app.py`.
+**Permission denied reading pcap** — Some systems require root to read certain capture files. Try `sudo python legacy/app.py`.
 
 **Graph is empty after upload** — The file may contain only non-IP traffic (e.g. pure Bluetooth or USB captures). The tool supports IPv4, IPv6, and ARP packets.
 

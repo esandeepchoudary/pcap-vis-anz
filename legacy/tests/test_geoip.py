@@ -11,7 +11,7 @@ geoip2 = pytest.importorskip("geoip2", reason="geoip2 not installed")
 # Skip the whole module if the bundled DB is absent (keeps the suite robust on
 # machines that only run pure-Python tests without the data/ directory).
 _BUNDLED_DB = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "data", "dbip-country-lite.mmdb",
 )
 pytestmark = pytest.mark.skipif(

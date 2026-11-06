@@ -1,0 +1,41 @@
+# Team server mode: app + PostgreSQL.
+#   cp .env.example .env   # set POSTGRES_PASSWORD and PCAPVIS_ADMIN_PASSWORD
+#   docker compose up -d
+#   open http://<server>:8080 and sign in as the admin user
+services:
+  app:
+    build: .
+    image: pcapvis:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PCAPVIS_MODE: server
+      PCAPVIS_DATABASE_URL: postgresql+psycopg://pcapvis:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/pcapvis
+      PCAPVIS_ADMIN_USERNAME: ${PCAPVIS_ADMIN_USERNAME:-admin}
+      PCAPVIS_ADMIN_PASSWORD: ${PCAPVIS_ADMIN_PASSWORD:-}
+      PCAPVIS_COOKIE_SECURE: ${PCAPVIS_COOKIE_SECURE:-false}
+    ports:
+      - "${PCAPVIS_PUBLISH_PORT:-8080}:8080"
+    volumes:
+      - captures:/data
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pcapvis
+      POSTGRES_USER: pcapvis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pcapvis -d pcapvis"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  captures:
+  pgdata:

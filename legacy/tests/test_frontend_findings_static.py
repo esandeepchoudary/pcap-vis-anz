@@ -40,7 +40,8 @@ def test_inline_event_handlers_are_not_reintroduced():
 
 
 def test_agents_instructions_are_available():
-    agents = read("AGENTS.md")
+    # AGENTS.md lives at the repo root, one level above legacy/
+    agents = (ROOT.parent / "AGENTS.md").read_text(encoding="utf-8")
 
     assert "## Branching" in agents
     assert "python -m pytest tests/ -q" in agents

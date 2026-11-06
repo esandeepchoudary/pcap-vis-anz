@@ -406,3 +406,17 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [x] **Semantic versioning introduced, starting at v0.1.0** -- `VERSION` file is the single source of truth; `app.py` reads it into `__version__`, serves it at `GET /version`, and renders it in the header (`#app-version`). Session saves and OT map JSON exports now carry `app_version`.
 - [x] **Bump routine** -- `scripts/bump_version.py <major|minor|patch> "summary"` increments `VERSION` and prepends a `CHANGELOG.md` entry. AGENTS.md workflow now requires a bump on every change.
 - [x] **CI enforcement** -- `.github/workflows/version.yml` fails PRs into `master` whose `VERSION` isn't higher than the base branch's (`scripts/check_version_bump.py`, numeric semver comparison), and tags each push to `master` as `v<VERSION>` if the tag doesn't exist.
+
+### v2 rebuild: M0 foundations (2026-11-06, feature/m0-foundations → develop)
+
+- [x] Legacy app moved to `legacy/` (paths to `VERSION` and `data/` fixed; 375 tests green)
+- [x] FastAPI backend skeleton: settings, tshark gate, DB + migrations, local accounts and roles, CSRF/CSP, SPA serving, CLI
+- [x] React + TypeScript workbench shell with light/dark design tokens, sign-in, account, user admin
+- [x] Container image + team-server compose (PostgreSQL), verified end to end
+- [x] CI for backend (SQLite + PostgreSQL), frontend, e2e, legacy, container
+- [x] Bugs caught by the new tests: naive vs. aware datetime comparison on SQLite session expiry; sign-out not re-checking the session (UI stayed signed in)
+- [ ] Container image is ~700 MB (Wireshark libraries); investigate a slimmer tshark build
+- [ ] Starlette deprecation warning: TestClient wants `httpx2`; switch when FastAPI's test client moves
+- [ ] Docs site (`docs/`, `site/`, `tours/`) still describes v1; rewrite at M9
+- [ ] GitHub reports 55 Dependabot alerts on `master` (likely `site/` npm deps); review and fix
+
