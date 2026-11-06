@@ -1,0 +1,125 @@
+# Refactor plan -- PCAP Network Visualizer v2
+
+Status: **draft, being finalized interactively** (branch `develop`, started 2026-11-06 from v0.1.0).
+
+This document has three parts:
+
+1. **Feature inventory**: everything the app does today, so nothing is lost in the rebuild.
+2. **Gaps and problems**: architecture, UX, and missing features.
+3. **Decisions**: the choices we make together, plus the resulting target design.
+
+---
+
+## 1. Feature inventory (v0.1.0)
+
+### 1.1 Ingest and parsing (backend, `app.py`)
+
+| Area | What exists |
+|---|---|
+| Upload | Up to 100 files / 1 GB per upload; pcap, pcapng, cap; files analyzed in parallel, then merged (`merge_results`) |
+| Parser | Streams with scapy `RawPcapReader` plus manual byte parsing: Ethernet, 802.1Q, QinQ (0x88A8 and stacked 0x8100), IPv4, IPv6 with extension headers, TCP, UDP, ICMP, ARP |
+| Limits | 1,000,000 packets; 50 stored packets per connection; top 40 connections with packet detail; 30 ports per node in the output |
+| Host identity | TTL OS hint; MAC OUI vendor (IT, OT, IoT); DNS names; CDP/LLDP device names and native VLAN; GeoIP country (bundled DB-IP Lite) |
+| Classification | 38 host types; 80+ protocols identified by port; Purdue level (`purdue_level_py`); OT master/outstation role; Engineering Workstation auto-detection from S7 Download |
+| OT deep inspection | Modbus TCP, DNP3, S7comm, EtherNet/IP CIP, IEC 60870-5-104, BACnet/IP |
+| IoT and IT deep inspection | HTTP, MQTT, CoAP, TLS ClientHello (SNI, JA3 plus a known-bad JA3 list) |
+| Credentials | HTTP Basic, form POST, FTP, Telnet, MQTT CONNECT, CoAP; password-reuse detection |
+| File carving | HTTP downloads with SHA-256; LRU cache (256 MB) served at `/download/<sha256>` |
+| Anomalies | 32 rules: network (scan, beaconing, exfiltration, suspicious ports, bad JA3), OT (writes, restarts, code download, broadcast, bulk reads, exceptions, unit polling, internet exposure, cleartext), IoT (MQTT, Telnet, camera egress, TR-069), VLAN (hopping, native leak, QinQ, cross-VLAN OT, ARP spoofing, broadcast storm, PCP abuse) |
+| Scoring | Per-host risk score from 0 to 100; VLAN segmentation score |
+| API | `/`, `/upload`, `/download/<sha256>`, `/gpu-status`, `/session-schema`, `/version` |
+
+### 1.2 Views (frontend, `static/js/app.js`)
+
+| View | What it does |
+|---|---|
+| Graph | D3 force, radial, and cluster layouts; pin, isolate, minimap, cluster collapse; colour-blind palette; cross-zone edges; right-click menu; time-window brush with playback |
+| Table | Sortable and filterable connection list |
+| DNS Map | Per-host DNS queries and query log |
+| OT Map | Purdue swimlanes L0 to L6 plus Unclassified; zone tints; bridge detection; cross-zone and cross-level counts; anomaly badges and timeline. **Edit mode:** drag to change level, risk label with note, add or remove device. PNG and JSON export |
+| OT Matrix | Device-by-device grid coloured by OT protocol, cross-zone, and anomaly |
+| OT Log | Chronological OT command history |
+| VLAN | VLAN super-nodes with hulls; gateway badges; 4-mode VLAN matrix (Traffic, OT, Anomalies, Protocol); segmentation health; VLAN labels; CSV, SVG, and PNG exports |
+| Diff | Baseline comparison: new or disappeared hosts, connections, volume changes, new anomalies |
+| Dashboard | Summary cards, risk bar chart, protocol distribution, top anomalies |
+| Findings | Triage workspace: status, severity override, notes, include in report, evidence bundles, false-positive suppression |
+
+### 1.3 Cross-cutting UI
+
+- Detail panel (host metadata, ports, DNS, TLS, OT analysis, conversations, credentials, risk score, Purdue badge)
+- Packet inspector: protocol tree, coloured hex dump, OT command log, TCP stream; can float or dock; search
+- Sidebar: protocol, host-type, VLAN, and IP-version filters; filter presets; anomaly list by category; credentials; file transfers
+- Search (`/`), keyboard shortcuts (`?`, `1`-`9`, `F`, `P`, `Space`, arrow keys), light and dark themes, collapsible sidebar
+- Node annotations (stored in localStorage by IP); VLAN labels (localStorage)
+- Exports: graph PNG; Connections, Hosts, Anomalies, Credentials, VLAN Inventory, and VLAN Traffic CSVs; Markdown audit report; VLAN SVG; matrix PNGs; OT JSON
+- Session save and load (JSON)
+- Fully offline: bundled D3 and GeoIP, no CDN
+
+### 1.4 Supporting assets
+
+- 375 pytest tests (backend-heavy; the frontend only has static regex guards)
+- Docusaurus docs site plus DocSolace tours and screenshots; synthetic demo pcap (`fixtures/`)
+- Versioning: `VERSION`, `CHANGELOG.md`, bump script, CI check and tagging
+
+---
+
+## 2. Gaps and problems
+
+### 2.1 Architecture and code health
+
+| # | Problem | Impact |
+|---|---|---|
+| A1 | `app.js` is one 9,466-line file with 139 top-level globals, 149 `innerHTML` writes, and 139 inline `style=` strings | Every change risks breaking an unrelated view; hard to test; XSS surface |
+| A2 | `app.py` is one 4,000-line file; `analyze_pcap` is about 1,150 lines with nested closures | Parsers, rules, and serialization can't be tested or extended in isolation |
+| A3 | Connections are keyed undirected (`sorted([src, dst])`) | Port-scan attribution and exfiltration direction can be wrong (open backlog bugs) |
+| A4 | No persistence model: data lives in browser memory; edits are scattered across memory (OT edits), localStorage keyed by IP (notes, VLAN labels, presets, findings), and session JSON (which omits OT edits, notes, and VLAN labels) | A consultant can lose a day's classification work; nothing ties edits to an engagement |
+| A5 | Upload is one blocking `fetch` with no progress, job queue, or cancel | Large captures look frozen and can time out |
+| A6 | Server-side rendering caps (top 40 connections, 50 packets each) are baked into the analysis output | Drill-down is incomplete for anything outside the top N |
+| A7 | No frontend tests and no CI test run (CI only deploys docs and checks the version) | Regressions are found by hand |
+| A8 | No CSRF protection or authentication when run with `--public` | Unsafe on a shared client network |
+
+### 2.2 UX and look and feel
+
+| # | Problem |
+|---|---|
+| U1 | Nine peer tabs, several hidden until data arrives. The app reads as nine tools, not one workflow |
+| U2 | Graph-first home. For OT consulting, the main deliverables are the **asset inventory, Purdue map, and architecture diagram**; the force graph is supporting evidence |
+| U3 | Four separate annotation systems (node notes, OT risk labels, finding notes, VLAN labels) that don't know about each other |
+| U4 | Editing is drag-only and one host at a time; no forms, bulk edits, or undo |
+| U5 | The header is crowded (stats, nine tabs, filters, export, session, theme); exports are spread across the header, view toolbars, and sidebars |
+| U6 | Emoji icons and hard-coded colours (OT and VLAN matrices are dark-only); inconsistent spacing and typography between views |
+| U7 | Mobile and tablet layouts aren't usable; on-site work is often on a laptop, but report review happens elsewhere |
+
+### 2.3 Missing capabilities (OT consulting workflow)
+
+| # | Gap | Notes |
+|---|---|---|
+| G1 | **Engagement or project model** | Client, site, capture points (switch, SPAN, segment), captures, assessor, dates |
+| G2 | **First-class asset inventory** | Editable record per asset: level, zone, type, vendor, model, firmware, serial, location, criticality, owner, notes; tracks auto vs. manual per field with the reason for each override; keyed by MAC and IP so edits survive new captures |
+| G3 | **Passive asset fingerprinting** | Read identity from protocol responses the parser currently ignores: EtherNet/IP ListIdentity (vendor, product, serial, revision), Modbus FC43/14 device ID, S7 SZL (module, firmware), BACnet I-Am and device object, PROFINET DCP, LLDP system description, DHCP and NetBIOS names, SNMP sysDescr |
+| G4 | **Protocol coverage** | PROFINET, OPC UA, IEC 61850 MMS and GOOSE, HART-IP, Omron FINS, MELSEC, Codesys are port-only or missing |
+| G5 | **Zones and conduits (IEC 62443)** | User-defined zones, conduits with allowed protocols, violations computed from observed traffic |
+| G6 | **Network architecture diagram** | Subnets, VLANs, gateways, and firewalls as a layered diagram, separate from the Purdue view; manual placeholders for devices never seen on the wire (firewalls, data diodes) |
+| G7 | **Multi-capture merge with provenance** | Which capture point saw which asset or flow; incremental merge without losing edits; "new since last capture" |
+| G8 | **Communication baseline and allowlist** | Mark flows as expected; alert on anything new; export as firewall-rule suggestions |
+| G9 | **Vulnerability context** | Match vendor, model, and firmware against an offline ICS advisory feed (CISA ICSA / CVE) |
+| G10 | **Deliverable-grade exports** | Asset register (CSV/XLSX), editable diagrams (SVG, draw.io), DOCX/PDF report, one-click engagement bundle (zip), re-importable project file |
+| G11 | **Classification evidence and confidence** | "Why is this a PLC at L1?" (already in the backlog) |
+| G12 | **Global query language** | `protocol:modbus level:1 risk>70` (already in the backlog) |
+| G13 | **Optional live capture** | Capture from a local interface into the current engagement (later phase; offline pcap stays primary) |
+
+---
+
+## 3. Decisions
+
+_To be filled in as we decide, one item at a time._
+
+| # | Topic | Decision | Notes |
+|---|---|---|---|
+| D1 | Frontend stack | _open_ | |
+| D2 | Primary workflow and navigation | _open_ | |
+| D3 | Persistence | _open_ | |
+| D4 | Look and feel | _open_ | |
+| D5 | Migration approach (rewrite vs. incremental) | _open_ | |
+| D6 | Backend structure | _open_ | |
+| D7 | Scope of v1.0 of the rebuild | _open_ | |
