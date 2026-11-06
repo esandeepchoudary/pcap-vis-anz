@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v0.7.0 -- 2026-11-06
+
+- v2 rebuild M5 passive fingerprinting: identity from S7 SZL, Modbus device identification, CIP identity object, PROFINET DCP, SNMP and BACnet; type hints from identity; asset fields filled with their source
+
 ## v0.6.0 -- 2026-11-06
 
 - v2 rebuild M4 Purdue map: editable lanes and zones by drag, links and OT operations across captures, level matrix with DMZ-bypass detection, OT matrix, engagement-wide OT command log

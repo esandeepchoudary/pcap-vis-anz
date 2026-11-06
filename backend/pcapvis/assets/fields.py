@@ -46,7 +46,7 @@ FIELDS: dict[str, FieldSpec] = {
         FieldSpec("model", "Model", "text", 200, auto=True),
         FieldSpec("firmware", "Firmware", "text", 200, auto=True),
         FieldSpec("serial", "Serial number", "text", 200, auto=True),
-        FieldSpec("location", "Location", "text", 200),
+        FieldSpec("location", "Location", "text", 200, auto=True),
         FieldSpec("owner", "Owner", "text", 200),
         FieldSpec("tags", "Tags", "tags"),
         FieldSpec("notes", "Notes", "longtext", 10_000),

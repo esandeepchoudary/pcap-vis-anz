@@ -464,3 +464,11 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Zones are free text on assets; M6 turns them into first-class zones and conduits
 - [ ] Undo for a drag on the map (history shows the previous value; reset goes back to detected, not previous)
 
+### v2 rebuild: M5 passive fingerprinting (2026-11-06, feature/m5-fingerprint)
+
+- [x] S7 SZL, Modbus device ID, CIP identity, PROFINET DCP, SNMP system group, BACnet object-name, DHCP OS
+- [x] Type hints from identity; asset fields filled with their source shown
+- [ ] BACnet device properties beyond the name (model-name, firmware-revision need property-value decoding)
+- [ ] S7comm-plus (S7-1200/1500 with TLS) and Omron FINS / MELSEC identity
+- [ ] PROFINET vendor IDs are shown as numbers (no Wireshark value table); MAC vendor covers the common case
+

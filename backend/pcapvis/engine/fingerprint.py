@@ -97,7 +97,7 @@ def _modbus(L: dict) -> Fingerprint | None:
         return None
     ident = {}
     for oid, val in zip(ids, values, strict=True):
-        key = MODBUS_OBJECTS.get(_int(oid) or -1)
+        key = MODBUS_OBJECTS.get(_int(oid))  # object 0 (vendor) is falsy: no `or` here
         if key and (v := clean(val)):
             ident[key] = v
     return Fingerprint(ident) if ident else None

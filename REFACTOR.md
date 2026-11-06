@@ -168,7 +168,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M2 ✅ | Engagements and captures: create and open engagements, upload with background parsing and progress, capture points, Quick look, `.pcapvis` export and import |
 | M3 ✅ | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
 | M4 ✅ | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
-| M5 | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
+| M5 ✅ | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
 | M6 | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
 | M7 | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
 | M8 | Findings and reports: findings workspace, asset register XLSX, SVG/draw.io, DOCX/PDF report, engagement bundle |
@@ -282,3 +282,16 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
   programming L1 PLCs is normal and shouldn't be flagged.
 - Tests: backend 412 (links aggregation, orientation, idempotent re-merge, removal, bundle round trip,
   migration backfill, permissions), frontend 100, e2e 14 (drag on the map → inventory, history, matrices).
+
+**M5, passive fingerprinting: done (v0.7.0, 2026-11-06).**
+- Identity from devices' own responses: S7 SZL 0x0011/0x001C (order number, firmware, PLC name, module,
+  serial), Modbus Read Device Identification, CIP identity object (Get_Attributes_All) alongside List
+  Identity, PROFINET DCP (layer 2; the announced IP creates the host), SNMP sysDescr/sysName/sysLocation
+  (responses only, pairing guarded against misalignment), BACnet device object-name, DHCP vendor class → OS.
+- Strong type hints from identity: S7 identification and PROFINET IO controllers → PLC; CIP device profiles
+  (PLC, HMI, drives/sensors/valves → field device); PROFINET IO devices → field device.
+- Asset vendor/model/firmware/serial/location and (when no DNS/DHCP name) the device's own name are filled
+  from fingerprints, with the source of each value shown in the inspector; identity grouped by protocol.
+- Bug caught by tests: Modbus object 0 (vendor name) was dropped because 0 is falsy.
+- LLDP/CDP/NetBIOS/DHCP names were already collected in M1. Legacy parity: still no unexplained differences.
+- Tests: backend 430, frontend 100, e2e 14.

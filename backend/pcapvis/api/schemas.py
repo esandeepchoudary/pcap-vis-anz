@@ -262,6 +262,7 @@ class SightingOut(BaseModel):
 
 class AssetDetail(AssetOut):
     auto: dict[EditableField, FieldValue]
+    auto_sources: dict[EditableField, str] = Field(description="Where each detected value came from")
     overrides: dict[EditableField, OverrideOut]
     services: list[Service]
     vlans: list[int]
