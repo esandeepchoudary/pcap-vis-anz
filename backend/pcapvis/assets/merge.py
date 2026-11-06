@@ -31,6 +31,7 @@ from pcapvis.db.models import (
     Capture,
     CaptureStatus,
     Engagement,
+    FindingHit,
 )
 from pcapvis.engine.model import AnalysisResult, Host
 
@@ -214,6 +215,7 @@ def ingest_capture(
     quiet = set(touched) if not record_auto else new_ids | (touched - had_sightings)
     recompute(db, [by_id[i] for i in touched if i in by_id], actor=actor, quiet=quiet)
     build_links(db, cap, result)
+    build_findings(db, cap, result)
     removed = prune(db, eid)
     cap.assets_merged_at = utcnow()
     return {"created": created, "updated": len(touched - new_ids), "removed": removed}
@@ -226,6 +228,7 @@ def remove_capture(db: Session, cap: Capture) -> None:
     if not aids:
         return
     _drop_links(db, cap.id)
+    db.execute(delete(FindingHit).where(FindingHit.capture_id == cap.id))
     db.execute(delete(AssetSighting).where(AssetSighting.capture_id == cap.id))
     db.expire_all()
     assets = list(db.scalars(select(Asset).where(Asset.id.in_(aids))))
@@ -234,6 +237,25 @@ def remove_capture(db: Session, cap: Capture) -> None:
 
 
 MAX_PORTS = 20
+
+
+def build_findings(db: Session, cap: Capture, result: AnalysisResult) -> None:
+    """The capture's rule findings, with their source/destination mapped to assets. Rebuilt each merge."""
+    db.execute(delete(FindingHit).where(FindingHit.capture_id == cap.id))
+    owner = dict(
+        db.execute(
+            select(AssetSighting.ip, AssetSighting.asset_id).where(AssetSighting.capture_id == cap.id)
+        ).all()
+    )
+    seen: set[str] = set()
+    for a in result.anomalies:
+        if a.id in seen:
+            continue
+        seen.add(a.id)
+        data = a.model_dump(mode="json")
+        data["src_asset"], data["dst_asset"] = owner.get(a.src), owner.get(a.dst)
+        db.add(FindingHit(engagement_id=cap.engagement_id, capture_id=cap.id, key=a.id[:64], data=data))
+    db.flush()
 
 
 def _drop_links(db: Session, cid: int) -> None:

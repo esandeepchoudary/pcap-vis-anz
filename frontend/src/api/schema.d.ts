@@ -593,6 +593,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Findings */
+        get: operations["list_findings_api_engagements__engagement_id__findings_get"];
+        put?: never;
+        /** Create Finding */
+        post: operations["create_finding_api_engagements__engagement_id__findings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/findings/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Finding
+         * @description Delete a manual finding. Rule findings can't be deleted (mark them false positive instead).
+         */
+        delete: operations["delete_finding_api_engagements__engagement_id__findings__key__delete"];
+        options?: never;
+        head?: never;
+        /** Update Finding */
+        patch: operations["update_finding_api_engagements__engagement_id__findings__key__patch"];
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/links": {
         parameters: {
             query?: never;
@@ -671,6 +710,91 @@ export interface paths {
         };
         /** Ot Operations */
         get: operations["ot_operations_api_engagements__engagement_id__ot_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/reports/assets.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Xlsx */
+        get: operations["xlsx_api_engagements__engagement_id__reports_assets_xlsx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/reports/purdue.drawio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Purdue Drawio */
+        get: operations["purdue_drawio_api_engagements__engagement_id__reports_purdue_drawio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/reports/purdue.svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Purdue Svg */
+        get: operations["purdue_svg_api_engagements__engagement_id__reports_purdue_svg_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/reports/report.docx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report Docx */
+        get: operations["report_docx_api_engagements__engagement_id__reports_report_docx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/reports/report.html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report Html */
+        get: operations["report_html_api_engagements__engagement_id__reports_report_html_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1640,6 +1764,114 @@ export interface components {
             source_url?: string | null;
             /** Stored Path */
             stored_path?: string | null;
+        };
+        /** FindingCreate */
+        FindingCreate: {
+            /** Asset Ids */
+            asset_ids?: number[];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Recommendation
+             * @default
+             */
+            recommendation: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "critical" | "high" | "medium" | "low" | "info";
+            /** Title */
+            title: string;
+        };
+        /**
+         * FindingOut
+         * @description A finding across captures: a rule hit (merged by key) or written by hand, with its triage.
+         */
+        FindingOut: {
+            /** Asset Ids */
+            asset_ids: number[];
+            /** Attack */
+            attack: string[];
+            /** Captures */
+            captures: number[];
+            /** Category */
+            category: string | null;
+            /** Count */
+            count: number;
+            /** Description */
+            description: string;
+            /** Detected Severity */
+            detected_severity: ("critical" | "high" | "medium" | "low" | "info") | null;
+            /** Dst */
+            dst: string | null;
+            /** Evidence */
+            evidence: string[];
+            /** First Seen */
+            first_seen: number | null;
+            /** Include In Report */
+            include_in_report: boolean;
+            /** Key */
+            key: string;
+            /** Last Seen */
+            last_seen: number | null;
+            /** Notes */
+            notes: string;
+            /** Recommendation */
+            recommendation: string;
+            /** Rule */
+            rule: string | null;
+            /**
+             * Severity
+             * @description Effective severity (override wins)
+             * @enum {string}
+             */
+            severity: "critical" | "high" | "medium" | "low" | "info";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "rule" | "manual";
+            /** Src */
+            src: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "confirmed" | "false_positive" | "accepted_risk" | "resolved";
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string;
+        };
+        /** FindingUpdate */
+        FindingUpdate: {
+            /** Asset Ids */
+            asset_ids?: number[] | null;
+            /**
+             * Clear Severity Override
+             * @default false
+             */
+            clear_severity_override: boolean;
+            /** Description */
+            description?: string | null;
+            /** Include In Report */
+            include_in_report?: boolean | null;
+            /** Notes */
+            notes?: string | null;
+            /** Recommendation */
+            recommendation?: string | null;
+            /** Severity Override */
+            severity_override?: ("critical" | "high" | "medium" | "low" | "info") | null;
+            /** Status */
+            status?: ("open" | "confirmed" | "false_positive" | "accepted_risk" | "resolved") | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * Flow
@@ -3969,6 +4201,156 @@ export interface operations {
             };
         };
     };
+    list_findings_api_engagements__engagement_id__findings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_finding_api_engagements__engagement_id__findings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FindingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    delete_finding_api_engagements__engagement_id__findings__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_finding_api_engagements__engagement_id__findings__key__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FindingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     links_api_engagements__engagement_id__links_get: {
         parameters: {
             query?: never;
@@ -4155,6 +4537,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OtOperationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    xlsx_api_engagements__engagement_id__reports_assets_xlsx_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purdue_drawio_api_engagements__engagement_id__reports_purdue_drawio_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purdue_svg_api_engagements__engagement_id__reports_purdue_svg_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_docx_api_engagements__engagement_id__reports_report_docx_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_html_api_engagements__engagement_id__reports_report_html_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
                 };
             };
             /** @description Validation Error */

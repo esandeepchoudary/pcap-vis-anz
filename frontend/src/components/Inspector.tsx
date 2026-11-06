@@ -2,6 +2,7 @@ import { MousePointerClick, PanelRightClose, PanelRightOpen } from 'lucide-react
 import { useState } from 'react'
 import { useInspector } from '../inspector/context'
 import { AssetInspector } from './AssetInspector'
+import { FindingDetails } from './FindingDetails'
 import { HostDetails } from './HostDetails'
 import { LinkDetails } from './LinkDetails'
 
@@ -42,6 +43,11 @@ export function Inspector() {
       {!collapsed && selection?.kind === 'link' && (
         <div className="inspector-body">
           <LinkDetails eid={selection.eid} src={selection.src} dst={selection.dst} onClose={() => select(null)} />
+        </div>
+      )}
+      {!collapsed && selection?.kind === 'finding' && (
+        <div className="inspector-body">
+          <FindingDetails key={selection.key} eid={selection.eid} findingKey={selection.key} onClose={() => select(null)} />
         </div>
       )}
       {!collapsed && !selection && (

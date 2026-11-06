@@ -195,6 +195,18 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
 - Per-capture views (flows, DNS, VLANs) read the stored result; engagement views (graph, diff, dashboard) come
   from assets, sightings and links. `lib/graph.ts` holds the deterministic ring layout.
 
+### Findings and reports (M8)
+
+- Rule findings are collected per capture (`FindingHit`, rebuilt each merge) and merged by anomaly id across
+  captures; analyst state lives in `Finding` (keyed the same way), so re-analysis never loses triage.
+  Manual findings are `Finding` rows with `source="manual"`. Bundles (format v4) carry `Finding` rows.
+- Reports (`pcapvis/reports/`) build from one `gather()` snapshot. Every format escapes untrusted text its own
+  way: XLSX cells are forced to text (no formulas), draw.io labels use `html=0` and XML escaping, SVG/HTML are
+  escaped and script-free, DOCX strips XML-illegal control characters. Keep those tests green.
+- PDF comes from printing the HTML report; there's no server-side PDF engine in the image.
+- `pcapvis serve` uses a 5 s graceful-shutdown timeout and SSE streams end every 5 min (clients reconnect),
+  so open live-update connections can't block restarts.
+
 ### Packet engine (`backend/pcapvis/engine/`, M1)
 
 - **Flow:** `analyze.analyze_capture(path)` → `runner.stream_packets` (tshark `-T ek`, capture fed via

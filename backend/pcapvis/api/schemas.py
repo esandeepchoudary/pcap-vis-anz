@@ -523,3 +523,58 @@ class DashboardOut(BaseModel):
     findings: dict[str, int]
     credentials: int
     files: int
+
+
+# ── Findings and reports (M8) ────────────────────────────────────────────────
+
+SeverityLit = Literal["critical", "high", "medium", "low", "info"]
+FindingStatus = Literal["open", "confirmed", "false_positive", "accepted_risk", "resolved"]
+
+
+class FindingOut(BaseModel):
+    """A finding across captures: a rule hit (merged by key) or written by hand, with its triage."""
+
+    key: str
+    source: Literal["rule", "manual"]
+    rule: str | None
+    category: str | None
+    title: str
+    description: str
+    severity: SeverityLit = Field(description="Effective severity (override wins)")
+    detected_severity: SeverityLit | None
+    attack: list[str]
+    evidence: list[str]
+    asset_ids: list[int]
+    src: str | None
+    dst: str | None
+    count: int
+    first_seen: float | None
+    last_seen: float | None
+    captures: list[int]
+    status: FindingStatus
+    notes: str
+    recommendation: str
+    include_in_report: bool
+    updated_by: str
+    updated_at: datetime | None
+
+
+class FindingUpdate(BaseModel):
+    status: FindingStatus | None = None
+    severity_override: SeverityLit | None = None
+    clear_severity_override: bool = False
+    notes: str | None = Field(default=None, max_length=20_000)
+    recommendation: str | None = Field(default=None, max_length=20_000)
+    include_in_report: bool | None = None
+    # Manual findings only:
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = Field(default=None, max_length=20_000)
+    asset_ids: list[int] | None = Field(default=None, max_length=1000)
+
+
+class FindingCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=20_000)
+    severity: SeverityLit
+    recommendation: str = Field(default="", max_length=20_000)
+    asset_ids: list[int] = Field(default_factory=list, max_length=1000)

@@ -3,6 +3,7 @@ import type { Host } from '../api/client'
 
 export type Selection = { kind: 'host'; host: Host } | { kind: 'asset'; eid: number; id: number }
   | { kind: 'link'; eid: number; src: number; dst: number }
+  | { kind: 'finding'; eid: number; key: string }
   | null
 
 export const InspectorContext = createContext<{ selection: Selection; select: (s: Selection) => void }>({

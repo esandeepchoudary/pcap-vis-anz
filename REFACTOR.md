@@ -171,7 +171,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M5 ✅ | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
 | M6 ✅ | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
 | M7 ✅ | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
-| M8 | Findings and reports: findings workspace, asset register XLSX, SVG/draw.io, DOCX/PDF report, engagement bundle |
+| M8 ✅ | Findings and reports: findings workspace, asset register XLSX, SVG/draw.io, DOCX/PDF report, engagement bundle |
 | M9 | Server mode hardening, laptop→server import with merge, docs rewrite, legacy retirement |
 
 ### 4.4 Milestone log
@@ -319,3 +319,16 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
 - Credentials, extracted files and findings per capture remain in the capture report (M2); the
   engagement-wide findings workspace is M8.
 - Tests: backend 447, frontend 117, e2e 16.
+
+**M8, findings and reports: done (v0.10.0, 2026-11-06).**
+- Findings workspace: rule findings merged across captures (count, first/last seen, evidence, assets, ATT&CK),
+  triage (status, severity override, notes, recommendation, report inclusion; false positives drop out by
+  default) that survives re-analysis, and manual findings. Bundles (format v4) carry triage and manual findings.
+- Deliverables: Word report and a self-contained HTML report (print to PDF) with executive summary, scope,
+  findings with recommendations, segmentation and the asset register; Excel asset register (assets, zones,
+  conduits, violations, findings, OT commands); Purdue diagram as editable draw.io and SVG. Downloads audited.
+- Hardening found while building: traffic-supplied text is neutralised per format (no Excel formulas, no
+  draw.io HTML labels, escaped HTML/SVG, control characters stripped for DOCX); unsaved triage text survives
+  a refresh; open live-update streams no longer block a server restart (5 s graceful shutdown, streams
+  recycled every 5 min).
+- Tests: backend 461, frontend 123, e2e 17.

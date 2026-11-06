@@ -40,6 +40,7 @@ CAPTURE_MAGICS = (
     b"\x1f\x8b",
 )  # pcap (µs/ns, both byte orders), pcapng, gzip
 ACTIVE = (CaptureStatus.queued, CaptureStatus.processing)
+EVENTS_MAX_S = 300
 
 
 class UploadResult(BaseModel):
@@ -362,11 +363,14 @@ async def events(request: Request, engagement_id: int = Path(ge=1), user: User =
     interval = request.app.state.settings.events_poll_s
 
     async def stream():
-        last, idle = first, 0.0
+        last, idle, alive = first, 0.0, 0.0
         yield f"event: revision\ndata: {first}\n\n"
-        while not await request.is_disconnected():
+        # End the stream now and then (the browser's EventSource reconnects by itself) so idle
+        # connections never pile up or block a server restart.
+        while not await request.is_disconnected() and alive < EVENTS_MAX_S:
             await asyncio.sleep(interval)
             idle += interval
+            alive += interval
             current = await run_in_threadpool(read_revision)
             if current is None:
                 yield "event: gone\ndata: {}\n\n"

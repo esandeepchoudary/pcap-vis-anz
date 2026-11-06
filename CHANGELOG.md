@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v0.10.0 -- 2026-11-06
+
+- v2 rebuild M8 findings and reports: findings workspace with triage and manual findings, Word and HTML (print to PDF) report, Excel asset register, editable draw.io and SVG Purdue diagram
+
 ## v0.9.0 -- 2026-11-06
 
 - v2 rebuild M7 flows and forensics: asset graph, flow table, DNS, VLANs, capture diff, server-side packet inspector, engagement dashboard

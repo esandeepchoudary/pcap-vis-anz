@@ -8,6 +8,8 @@ import sys
 
 from pcapvis import __version__
 
+GRACEFUL_S = 5
+
 
 def _cmd_check(args) -> int:
     from pcapvis.config import get_settings
@@ -41,6 +43,7 @@ def _cmd_serve(args) -> int:
             port=port,
             reload=True,
             reload_dirs=[os.path.dirname(__file__)],
+            timeout_graceful_shutdown=GRACEFUL_S,
         )
         return 0
     try:
@@ -49,7 +52,8 @@ def _cmd_serve(args) -> int:
         print(f"Cannot start pcapvis:\n{exc}", file=sys.stderr)
         return 1
     print(f"pcapvis {__version__} ({s.mode} mode) on http://{host}:{port}")
-    uvicorn.run(app, host=host, port=port, proxy_headers=False)
+    # Live-update streams stay open; don't let them hold a shutdown or restart hostage.
+    uvicorn.run(app, host=host, port=port, proxy_headers=False, timeout_graceful_shutdown=GRACEFUL_S)
     return 0
 
 
