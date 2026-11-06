@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pcapvis.api.deps import current_user
 from pcapvis.api.routes_engagements import as_editor, as_viewer
 from pcapvis.api.schemas import (
     AssetBulkEdit,
@@ -117,7 +118,7 @@ def _bad(exc: FieldError) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
 
 
-@router.get("/asset-fields", response_model=AssetFieldsOut)
+@router.get("/asset-fields", response_model=AssetFieldsOut, dependencies=[Depends(current_user)])
 def asset_fields() -> AssetFieldsOut:
     """What can be edited on an asset, and the allowed values."""
     return AssetFieldsOut(

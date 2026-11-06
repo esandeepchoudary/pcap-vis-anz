@@ -28,6 +28,15 @@ class InspectError(Exception):
     """Bad filter or unreadable capture (message is safe to show)."""
 
 
+class InspectorBusy(InspectError):
+    """Too many inspections running at once."""
+
+
+# Each inspection is a tshark process reading a whole capture; bound how many run at once per server.
+MAX_CONCURRENT = 3
+_slots = threading.BoundedSemaphore(MAX_CONCURRENT)
+
+
 @dataclass
 class PacketRow:
     number: int
@@ -54,6 +63,17 @@ def _feed(proc: subprocess.Popen, path: Path) -> None:
 
 
 def _run(tshark: str, path: Path, args: list[str], *, max_lines: int | None, max_bytes: int, timeout: float):
+    if not _slots.acquire(timeout=2):
+        raise InspectorBusy("The packet inspector is busy with other requests; try again in a moment.")
+    try:
+        return _run_one(tshark, path, args, max_lines=max_lines, max_bytes=max_bytes, timeout=timeout)
+    finally:
+        _slots.release()
+
+
+def _run_one(
+    tshark: str, path: Path, args: list[str], *, max_lines: int | None, max_bytes: int, timeout: float
+):
     exe = shutil.which(tshark) or tshark
     proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
         [exe, "-r", "-", "-n", *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE

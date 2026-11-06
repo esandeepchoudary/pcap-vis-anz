@@ -39,12 +39,19 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), usb=(), serial=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
     "Content-Security-Policy": (
         "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
         "script-src 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; "
         "base-uri 'self'; form-action 'self'"
     ),
 }
+
+
+# JSON bodies are small (the largest is a bulk edit of 10k ids); uploads and imports are multipart and
+# enforce their own streaming limits. Cap everything else so a huge body can't exhaust memory.
+MAX_JSON_BODY = 2 * 1024 * 1024
 
 
 class StartupError(RuntimeError):
@@ -157,11 +164,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             and request.headers.get(CSRF_HEADER) != "1"
         ):
             return JSONResponse({"detail": "Missing X-PcapVis-Client header."}, status_code=403)
+        if request.method in UNSAFE_METHODS and not request.headers.get("content-type", "").startswith(
+            "multipart/form-data"
+        ):
+            length = request.headers.get("content-length")
+            if length is None and request.headers.get("transfer-encoding"):
+                return JSONResponse({"detail": "Send a Content-Length."}, status_code=411)
+            if length is not None and (not length.isdigit() or int(length) > MAX_JSON_BODY):
+                return JSONResponse({"detail": "Request body too large."}, status_code=413)
         response: Response = await call_next(request)
         for key, value in SECURITY_HEADERS.items():
             response.headers.setdefault(key, value)
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
+        if settings.cookie_secure:  # served over HTTPS: tell browsers to stay on it
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         return response
 
     app.include_router(routes_system.router)

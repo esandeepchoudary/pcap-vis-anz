@@ -20,7 +20,7 @@ from pcapvis.assets import fields as F
 from pcapvis.assets.links import aggregate_links
 from pcapvis.db.models import Asset, AssetLink, AssetOtOp, AssetSighting, CaptureStatus, Conduit, Zone
 from pcapvis.engagements.storage import Storage
-from pcapvis.engine.inspect import InspectError, list_packets, packet_detail
+from pcapvis.engine.inspect import InspectError, InspectorBusy, list_packets, packet_detail
 from pcapvis.zones import violations
 
 router = APIRouter(prefix="/api", tags=["forensics"])
@@ -107,7 +107,7 @@ def _capture_path(eng, db, store: Storage, cid: int):
 @router.get(
     "/engagements/{engagement_id}/captures/{capture_id}/packets",
     response_model=PacketListOut,
-    responses={400: {"model": ErrorOut}, 404: {"model": ErrorOut}},
+    responses={400: {"model": ErrorOut}, 404: {"model": ErrorOut}, 429: {"model": ErrorOut}},
 )
 def packets(
     request: Request,
@@ -122,6 +122,8 @@ def packets(
     path = _capture_path(eng, db, store, capture_id)
     try:
         rows, truncated = list_packets(request.app.state.settings.tshark_path, path, filter, limit=limit)
+    except InspectorBusy as exc:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
     except InspectError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     return PacketListOut(packets=[PacketRowOut(**r.__dict__) for r in rows], truncated=truncated)
@@ -130,7 +132,7 @@ def packets(
 @router.get(
     "/engagements/{engagement_id}/captures/{capture_id}/packets/{number}",
     response_model=PacketDetailOut,
-    responses={400: {"model": ErrorOut}, 404: {"model": ErrorOut}},
+    responses={400: {"model": ErrorOut}, 404: {"model": ErrorOut}, 429: {"model": ErrorOut}},
 )
 def packet(
     request: Request,
@@ -143,6 +145,8 @@ def packet(
     path = _capture_path(eng, db, store, capture_id)
     try:
         text = packet_detail(request.app.state.settings.tshark_path, path, number)
+    except InspectorBusy as exc:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
     except InspectError as exc:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND if "No packet" in str(exc) else status.HTTP_400_BAD_REQUEST, str(exc)
