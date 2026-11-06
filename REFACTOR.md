@@ -294,4 +294,4 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
   from fingerprints, with the source of each value shown in the inspector; identity grouped by protocol.
 - Bug caught by tests: Modbus object 0 (vendor name) was dropped because 0 is falsy.
 - LLDP/CDP/NetBIOS/DHCP names were already collected in M1. Legacy parity: still no unexplained differences.
-- Tests: backend 430, frontend 100, e2e 14.
+- Tests: backend 428, frontend 100, e2e 14.
