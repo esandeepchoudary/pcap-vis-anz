@@ -116,9 +116,9 @@ _To be filled in as we decide, one item at a time._
 
 | # | Topic | Decision | Notes |
 |---|---|---|---|
-| D1 | Frontend stack | _open_ | |
-| D2 | Primary workflow and navigation | _open_ | |
-| D3 | Persistence | _open_ | |
+| D1 | Frontend stack | **React + TypeScript** (Vite build; built static bundle shipped so client sites need no internet or Node) | Chosen for ecosystem depth: React Flow for editable Purdue and architecture diagrams, mature data grids for the asset inventory, and the widest contributor and tooling familiarity. D3 kept where custom charts need it. Decided 2026-11-06 |
+| D2 | Primary workflow and navigation | **Engagement-first, plus a Quick look mode** | Main path: create engagement → add captures (tagged with capture point) → Assets → Purdue map → Architecture → Findings → Report. Quick look analyzes a pcap without an engagement and can be promoted to one later. Decided 2026-11-06 |
+| D3 | Persistence and deployment | **Two deployment modes, one codebase.** Laptop mode: SQLite per engagement (`project.db` + `captures/` + `exports/` folder, zipped to `.pcapvis` for handover). Team server mode: PostgreSQL + server/S3-compatible capture storage, Docker Compose | SQLAlchemy + Alembic so both databases share code and migrations. Server mode adds user accounts and roles, per-engagement membership, a per-field audit trail (who, when, old, new, reason), optimistic locking for concurrent edits, live updates, a background parse worker with progress and cancel, and laptop→server engagement import with merge. Optional SQLCipher encryption in laptop mode. Never run the SQLite file from a network share. Decided 2026-11-06; login method and real-time depth still open |
 | D4 | Look and feel | _open_ | |
 | D5 | Migration approach (rewrite vs. incremental) | _open_ | |
 | D6 | Backend structure | _open_ | |
