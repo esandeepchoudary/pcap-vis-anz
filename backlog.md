@@ -472,3 +472,10 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] S7comm-plus (S7-1200/1500 with TLS) and Omron FINS / MELSEC identity
 - [ ] PROFINET vendor IDs are shown as numbers (no Wireshark value table); MAC vendor covers the common case
 
+### v2 rebuild: M6 zones, conduits, architecture (2026-11-06, feature/m6-zones)
+
+- [x] Zones and conduits with allowed protocols; violations from observed traffic; architecture diagram; networks
+- [ ] Conduit rules by port and direction, not only protocol name
+- [ ] Subnets are inferred as /24; let consultants define real subnets and route them through gateways
+- [ ] SL-T is recorded but not compared with anything yet (SL-A/SL-C assessment)
+

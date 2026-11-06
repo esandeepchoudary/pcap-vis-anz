@@ -316,7 +316,7 @@ def test_round_trip_keeps_asset_edits_history_and_manual_assets(ac):
     data = export(c, eid, captures=False)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         m = json.loads(z.read("manifest.json"))
-    assert m["format_version"] == 2 and len(m["assets"]) == 3
+    assert m["format_version"] == 3 and len(m["assets"]) == 3
 
     r = import_(c, data)
     assert r.status_code == 201, r.text

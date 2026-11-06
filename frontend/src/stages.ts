@@ -38,7 +38,7 @@ export const STAGES: Stage[] = [
   {
     id: 'architecture', segment: 'architecture', label: 'Architecture', title: 'Network architecture', icon: Network, milestone: 'M6',
     summary: 'Zones, conduits, and a layered network architecture diagram.',
-    plans: ['IEC 62443 zones and conduits with violation detection', 'Subnets, VLANs and gateways', 'Manual firewalls and data diodes'],
+    plans: [],
   },
   {
     id: 'flows', segment: 'flows', label: 'Flows', title: 'Flows & network', icon: ArrowLeftRight, milestone: 'M7',

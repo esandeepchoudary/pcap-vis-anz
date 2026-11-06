@@ -378,3 +378,91 @@ class OtOperationOut(BaseModel):
     last_seen: float
     sample: str
     captures: list[int]
+
+
+# ── Zones, conduits, architecture (M6) ───────────────────────────────────────
+
+SecurityLevel = Literal[1, 2, 3, 4]
+
+
+class ZoneIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    purdue_level: float | None = None
+    security_level: SecurityLevel | None = None
+    description: str = Field(default="", max_length=5000)
+
+
+class ZoneUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    purdue_level: float | None = None
+    security_level: SecurityLevel | None = None
+    description: str | None = Field(default=None, max_length=5000)
+    x: float | None = None
+    y: float | None = None
+
+
+class ZoneOut(BaseModel):
+    """A defined zone, or (``id`` null) a zone name used on assets but not defined yet."""
+
+    id: int | None
+    name: str
+    defined: bool
+    purdue_level: float | None
+    security_level: int | None
+    description: str
+    x: float | None
+    y: float | None
+    asset_ids: list[int]
+
+
+class ConduitIn(BaseModel):
+    zone_a_id: int
+    zone_b_id: int
+    name: str = Field(default="", max_length=100)
+    allowed: list[str] = Field(default_factory=list, max_length=50, description="Protocols; empty allows any")
+    description: str = Field(default="", max_length=5000)
+
+
+class ConduitUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=100)
+    allowed: list[str] | None = Field(default=None, max_length=50)
+    description: str | None = Field(default=None, max_length=5000)
+
+
+class ConduitOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    zone_a_id: int
+    zone_b_id: int
+    name: str
+    allowed: list[str]
+    description: str
+
+
+class ViolationOut(BaseModel):
+    """Observed traffic between zones that no conduit permits."""
+
+    kind: Literal["no_conduit", "protocol_not_allowed"]
+    src: int
+    dst: int
+    src_zone: str
+    dst_zone: str
+    conduit_id: int | None
+    protocols: list[str]
+    flows: int
+    packets: int
+    ot_writes: int
+    first_seen: float | None
+    last_seen: float | None
+
+
+class NetworkOut(BaseModel):
+    """A subnet inferred from asset addresses (IPv4 /24), with what's seen on it."""
+
+    cidr: str
+    vlans: list[int]
+    asset_ids: list[int]
+    gateways: list[int] = Field(description="Routers and firewalls with an address in this subnet")
+    zones: list[str]
+    purdue_levels: list[float]

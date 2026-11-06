@@ -424,6 +424,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/conduits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Conduits */
+        get: operations["list_conduits_api_engagements__engagement_id__conduits_get"];
+        put?: never;
+        /** Create Conduit */
+        post: operations["create_conduit_api_engagements__engagement_id__conduits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/conduits/{conduit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Conduit */
+        delete: operations["delete_conduit_api_engagements__engagement_id__conduits__conduit_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Conduit */
+        patch: operations["update_conduit_api_engagements__engagement_id__conduits__conduit_id__patch"];
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/events": {
         parameters: {
             query?: never;
@@ -535,6 +571,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/networks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Networks */
+        get: operations["networks_api_engagements__engagement_id__networks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/ot-operations": {
         parameters: {
             query?: never;
@@ -567,6 +620,62 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/violations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Violations */
+        get: operations["violations_api_engagements__engagement_id__violations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Zones */
+        get: operations["list_zones_api_engagements__engagement_id__zones_get"];
+        put?: never;
+        /** Create Zone */
+        post: operations["create_zone_api_engagements__engagement_id__zones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/zones/{zone_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Zone
+         * @description Removes the zone and its conduits. Assets keep the zone name (it shows as an undefined zone).
+         */
+        delete: operations["delete_zone_api_engagements__engagement_id__zones__zone_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Zone */
+        patch: operations["update_zone_api_engagements__engagement_id__zones__zone_id__patch"];
         trace?: never;
     };
     "/api/health": {
@@ -1198,6 +1307,52 @@ export interface components {
             /** Capture Point Id */
             capture_point_id?: number | null;
         };
+        /** ConduitIn */
+        ConduitIn: {
+            /**
+             * Allowed
+             * @description Protocols; empty allows any
+             */
+            allowed?: string[];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Zone A Id */
+            zone_a_id: number;
+            /** Zone B Id */
+            zone_b_id: number;
+        };
+        /** ConduitOut */
+        ConduitOut: {
+            /** Allowed */
+            allowed: string[];
+            /** Description */
+            description: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Zone A Id */
+            zone_a_id: number;
+            /** Zone B Id */
+            zone_b_id: number;
+        };
+        /** ConduitUpdate */
+        ConduitUpdate: {
+            /** Allowed */
+            allowed?: string[] | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+        };
         /** Credential */
         Credential: {
             /** Client */
@@ -1670,6 +1825,27 @@ export interface components {
         MemberSet: {
             role: components["schemas"]["MemberRole"];
         };
+        /**
+         * NetworkOut
+         * @description A subnet inferred from asset addresses (IPv4 /24), with what's seen on it.
+         */
+        NetworkOut: {
+            /** Asset Ids */
+            asset_ids: number[];
+            /** Cidr */
+            cidr: string;
+            /**
+             * Gateways
+             * @description Routers and firewalls with an address in this subnet
+             */
+            gateways: number[];
+            /** Purdue Levels */
+            purdue_levels: number[];
+            /** Vlans */
+            vlans: number[];
+            /** Zones */
+            zones: string[];
+        };
         /** OtCommand */
         OtCommand: {
             /** Address */
@@ -1894,6 +2070,39 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * ViolationOut
+         * @description Observed traffic between zones that no conduit permits.
+         */
+        ViolationOut: {
+            /** Conduit Id */
+            conduit_id: number | null;
+            /** Dst */
+            dst: number;
+            /** Dst Zone */
+            dst_zone: string;
+            /** First Seen */
+            first_seen: number | null;
+            /** Flows */
+            flows: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "no_conduit" | "protocol_not_allowed";
+            /** Last Seen */
+            last_seen: number | null;
+            /** Ot Writes */
+            ot_writes: number;
+            /** Packets */
+            packets: number;
+            /** Protocols */
+            protocols: string[];
+            /** Src */
+            src: number;
+            /** Src Zone */
+            src_zone: string;
+        };
         /** VlanStat */
         VlanStat: {
             /** Broadcast */
@@ -1902,6 +2111,59 @@ export interface components {
             packets: number;
             /** Vlan */
             vlan: number | null;
+        };
+        /** ZoneIn */
+        ZoneIn: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
+            /** Purdue Level */
+            purdue_level?: number | null;
+            /** Security Level */
+            security_level?: (1 | 2 | 3 | 4) | null;
+        };
+        /**
+         * ZoneOut
+         * @description A defined zone, or (``id`` null) a zone name used on assets but not defined yet.
+         */
+        ZoneOut: {
+            /** Asset Ids */
+            asset_ids: number[];
+            /** Defined */
+            defined: boolean;
+            /** Description */
+            description: string;
+            /** Id */
+            id: number | null;
+            /** Name */
+            name: string;
+            /** Purdue Level */
+            purdue_level: number | null;
+            /** Security Level */
+            security_level: number | null;
+            /** X */
+            x: number | null;
+            /** Y */
+            y: number | null;
+        };
+        /** ZoneUpdate */
+        ZoneUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Purdue Level */
+            purdue_level?: number | null;
+            /** Security Level */
+            security_level?: (1 | 2 | 3 | 4) | null;
+            /** X */
+            x?: number | null;
+            /** Y */
+            y?: number | null;
         };
     };
     responses: never;
@@ -3104,6 +3366,156 @@ export interface operations {
             };
         };
     };
+    list_conduits_api_engagements__engagement_id__conduits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConduitOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_conduit_api_engagements__engagement_id__conduits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConduitIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConduitOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    delete_conduit_api_engagements__engagement_id__conduits__conduit_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conduit_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_conduit_api_engagements__engagement_id__conduits__conduit_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conduit_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConduitUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConduitOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     events_api_engagements__engagement_id__events_get: {
         parameters: {
             query?: never;
@@ -3344,6 +3756,37 @@ export interface operations {
             };
         };
     };
+    networks_api_engagements__engagement_id__networks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ot_operations_api_engagements__engagement_id__ot_operations_get: {
         parameters: {
             query?: never;
@@ -3402,6 +3845,187 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    violations_api_engagements__engagement_id__violations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViolationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_zones_api_engagements__engagement_id__zones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_zone_api_engagements__engagement_id__zones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZoneIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    delete_zone_api_engagements__engagement_id__zones__zone_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_zone_api_engagements__engagement_id__zones__zone_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                zone_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZoneUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoneOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

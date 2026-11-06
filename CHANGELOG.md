@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v0.8.0 -- 2026-11-06
+
+- v2 rebuild M6 zones, conduits and architecture: IEC 62443 zones and conduits, violation detection from observed traffic, editable architecture diagram, inferred networks, zones in bundles
+
 ## v0.7.0 -- 2026-11-06
 
 - v2 rebuild M5 passive fingerprinting: identity from S7 SZL, Modbus device identification, CIP identity object, PROFINET DCP, SNMP and BACnet; type hints from identity; asset fields filled with their source

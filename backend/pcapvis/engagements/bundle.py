@@ -40,17 +40,19 @@ from pcapvis.db.models import (
     Capture,
     CapturePoint,
     CaptureStatus,
+    Conduit,
     Engagement,
     EngagementMember,
     MemberRole,
     User,
+    Zone,
 )
 from pcapvis.engagements import audit
 from pcapvis.engagements.storage import Storage, safe_filename
 from pcapvis.engine.model import AnalysisResult
 
 FORMAT = "pcapvis-engagement"
-FORMAT_VERSION = 2  # 2: asset inventory (M3)
+FORMAT_VERSION = 3  # 2: asset inventory (M3); 3: zones and conduits (M6)
 MAX_RATIO = 200  # uncompressed/compressed, per deflated member
 CHUNK = 1 << 20
 _CAPTURE_PATH = re.compile(r"^captures/(\d{1,12})/([A-Za-z0-9._ -]{1,200})$")
@@ -129,6 +131,24 @@ class _AssetMeta(BaseModel):
     history: list[_ChangeMeta] = Field(default_factory=list, max_length=20_000)
 
 
+class _ZoneMeta(BaseModel):
+    key: int
+    name: str = Field(min_length=1, max_length=100)
+    purdue_level: float | None = None
+    security_level: Literal[1, 2, 3, 4] | None = None
+    description: str = Field(default="", max_length=5000)
+    x: float | None = None
+    y: float | None = None
+
+
+class _ConduitMeta(BaseModel):
+    zone_a_key: int
+    zone_b_key: int
+    name: str = Field(default="", max_length=100)
+    allowed: list[str] = Field(default_factory=list, max_length=50)
+    description: str = Field(default="", max_length=5000)
+
+
 class Manifest(BaseModel):
     format: Literal["pcapvis-engagement"]
     format_version: int = Field(ge=1, le=FORMAT_VERSION)
@@ -139,6 +159,8 @@ class Manifest(BaseModel):
     captures: list[_CaptureMeta] = Field(default_factory=list, max_length=10_000)
     files: list[str] = Field(default_factory=list, max_length=100_000)
     assets: list[_AssetMeta] | None = Field(default=None, max_length=200_000)  # None: v1, derive from results
+    zones: list[_ZoneMeta] = Field(default_factory=list, max_length=10_000)
+    conduits: list[_ConduitMeta] = Field(default_factory=list, max_length=50_000)
 
 
 # ── export ────────────────────────────────────────────────────────────────────
@@ -206,6 +228,28 @@ def export_bundle(
             captures=captures,
             files=file_hashes,
             assets=[_asset_meta(a, with_result) for a in eng.assets],
+            zones=[
+                _ZoneMeta(
+                    key=z.id,
+                    name=z.name,
+                    purdue_level=z.purdue_level,
+                    security_level=z.security_level,
+                    description=z.description,
+                    x=z.x,
+                    y=z.y,
+                )
+                for z in _zones(eng)
+            ],
+            conduits=[
+                _ConduitMeta(
+                    zone_a_key=c.zone_a_id,
+                    zone_b_key=c.zone_b_id,
+                    name=c.name,
+                    allowed=c.allowed or [],
+                    description=c.description,
+                )
+                for c in object_session(eng).scalars(select(Conduit).where(Conduit.engagement_id == eng.id))
+            ],
         )
         z.writestr("manifest.json", manifest.model_dump_json(indent=2), compress_type=zipfile.ZIP_DEFLATED)
 
@@ -233,6 +277,57 @@ def _asset_meta(a: Asset, with_result: set[int]) -> _AssetMeta:
             for c in sorted(_history(a), key=lambda c: c.id)
         ],
     )
+
+
+def _zones(eng) -> list[Zone]:
+    return list(
+        object_session(eng).scalars(select(Zone).where(Zone.engagement_id == eng.id).order_by(Zone.id))
+    )
+
+
+def _import_zones(db, eng, manifest: "Manifest") -> None:
+    from pcapvis import zones as Z
+
+    keys: dict[int, int] = {}
+    names: set[str] = set()
+    for zm in manifest.zones:
+        try:
+            name, level = Z.clean_name(zm.name), Z.check_level(zm.purdue_level)
+        except F.FieldError as exc:
+            raise BundleError(f"Invalid zone: {exc}") from exc
+        if zm.key in keys or name in names:
+            raise BundleError("Invalid manifest: duplicate zones.")
+        z = Zone(
+            engagement_id=eng.id,
+            name=name,
+            purdue_level=level,
+            security_level=zm.security_level,
+            description=zm.description,
+            x=zm.x,
+            y=zm.y,
+        )
+        db.add(z)
+        db.flush()
+        keys[zm.key], names = z.id, names | {name}
+    for cm in manifest.conduits:
+        a, b = keys.get(cm.zone_a_key), keys.get(cm.zone_b_key)
+        if a is None or b is None or a == b:
+            raise BundleError("Invalid manifest: a conduit refers to an unknown zone.")
+        try:
+            allowed = Z.clean_protocols(cm.allowed)
+        except F.FieldError as exc:
+            raise BundleError(f"Invalid conduit: {exc}") from exc
+        db.add(
+            Conduit(
+                engagement_id=eng.id,
+                zone_a_id=a,
+                zone_b_id=b,
+                name=cm.name.strip(),
+                allowed=allowed,
+                description=cm.description,
+            )
+        )
+    db.flush()
 
 
 def _history(a: Asset) -> list[AssetChange]:
@@ -337,6 +432,7 @@ def import_bundle(db: Session, storage: Storage, user: User, bundle: Path, *, ma
             done = {k: c for k, c in cap_ids.items() if c.status == CaptureStatus.done}
             if manifest.assets is not None:
                 _import_assets(db, storage, eng, manifest.assets, done)
+            _import_zones(db, eng, manifest)
             for cap in done.values():  # hosts the manifest didn't map (and every host for v1 bundles)
                 asset_merge.ingest_capture(
                     db, cap, _load_result(storage, cap), keep_existing=True, actor="import", record_auto=False

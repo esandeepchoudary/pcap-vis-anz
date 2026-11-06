@@ -169,7 +169,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M3 ✅ | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
 | M4 ✅ | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
 | M5 ✅ | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
-| M6 | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
+| M6 ✅ | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
 | M7 | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
 | M8 | Findings and reports: findings workspace, asset register XLSX, SVG/draw.io, DOCX/PDF report, engagement bundle |
 | M9 | Server mode hardening, laptop→server import with merge, docs rewrite, legacy retirement |
@@ -295,3 +295,15 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
 - Bug caught by tests: Modbus object 0 (vendor name) was dropped because 0 is falsy.
 - LLDP/CDP/NetBIOS/DHCP names were already collected in M1. Legacy parity: still no unexplained differences.
 - Tests: backend 428, frontend 100, e2e 14.
+
+**M6, zones, conduits and architecture: done (v0.8.0, 2026-11-06).**
+- Zones (name, Purdue level, target security level SL 1-4, description, diagram position) linked to assets by
+  their Zone field; undefined zone names used on assets are listed and can be defined in one click; renaming
+  a zone moves its assets with history. Conduits between two zones with an allowed-protocol list.
+- Violation detection from observed traffic: cross-zone connections with no conduit, or with protocols the
+  conduit doesn't allow; one-click "approve as conduit" (all protocols seen between the zones) or "allow".
+- Architecture diagram (React Flow): zones placed by level (or where you drag them, saved), gateways
+  (firewalls, routers, diodes) shown in their zone, conduits drawn and created by connecting zones, unapproved
+  traffic as red dashed edges. Networks view: inferred subnets with VLANs, gateways, zones and levels.
+- `.pcapvis` format v3 carries zones and conduits; v1/v2 bundles still import.
+- Tests: backend 441, frontend 109, e2e 15.
