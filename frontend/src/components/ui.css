@@ -73,3 +73,11 @@
 .spin-inline { animation: spin 0.9s linear infinite; }
 .masked { filter: blur(4px); user-select: none; }
 .rail-link.disabled { opacity: 0.35; pointer-events: none; }
+
+/* Dashboard bars (M7) */
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--text-sm); }
+.bars li { display: grid; grid-template-columns: 150px 1fr 48px; align-items: center; gap: var(--space-2); }
+.bar-label { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.bar-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }

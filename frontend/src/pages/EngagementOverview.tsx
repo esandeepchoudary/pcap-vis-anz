@@ -3,11 +3,12 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import type { Engagement, MemberRole, SystemInfo } from '../api/client'
 import {
-  exportUrl, useAudit, useCaptures, useDeleteEngagement, useDirectory, useMembers, useSetMember, useUpdateEngagement,
+  exportUrl, useAudit, useDeleteEngagement, useDirectory, useMembers, useSetMember, useUpdateEngagement,
 } from '../api/engagements'
+import { useDashboard } from '../api/forensics'
 import { ConfirmButton, ErrorNote, SeverityBadge, Tile } from '../components/ui'
 import { SEVERITIES } from '../lib/severity'
-import { formatNumber, relativeTime } from '../lib/format'
+import { formatNumber, purdueLabel, relativeTime } from '../lib/format'
 
 const ROLES: MemberRole[] = ['lead', 'editor', 'viewer']
 
@@ -99,15 +100,53 @@ function Members({ eng, system }: { eng: Engagement; system: SystemInfo }) {
   )
 }
 
+function Bars({ data, label, labelOf }: { data: Record<string, number>; label: string; labelOf?: (k: string) => string }) {
+  const max = Math.max(1, ...Object.values(data))
+  return (
+    <ul className="bars" aria-label={label}>
+      {Object.entries(data).map(([k, v]) => (
+        <li key={k}><span className="bar-label">{labelOf ? labelOf(k) : k}</span>
+          <span className="bar-track"><span className="bar-fill" style={{ width: `${(v / max) * 100}%` }} /></span>
+          <span className="bar-value">{formatNumber(v)}</span></li>
+      ))}
+    </ul>
+  )
+}
+
+function DashboardView({ eid }: { eid: number }) {
+  const d = useDashboard(eid)
+  if (d.isPending) return <p className="muted">Loading…</p>
+  if (d.isError) return <ErrorNote>{d.error.message}</ErrorNote>
+  const x = d.data
+  return (
+    <>
+      <div className="tiles" aria-label="Engagement totals">
+        <Tile label="Captures analysed" value={`${x.captures_done} / ${x.captures}`} />
+        <Tile label="Packets" value={formatNumber(x.packets)} />
+        <Tile label="Assets" value={formatNumber(x.assets)} />
+        <Tile label="Edited by hand" value={formatNumber(x.assets_edited)} />
+        <Tile label="OT connections" value={formatNumber(x.ot_connections)} />
+        <Tile label="OT writes" value={formatNumber(x.ot_writes)} tone={x.ot_writes ? 'warn' : undefined} />
+        <Tile label="Zone violations" value={formatNumber(x.violations)} tone={x.violations ? 'danger' : undefined} />
+        <Tile label="Credentials" value={formatNumber(x.credentials)} tone={x.credentials ? 'danger' : undefined} />
+      </div>
+      <div className="row">{SEVERITIES.map((s) => x.findings[s] > 0 && <SeverityBadge key={s} severity={s} count={x.findings[s]} />)}</div>
+      {x.assets > 0 && (
+        <div className="grid-2">
+          <section className="card"><h2 className="section-title">Assets by Purdue level</h2>
+            <Bars data={x.assets_by_level} label="Assets by Purdue level" labelOf={(k) => purdueLabel(Number(k))} /></section>
+          <section className="card"><h2 className="section-title">Most common asset types</h2>
+            <Bars data={x.assets_by_type} label="Assets by type" /></section>
+        </div>
+      )}
+    </>
+  )
+}
+
 export function EngagementOverview({ system }: { system: SystemInfo }) {
   const eng = useOutletContext<Engagement>()
-  const captures = useCaptures(eng.id)
   const audit = useAudit(eng.id)
   const [withCaptures, setWithCaptures] = useState(true)
-  const done = (captures.data ?? []).filter((c) => c.status === 'done')
-  const total = (key: string) => done.reduce((n, c) => n + Number((c.summary as Record<string, number> | null)?.[key] ?? 0), 0)
-  const findings = Object.fromEntries(SEVERITIES.map((s) => [s, done.reduce(
-    (n, c) => n + Number(((c.summary as { findings?: Record<string, number> } | null)?.findings ?? {})[s] ?? 0), 0)]))
   const canEdit = eng.my_role !== 'viewer'
 
   return (
@@ -123,17 +162,7 @@ export function EngagementOverview({ system }: { system: SystemInfo }) {
         </div>
       </div>
       <div className="stack">
-        <div className="tiles" aria-label="Engagement totals">
-          <Tile label="Captures analysed" value={`${done.length} / ${captures.data?.length ?? 0}`} />
-          <Tile label="Packets" value={formatNumber(total('packets'))} />
-          <Tile label="Hosts (sum)" value={formatNumber(total('hosts'))} />
-          <Tile label="OT writes" value={formatNumber(total('ot_writes'))} tone={total('ot_writes') ? 'warn' : undefined} />
-          <Tile label="Credentials" value={formatNumber(total('credentials'))} tone={total('credentials') ? 'danger' : undefined} />
-        </div>
-        <div className="row">{SEVERITIES.map((s) => findings[s] > 0 && <SeverityBadge key={s} severity={s} count={findings[s]} />)}</div>
-        <p className="muted" style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
-          Totals add up per capture. The merged asset inventory across captures arrives in M3.
-        </p>
+        <DashboardView eid={eng.id} />
 
         <section className="card" aria-labelledby="export-h">
           <h2 id="export-h" className="section-title">Export</h2>

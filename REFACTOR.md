@@ -170,7 +170,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M4 ✅ | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
 | M5 ✅ | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
 | M6 ✅ | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
-| M7 | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
+| M7 ✅ | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
 | M8 | Findings and reports: findings workspace, asset register XLSX, SVG/draw.io, DOCX/PDF report, engagement bundle |
 | M9 | Server mode hardening, laptop→server import with merge, docs rewrite, legacy retirement |
 
@@ -307,3 +307,15 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
   traffic as red dashed edges. Networks view: inferred subnets with VLANs, gateways, zones and levels.
 - `.pcapvis` format v3 carries zones and conduits; v1/v2 bundles still import.
 - Tests: backend 441, frontend 109, e2e 15.
+
+**M7, flows and forensics: done (v0.9.0, 2026-11-06).**
+- Flows stage: asset graph (busiest in the middle, OT/write colouring, click through to assets and
+  connections), per-capture flow table (largest first, filter), DNS names with who asked, VLANs with broadcast
+  share and the assets on each, capture diff (new/gone assets and connections between a baseline and another
+  capture), packet inspector (Wireshark display filters run by tshark on the server, full decode with hex).
+- Overview dashboard from the merged inventory: assets, hand edits, OT connections and writes, zone
+  violations, findings, credentials, plus assets by Purdue level and by type. Replaces the per-capture sums
+  that double-counted hosts.
+- Credentials, extracted files and findings per capture remain in the capture report (M2); the
+  engagement-wide findings workspace is M8.
+- Tests: backend 447, frontend 117, e2e 16.

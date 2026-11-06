@@ -187,6 +187,14 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
   protocols (empty list = anything). Bundles (format v3) carry zones and conduits.
 - Networks are inferred (private IPv4 /24 from asset addresses); manual firewalls/diodes are manual assets.
 
+### Flows and forensics (M7)
+
+- The packet inspector (`engine/inspect.py`) runs tshark on demand: capture via stdin, the display filter as a
+  single argv item (never a shell), tshark's own error for bad filters (→ 400), time and output caps, and
+  `-c N` so decoding frame N stops reading there. Editors only: raw packets contain unmasked secrets.
+- Per-capture views (flows, DNS, VLANs) read the stored result; engagement views (graph, diff, dashboard) come
+  from assets, sightings and links. `lib/graph.ts` holds the deterministic ring layout.
+
 ### Packet engine (`backend/pcapvis/engine/`, M1)
 
 - **Flow:** `analyze.analyze_capture(path)` → `runner.stream_packets` (tshark `-T ek`, capture fed via

@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v0.9.0 -- 2026-11-06
+
+- v2 rebuild M7 flows and forensics: asset graph, flow table, DNS, VLANs, capture diff, server-side packet inspector, engagement dashboard
+
 ## v0.8.0 -- 2026-11-06
 
 - v2 rebuild M6 zones, conduits and architecture: IEC 62443 zones and conduits, violation detection from observed traffic, editable architecture diagram, inferred networks, zones in bundles

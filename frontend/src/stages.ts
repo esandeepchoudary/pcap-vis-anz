@@ -43,7 +43,7 @@ export const STAGES: Stage[] = [
   {
     id: 'flows', segment: 'flows', label: 'Flows', title: 'Flows & network', icon: ArrowLeftRight, milestone: 'M7',
     summary: 'Network graph, flow table, DNS, VLANs, baseline diff, and packet inspector.',
-    plans: ['Graph and flow table', 'DNS and VLAN views', 'Baseline diff', 'Packet inspector'],
+    plans: [],
   },
   {
     id: 'findings', segment: 'findings', label: 'Findings', title: 'Findings', icon: ShieldAlert, milestone: 'M8',

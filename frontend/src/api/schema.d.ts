@@ -390,6 +390,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/captures/{capture_id}/packets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Packets
+         * @description Packets matching a Wireshark display filter. Editors only: raw packets include unmasked secrets.
+         */
+        get: operations["packets_api_engagements__engagement_id__captures__capture_id__packets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/captures/{capture_id}/packets/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Packet */
+        get: operations["packet_api_engagements__engagement_id__captures__capture_id__packets__number__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/captures/{capture_id}/reanalyze": {
         parameters: {
             query?: never;
@@ -458,6 +495,43 @@ export interface paths {
         head?: never;
         /** Update Conduit */
         patch: operations["update_conduit_api_engagements__engagement_id__conduits__conduit_id__patch"];
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard */
+        get: operations["dashboard_api_engagements__engagement_id__dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff
+         * @description Assets and connections that appear or disappear between a baseline capture and another.
+         */
+        get: operations["diff_api_engagements__engagement_id__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/engagements/{engagement_id}/events": {
@@ -1382,6 +1456,70 @@ export interface components {
             /** Username */
             username: string | null;
         };
+        /** DashboardOut */
+        DashboardOut: {
+            /** Assets */
+            assets: number;
+            /** Assets By Level */
+            assets_by_level: {
+                [key: string]: number;
+            };
+            /** Assets By Type */
+            assets_by_type: {
+                [key: string]: number;
+            };
+            /** Assets Edited */
+            assets_edited: number;
+            /** Captures */
+            captures: number;
+            /** Captures Done */
+            captures_done: number;
+            /** Conduits */
+            conduits: number;
+            /** Credentials */
+            credentials: number;
+            /** Files */
+            files: number;
+            /** Findings */
+            findings: {
+                [key: string]: number;
+            };
+            /** Ot Connections */
+            ot_connections: number;
+            /** Ot Writes */
+            ot_writes: number;
+            /** Packets */
+            packets: number;
+            /** Violations */
+            violations: number;
+            /** Zones */
+            zones: number;
+        };
+        /** DiffLinkOut */
+        DiffLinkOut: {
+            /** Dst */
+            dst: number;
+            /** Packets */
+            packets: number;
+            /** Protocol */
+            protocol: string;
+            /** Src */
+            src: number;
+        };
+        /**
+         * DiffOut
+         * @description What changed between two captures, in asset terms.
+         */
+        DiffOut: {
+            /** Gone Assets */
+            gone_assets: number[];
+            /** Gone Links */
+            gone_links: components["schemas"]["DiffLinkOut"][];
+            /** New Assets */
+            new_assets: number[];
+            /** New Links */
+            new_links: components["schemas"]["DiffLinkOut"][];
+        };
         /** DirectoryUser */
         DirectoryUser: {
             /** Display Name */
@@ -1922,6 +2060,40 @@ export interface components {
             reason: string;
             /** Value */
             value: string | number | string[] | null;
+        };
+        /** PacketDetailOut */
+        PacketDetailOut: {
+            /** Number */
+            number: number;
+            /** Text */
+            text: string;
+        };
+        /** PacketListOut */
+        PacketListOut: {
+            /** Packets */
+            packets: components["schemas"]["PacketRowOut"][];
+            /**
+             * Truncated
+             * @description More packets matched than were returned
+             */
+            truncated: boolean;
+        };
+        /** PacketRowOut */
+        PacketRowOut: {
+            /** Dst */
+            dst: string;
+            /** Info */
+            info: string;
+            /** Length */
+            length: number;
+            /** Number */
+            number: number;
+            /** Protocol */
+            protocol: string;
+            /** Src */
+            src: string;
+            /** Time */
+            time: number;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -3293,6 +3465,110 @@ export interface operations {
             };
         };
     };
+    packets_api_engagements__engagement_id__captures__capture_id__packets_get: {
+        parameters: {
+            query?: {
+                filter?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                capture_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PacketListOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    packet_api_engagements__engagement_id__captures__capture_id__packets__number__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capture_id: number;
+                number: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PacketDetailOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reanalyze_capture_api_engagements__engagement_id__captures__capture_id__reanalyze_post: {
         parameters: {
             query?: never;
@@ -3512,6 +3788,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    dashboard_api_engagements__engagement_id__dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_api_engagements__engagement_id__diff_get: {
+        parameters: {
+            query: {
+                base: number;
+                compare: number;
+            };
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiffOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

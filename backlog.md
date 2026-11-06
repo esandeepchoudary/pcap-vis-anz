@@ -479,3 +479,10 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Subnets are inferred as /24; let consultants define real subnets and route them through gateways
 - [ ] SL-T is recorded but not compared with anything yet (SL-A/SL-C assessment)
 
+### v2 rebuild: M7 flows and forensics (2026-11-06, feature/m7-flows)
+
+- [x] Graph, flows, DNS, VLANs, capture diff, packet inspector, overview dashboard
+- [ ] Interactive timeline (footer placeholder) across captures
+- [ ] Packet inspector re-reads the capture from the start for each decode; index frame offsets for big files
+- [ ] Graph layout is rings by degree; switch to a force layout (d3-force) if large graphs get cluttered
+
