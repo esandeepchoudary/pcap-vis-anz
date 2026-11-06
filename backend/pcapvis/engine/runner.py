@@ -48,7 +48,10 @@ def stream_packets(
     """Yield one ``{ek_field_name: [values...]}`` dict per packet."""
     stats = stats if stats is not None else RunStats()
     stats.bytes_total = os.path.getsize(path)
-    args = [tshark_path, "-r", "-", "-n", "-T", "ek", "-l"]
+    # Sequence analysis off: dissect every segment as captured. With it on, tshark skips the payload of
+    # segments it considers out-of-order, which hides credentials and PLC commands in SPAN captures with
+    # reordering. Retransmissions are de-duplicated by the aggregator instead (see Aggregator.add).
+    args = [tshark_path, "-r", "-", "-n", "-T", "ek", "-l", "-o", "tcp.analyze_sequence_numbers:FALSE"]
     if max_packets:
         args += ["-c", str(max_packets)]
     for f in fields:

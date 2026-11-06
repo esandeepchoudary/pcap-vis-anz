@@ -60,6 +60,7 @@ class Packet:
     rst: bool
     fin: bool
     payload_len: int
+    seq_raw: int | None
     icmp_type: int | None
     malformed: bool
     layers: dict  # the raw EK layers, for protocol extractors
@@ -129,6 +130,7 @@ def decode(layers: dict) -> Packet:
         rst=_bool(layers, "tcp_flags_reset"),
         fin=_bool(layers, "tcp_flags_fin"),
         payload_len=payload_len,
+        seq_raw=_int(layers, "tcp_seq_raw") if transport == "tcp" else None,
         icmp_type=icmp_type,
         malformed="_ws_malformed" in layers or "_ws.malformed" in protocols or "_ws_malformed" in protocols,
         layers=layers,

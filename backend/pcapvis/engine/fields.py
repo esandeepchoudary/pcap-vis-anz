@@ -34,6 +34,7 @@ CORE = [
     "tcp.flags.reset",
     "tcp.flags.fin",
     "tcp.len",
+    "tcp.seq_raw",
     "udp.srcport",
     "udp.dstport",
     "udp.length",
@@ -108,11 +109,12 @@ OT = [
     "enip.command",
     "enip.lir.vendor",
     "enip.lir.devtype",
-    "enip.lir.productcode",
+    "enip.lir.prodcode",
     "enip.lir.serial",
     "enip.lir.name",
     "enip.lir.revision",
     "cip.sc",
+    "cip.class",
     "cip.symbol",
     "cip.genstat",
     "cip.rr",
@@ -149,14 +151,29 @@ CREDENTIALS = [
     "telnet.data",
     "pop.request.command",
     "pop.request.parameter",
-    "imap.request",
     "smtp.req.command",
-    "smtp.req.parameter",
     "smtp.auth.username",
     "smtp.auth.password",
 ]
 
-ALL_FIELDS: list[str] = list(dict.fromkeys(CORE + NAMES + TLS + HTTP + OT + IOT + CREDENTIALS))
+# Detail fields for OT errors/identity, credentials, and file-name linking.
+DETAIL = [
+    "s7comm.data.blockcontrol.block_type",
+    "dnp3.al.iin",
+    "iec60870_asdu.nega",
+    "bacapp.objectType",
+    "http.authbasic",
+    "http.request_in",
+    "http.content_length",
+    "urlencoded-form.key",
+    "urlencoded-form.value",
+    "snmp.community",
+    "imap.request.command",
+    "imap.request.username",
+    "imap.request.password",
+]
+
+ALL_FIELDS: list[str] = list(dict.fromkeys(CORE + NAMES + TLS + HTTP + OT + IOT + CREDENTIALS + DETAIL))
 
 
 def ek_name(field: str) -> str:

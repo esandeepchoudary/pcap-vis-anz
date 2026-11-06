@@ -14,13 +14,16 @@ def _fake_tshark(tmp_path, output: str, exit_code: int = 0):
     return str(path)
 
 
-@pytest.mark.parametrize("text,expected", [
-    ("TShark (Wireshark) 4.6.4.\n\nCopyright 1998-2025", (4, 6, 4)),
-    ("TShark (Wireshark) 3.6.2 (Git v3.6.2 packaged as 3.6.2-2)", (3, 6, 2)),
-    ("TShark (Wireshark) 10.0.0.", (10, 0, 0)),
-    ("Wireshark 4.2.0", None),
-    ("", None),
-])
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("TShark (Wireshark) 4.6.4.\n\nCopyright 1998-2025", (4, 6, 4)),
+        ("TShark (Wireshark) 3.6.2 (Git v3.6.2 packaged as 3.6.2-2)", (3, 6, 2)),
+        ("TShark (Wireshark) 10.0.0.", (10, 0, 0)),
+        ("Wireshark 4.2.0", None),
+        ("", None),
+    ],
+)
 def test_parse_version(text, expected):
     assert tshark.parse_version(text) == expected
 
@@ -58,8 +61,10 @@ def test_install_hint_mentions_container():
     assert "docker run" in tshark.install_hint()
 
 
-@pytest.mark.skipif(not shutil.which("tshark") or os.environ.get("PCAPVIS_SKIP_REAL_TSHARK"),
-                    reason="real tshark not installed")
+@pytest.mark.skipif(
+    not shutil.which("tshark") or os.environ.get("PCAPVIS_SKIP_REAL_TSHARK"),
+    reason="real tshark not installed",
+)
 def test_real_tshark_detected():
     st = tshark.check_tshark("tshark", "4.0.0")
     assert st.ok, st.message

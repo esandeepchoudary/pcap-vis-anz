@@ -30,6 +30,8 @@ NAMED_FIELDS = {
     "bacapp.confirmed_service",
     "bacapp.unconfirmed_service",
     "bacapp.vendor_identifier",
+    "bacapp.objectType",
+    "dnp3.ctl.prifunc",
     "mqtt.msgtype",
     "coap.type",
     "coap.code",

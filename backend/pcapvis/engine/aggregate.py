@@ -3,8 +3,12 @@
 from collections import Counter, defaultdict
 
 from pcapvis.engine import knowledge as K
-from pcapvis.engine.model import Evidence, Flow, Host, HostName, Service
+from pcapvis.engine import ot
+from pcapvis.engine.apps import FlowNotes
+from pcapvis.engine.credentials import MAX_CREDENTIALS, CredentialTracker
+from pcapvis.engine.model import Credential, Evidence, Flow, Host, HostName, OtCommand, Service
 from pcapvis.engine.packet import Packet
+from pcapvis.engine.tshark_env import TsharkEnv
 
 BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
 MAX_DNS_QUERIES_PER_HOST = 500
@@ -13,6 +17,12 @@ MAX_SET_ITEMS = 200
 GATEWAY_MAC_MIN_IPS = 3
 ICMP_ECHO_REQUEST = {8, 128}  # ICMPv4, ICMPv6
 ICMP_ECHO_REPLY = {0, 129}
+MAX_OT_COMMANDS = 200_000
+_L234_PREFIXES = ("frame_", "eth_", "sll_", "vlan_", "ieee8021ad_", "ip_", "ipv6_", "tcp_", "udp_", "_ws")
+MAX_TRACKED_SEGMENTS = 2_000_000  # only data segments of OT/credential/app protocols are tracked
+OT_DISSECTORS = {"modbus", "dnp3", "s7comm", "enip", "cip", "iec60870_asdu", "bacapp"}
+APP_DISSECTORS = {"http", "mqtt", "coap"}
+CRED_DISSECTORS = {"ftp", "pop", "imap", "smtp", "http", "mqtt", "snmp", "telnet", "urlencoded-form"}
 
 
 def _add_capped(s: set, value, cap: int = MAX_SET_ITEMS) -> None:
@@ -161,7 +171,16 @@ class HostAcc:
 class Aggregator:
     """Feed packets in with ``add``; call ``finish`` for hosts and flows."""
 
-    def __init__(self):
+    def __init__(self, env: TsharkEnv | None = None):
+        self.env = env
+        self.ot_commands: list[OtCommand] = []
+        self.ot_truncated = False
+        self.notes = FlowNotes()
+        self.creds = CredentialTracker()
+        self.credentials: dict[tuple, Credential] = {}
+        self.app_protocols_seen: set[str] = set()
+        self._seen_segments: set[tuple] = set()
+        self.retransmissions = 0
         self.hosts: dict[str, HostAcc] = {}
         self.flows: dict[tuple, FlowAcc] = {}
         self.mac_src_ips: dict[str, set[str]] = defaultdict(set)
@@ -299,12 +318,127 @@ class Aggregator:
                 f.syn_seen = True
             if p.rst:
                 f.resets += 1
-        for proto in p.protocols:
+        protos = set(p.protocols)
+        for proto in protos:
             mapped = K.TSHARK_PROTOCOLS.get(proto)
             if mapped:
                 f.detected[mapped[0]] += 1
+        self.app_protocols_seen |= protos
 
         self._names_and_tls(p, sh, dh, layers)
+        if protos & (OT_DISSECTORS | CRED_DISSECTORS | APP_DISSECTORS) and self._is_retransmission(p, f, c2s):
+            return  # already extracted from the original segment
+        if self.env is not None and protos & OT_DISSECTORS:
+            self._ot(p, f, c2s, sh, dh)
+        if protos & APP_DISSECTORS:
+            for k, v in self.notes.extract(p, f.id).items():
+                sh.identity.setdefault(k, v)  # first observation wins
+        if protos & CRED_DISSECTORS:
+            for hit in self.creds.extract(p, f.id, c2s):
+                self._credential(hit, f, p.ts)
+
+    def _is_retransmission(self, p: Packet, f: FlowAcc, c2s: bool) -> bool:
+        """Same flow, direction, raw sequence number and length as an earlier data segment."""
+        # Real TCP stacks pick random initial sequence numbers, so seq 0 on a data segment means a
+        # hand-built/synthetic capture that never set them; de-duplicating there would drop real data.
+        if p.transport != "tcp" or not p.seq_raw or p.payload_len == 0:
+            return False
+        # Include the decoded application fields: a true retransmission repeats them exactly, while
+        # different data that happens to reuse a sequence number (broken or synthetic captures) does not.
+        app = hash(
+            tuple(sorted((k, tuple(v)) for k, v in p.layers.items() if not k.startswith(_L234_PREFIXES)))
+        )
+        key = (f.id, c2s, p.seq_raw, p.payload_len, app)
+        if key in self._seen_segments:
+            self.retransmissions += 1
+            return True
+        if len(self._seen_segments) < MAX_TRACKED_SEGMENTS:
+            self._seen_segments.add(key)
+        return False
+
+    def _ot(self, p: Packet, f: FlowAcc, c2s: bool, sh: HostAcc, dh: HostAcc) -> None:
+        for ev in ot.extract(p, self.env, c2s):
+            label = f"{ev.protocol}: {ev.function}"
+            if ev.kind == "error":
+                f.ot_errors += 1
+                f.fc_counts[label + " (error)"] += 1
+            elif ev.is_request:
+                f.fc_counts[label] += 1
+                if ev.kind == "write":
+                    f.ot_writes += 1
+                elif ev.kind == "read":
+                    f.ot_reads += 1
+                # The side sending requests is the master/client of the OT conversation.
+                if ev.protocol != "DNP3":
+                    sh.ot_master = True
+                    dh.ot_outstation = True
+                if ev.protocol == "Modbus" and ev.unit is not None:
+                    _add_capped(dh.modbus_units, ev.unit)
+            if ev.protocol == "DNP3":
+                src_addr = (
+                    ev.master_addr
+                    if p.layers.get("dnp3_ctl_dir", ["False"])[0] == "True"
+                    else ev.outstation_addr
+                )
+                _add_capped(sh.dnp3_addrs, src_addr)
+                if p.layers.get("dnp3_ctl_dir", ["False"])[0] == "True":
+                    sh.ot_master = True
+                    dh.ot_outstation = True
+                else:
+                    sh.ot_outstation = True
+                    dh.ot_master = True
+            if ev.s7_download and not any(e.kind == "s7_download" for _, e in sh.extra_hints):
+                sh.extra_hints.append(
+                    (
+                        "Engineering Workstation",
+                        Evidence(
+                            kind="s7_download",
+                            detail=f"Downloads PLC program blocks to {p.dst} over S7comm",
+                            weight=10,
+                        ),
+                    )
+                )
+            if ev.identity:
+                sh.identity.update(ev.identity)
+            if ev.is_request or ev.kind == "error" or ev.identity:
+                if len(self.ot_commands) < MAX_OT_COMMANDS:
+                    self.ot_commands.append(
+                        OtCommand(
+                            time=p.ts,
+                            flow_id=f.id,
+                            src=p.src,
+                            dst=p.dst,
+                            protocol=ev.protocol,
+                            function_code=ev.function_code,
+                            function=ev.function,
+                            kind=ev.kind,
+                            is_request=ev.is_request,
+                            unit=ev.unit,
+                            address=ev.address,
+                            quantity=ev.quantity,
+                            detail=ev.detail,
+                        )
+                    )
+                else:
+                    self.ot_truncated = True
+
+    def _credential(self, hit, f: FlowAcc, ts: float) -> None:
+        key = (hit.protocol, f.client, f.server, hit.username, hit.secret)
+        c = self.credentials.get(key)
+        if c is not None:
+            c.count += 1
+        elif len(self.credentials) < MAX_CREDENTIALS:
+            self.credentials[key] = Credential(
+                protocol=hit.protocol,
+                kind=hit.kind,
+                client=f.client,
+                server=f.server,
+                server_port=f.server_port,
+                username=hit.username,
+                secret=hit.secret,
+                flow_id=f.id,
+                first_seen=ts,
+            )
 
     def _discovery(self, p: Packet, layers: dict) -> None:
         """ARP, LLDP, CDP, DHCP: tie MACs to IPs and names."""
@@ -412,6 +546,7 @@ class Aggregator:
             ot_writes=f.ot_writes,
             ot_errors=f.ot_errors,
             function_counts=dict(f.fc_counts),
+            notes=self.notes.notes.get(f.id, {}),
         )
 
     def _host_out(self, h: HostAcc, served: dict, gateway_macs: set[str]) -> Host:

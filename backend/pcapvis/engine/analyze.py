@@ -4,7 +4,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from pcapvis.engine.aggregate import Aggregator
-from pcapvis.engine.model import AnalysisResult, CaptureSummary
+from pcapvis.engine.files import TRIGGER_PROTOCOLS, extract_files
+from pcapvis.engine.model import AnalysisResult, CaptureSummary, FileTransfer
 from pcapvis.engine.packet import decode
 from pcapvis.engine.runner import ProgressFn, RunStats, stream_packets
 from pcapvis.engine.tshark_env import load_env
@@ -20,11 +21,13 @@ def analyze_capture(
     max_packets: int = DEFAULT_MAX_PACKETS,
     progress: ProgressFn | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    extract_objects: bool = True,
+    files_dir: Path | None = None,
 ) -> AnalysisResult:
     path = Path(path)
     env = load_env(tshark_path)
     stats = RunStats()
-    agg = Aggregator()
+    agg = Aggregator(env)
     for layers in stream_packets(
         path,
         env.fields,
@@ -36,6 +39,23 @@ def analyze_capture(
     ):
         agg.add(decode(layers))
     hosts, flows = agg.finish()
+
+    files: list[FileTransfer] = []
+    if extract_objects and not stats.stopped_early and agg.app_protocols_seen & TRIGGER_PROTOCOLS:
+        urls = {uri.rsplit("/", 1)[-1].split("?")[0]: uri for uri in agg.notes.request_uri.values()}
+        for f in extract_files(path, tshark_path, files_dir):
+            files.append(
+                FileTransfer(
+                    protocol=f.protocol,
+                    filename=f.filename,
+                    size=f.size,
+                    sha256=f.sha256,
+                    mime=f.mime,
+                    interesting=f.interesting,
+                    source_url=urls.get(f.filename),
+                    stored_path=f.stored_path,
+                )
+            )
 
     warnings = list(stats.stderr)
     if env.missing_fields:
@@ -53,4 +73,12 @@ def analyze_capture(
         tshark_version=check_tshark(tshark_path).version,
         warnings=warnings,
     )
-    return AnalysisResult(capture=summary, hosts=hosts, flows=flows)
+    return AnalysisResult(
+        capture=summary,
+        hosts=hosts,
+        flows=flows,
+        ot_commands=agg.ot_commands,
+        ot_commands_truncated=agg.ot_truncated,
+        credentials=sorted(agg.credentials.values(), key=lambda c: c.first_seen),
+        files=files,
+    )

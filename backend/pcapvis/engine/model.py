@@ -96,6 +96,7 @@ class Flow(BaseModel):
     ot_writes: int = 0
     ot_errors: int = 0
     function_counts: dict[str, int] = Field(default_factory=dict)
+    notes: dict[str, list[str]] = Field(default_factory=dict)  # http_requests, mqtt_topics, …
 
     @property
     def packets(self) -> int:
@@ -104,6 +105,46 @@ class Flow(BaseModel):
     @property
     def bytes(self) -> int:
         return self.bytes_c2s + self.bytes_s2c
+
+
+class OtCommand(BaseModel):
+    time: float
+    flow_id: int
+    src: str
+    dst: str
+    protocol: str
+    function_code: int | None
+    function: str
+    kind: Literal["read", "write", "error", "other"]
+    is_request: bool
+    unit: int | None = None
+    address: int | None = None
+    quantity: int | None = None
+    detail: str = ""
+
+
+class Credential(BaseModel):
+    protocol: str
+    kind: Literal["password", "basic_auth", "form", "community", "token"]
+    client: str
+    server: str
+    server_port: int
+    username: str | None
+    secret: str | None
+    flow_id: int
+    first_seen: float
+    count: int = 1
+
+
+class FileTransfer(BaseModel):
+    protocol: str
+    filename: str
+    size: int
+    sha256: str
+    mime: str
+    interesting: bool
+    source_url: str | None = None
+    stored_path: str | None = None
 
 
 class CaptureSummary(BaseModel):
@@ -124,3 +165,7 @@ class AnalysisResult(BaseModel):
     capture: CaptureSummary
     hosts: list[Host]
     flows: list[Flow]
+    ot_commands: list[OtCommand] = Field(default_factory=list)
+    ot_commands_truncated: bool = False
+    credentials: list[Credential] = Field(default_factory=list)
+    files: list[FileTransfer] = Field(default_factory=list)

@@ -252,3 +252,185 @@ def tls_client_hello(sni: str) -> bytes:
 
 def modbus(trans_id: int, unit: int, pdu: bytes) -> bytes:
     return trans_id.to_bytes(2, "big") + b"\x00\x00" + (len(pdu) + 1).to_bytes(2, "big") + bytes([unit]) + pdu
+
+
+# ── OT / IoT payload builders (byte-accurate so tshark fully dissects them) ──────────────
+
+
+def _dnp3_crc(data: bytes) -> bytes:
+    crc = 0
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA6BC if crc & 1 else crc >> 1
+    return (~crc & 0xFFFF).to_bytes(2, "little")
+
+
+def dnp3(src: int, dst: int, app: bytes, from_master: bool = True) -> bytes:
+    """DNP3 frame: link header + transport byte + application data, with per-block CRCs."""
+    user = b"\xc0" + app  # transport: FIR|FIN, seq 0
+    ctrl = (0x80 if from_master else 0x00) | 0x40 | 0x04  # DIR, PRM, unconfirmed user data
+    header = (
+        b"\x05\x64" + bytes([5 + len(user), ctrl]) + dst.to_bytes(2, "little") + src.to_bytes(2, "little")
+    )
+    out = header + _dnp3_crc(header)
+    for i in range(0, len(user), 16):
+        block = user[i : i + 16]
+        out += block + _dnp3_crc(block)
+    return out
+
+
+def s7(
+    rosctr: int, param: bytes, data: bytes = b"", pdu_ref: int = 1, err: tuple[int, int] | None = None
+) -> bytes:
+    """TPKT + COTP DT + S7comm PDU."""
+    hdr = (
+        bytes([0x32, rosctr, 0, 0])
+        + pdu_ref.to_bytes(2, "big")
+        + len(param).to_bytes(2, "big")
+        + len(data).to_bytes(2, "big")
+    )
+    if rosctr in (2, 3):
+        hdr += bytes(err or (0, 0))
+    pdu = b"\x02\xf0\x80" + hdr + param + data
+    return b"\x03\x00" + (len(pdu) + 4).to_bytes(2, "big") + pdu
+
+
+S7_SETUP = bytes.fromhex("f0000001000103c0")
+S7_READ_VAR = bytes.fromhex("0401120a10020001000184000000")
+S7_WRITE_VAR = bytes.fromhex("0501120a10020001000184000000")
+S7_REQUEST_DOWNLOAD = b"\x1a\x00\x01\x00\x00\x00\x00\x00\x09_0800001P\x0d1000144000144"
+S7_PLC_STOP = b"\x29\x00\x00\x00\x00\x00\x09P_PROGRAM"
+
+
+def enip_list_identity_response(
+    name: str = "1756-L83E/B",
+    vendor: int = 1,
+    devtype: int = 14,
+    product: int = 166,
+    serial: int = 0x60C0FFEE,
+    rev=(33, 11),
+) -> bytes:
+    nm = name.encode()
+    ident = (
+        b"\x01\x00"
+        + b"\x00\x02\xaf\x12"
+        + bytes([10, 0, 0, 50])
+        + b"\x00" * 8
+        + vendor.to_bytes(2, "little")
+        + devtype.to_bytes(2, "little")
+        + product.to_bytes(2, "little")
+        + bytes(rev)
+        + b"\x60\x30"
+        + serial.to_bytes(4, "little")
+        + bytes([len(nm)])
+        + nm
+        + b"\x03"
+    )
+    data = b"\x01\x00" + b"\x0c\x00" + len(ident).to_bytes(2, "little") + ident
+    return b"\x63\x00" + len(data).to_bytes(2, "little") + b"\x00" * 20 + data
+
+
+def enip_cip(
+    service: int,
+    path: bytes,
+    cip_data: bytes = b"",
+    response: bool = False,
+    status: int = 0,
+    session: int = 0x11223344,
+) -> bytes:
+    """SendRRData carrying one unconnected CIP request (or its response)."""
+    if response:
+        cip = bytes([service | 0x80, 0, status, 0]) + cip_data
+    else:
+        cip = bytes([service, len(path) // 2]) + path + cip_data
+    items = b"\x02\x00" + b"\x00\x00\x00\x00" + b"\xb2\x00" + len(cip).to_bytes(2, "little") + cip
+    data = b"\x00\x00\x00\x00" + b"\x0a\x00" + items
+    return b"\x6f\x00" + len(data).to_bytes(2, "little") + session.to_bytes(4, "little") + b"\x00" * 16 + data
+
+
+def cip_symbol_path(tag: str) -> bytes:
+    t = tag.encode()
+    p = b"\x91" + bytes([len(t)]) + t
+    return p + (b"\x00" if len(t) % 2 else b"")
+
+
+def iec104_i(
+    typeid: int,
+    cot: int,
+    ca: int = 1,
+    ioa: int = 100,
+    element: bytes = b"\x01",
+    send_seq: int = 0,
+    negative: bool = False,
+) -> bytes:
+    asdu = (
+        bytes([typeid, 1, cot | (0x40 if negative else 0), 0])
+        + ca.to_bytes(2, "little")
+        + ioa.to_bytes(3, "little")
+        + element
+    )
+    apci = (send_seq << 1).to_bytes(2, "little") + b"\x00\x00"
+    return b"\x68" + bytes([len(apci) + len(asdu)]) + apci + asdu
+
+
+def bacnet_confirmed(
+    service: int, payload: bytes = b"\x0c\x00\x00\x00\x01\x19\x55", invoke: int = 1
+) -> bytes:
+    apdu = bytes([0x00, 0x05, invoke, service]) + payload
+    npdu = b"\x01\x04"
+    return b"\x81\x0a" + (4 + len(npdu) + len(apdu)).to_bytes(2, "big") + npdu + apdu
+
+
+def bacnet_iam(instance: int = 1234, vendor: int = 5) -> bytes:
+    obj = ((8 << 22) | instance).to_bytes(4, "big")
+    apdu = b"\x10\x00" + b"\xc4" + obj + b"\x22\x05\xc4" + b"\x91\x00" + b"\x21" + bytes([vendor])
+    npdu = b"\x01\x00"
+    return b"\x81\x0b" + (4 + len(npdu) + len(apdu)).to_bytes(2, "big") + npdu + apdu
+
+
+def bacnet_error(service: int = 15) -> bytes:
+    apdu = bytes([0x50, 0x01, service]) + b"\x91\x02\x91\x1f"
+    npdu = b"\x01\x00"
+    return b"\x81\x0a" + (4 + len(npdu) + len(apdu)).to_bytes(2, "big") + npdu + apdu
+
+
+def mqtt_connect(client_id: str, username: str | None = None, password: str | None = None) -> bytes:
+    def s(x: str) -> bytes:
+        return len(x.encode()).to_bytes(2, "big") + x.encode()
+
+    flags = 0x02 | (0x80 if username else 0) | (0x40 if password else 0)
+    body = s("MQTT") + bytes([4, flags]) + b"\x00\x3c" + s(client_id)
+    if username:
+        body += s(username)
+    if password:
+        body += s(password)
+    return bytes([0x10, len(body)]) + body
+
+
+def mqtt_publish(topic: str, message: bytes) -> bytes:
+    body = len(topic).to_bytes(2, "big") + topic.encode() + message
+    return bytes([0x30, len(body)]) + body
+
+
+def coap_get(path_parts: list[str], msg_id: int = 1) -> bytes:
+    out = bytes([0x40, 0x01]) + msg_id.to_bytes(2, "big")
+    prev = 0
+    for part in path_parts:
+        delta = 11 - prev
+        out += bytes([(delta << 4) | len(part)]) + part.encode()
+        prev = 11
+    return out
+
+
+def snmp_get(community: str) -> bytes:
+    from scapy.asn1.asn1 import ASN1_OID
+    from scapy.layers.snmp import SNMP, SNMPget, SNMPvarbind
+
+    return bytes(
+        SNMP(
+            version=1,
+            community=community,
+            PDU=SNMPget(varbindlist=[SNMPvarbind(oid=ASN1_OID("1.3.6.1.2.1.1.1.0"))]),
+        )
+    )

@@ -38,6 +38,7 @@ def make_user(c, username, role="consultant", password=PW):
 
 # ── system ────────────────────────────────────────────────────────────────────
 
+
 def test_health(laptop):
     r = laptop.get("/api/health")
     assert r.status_code == 200 and r.json() == {"status": "ok"}
@@ -77,6 +78,7 @@ def test_openapi_and_docs_served(laptop):
 
 # ── tshark startup gate ───────────────────────────────────────────────────────
 
+
 def test_startup_refused_without_tshark(tmp_path):
     s = Settings(data_dir=tmp_path, tshark_path=str(tmp_path / "missing-tshark"), require_tshark=True)
     with pytest.raises(StartupError) as exc:
@@ -100,6 +102,7 @@ def test_startup_allowed_when_check_disabled(make_settings, tmp_path):
 
 # ── laptop mode ───────────────────────────────────────────────────────────────
 
+
 def test_laptop_me_is_local_admin_without_login(laptop):
     me = laptop.get("/api/auth/me").json()
     assert me["username"] == "local" and me["role"] == "admin"
@@ -114,14 +117,16 @@ def test_laptop_login_and_user_admin_disabled(laptop):
 
 # ── CSRF ──────────────────────────────────────────────────────────────────────
 
+
 def test_unsafe_request_without_csrf_header_rejected(server):
     r = server.post("/api/auth/login", json={"username": "admin", "password": PW})
     assert r.status_code == 403 and "X-PcapVis-Client" in r.json()["detail"]
 
 
 def test_wrong_csrf_header_value_rejected(server):
-    r = server.post("/api/auth/login", json={"username": "admin", "password": PW},
-                    headers={"X-PcapVis-Client": "yes"})
+    r = server.post(
+        "/api/auth/login", json={"username": "admin", "password": PW}, headers={"X-PcapVis-Client": "yes"}
+    )
     assert r.status_code == 403
 
 
@@ -130,6 +135,7 @@ def test_safe_requests_need_no_csrf_header(server):
 
 
 # ── server mode: login/logout ─────────────────────────────────────────────────
+
 
 def test_server_requires_login(server):
     assert server.get("/api/auth/me").status_code == 401
@@ -186,6 +192,7 @@ def test_login_input_validation(server):
 
 
 # ── server mode: users and roles ─────────────────────────────────────────────
+
 
 def test_admin_creates_and_lists_users(server):
     login(server)
@@ -279,13 +286,15 @@ def test_change_own_password_signs_out_other_sessions(server):
     a, b = TestClient(server.app), TestClient(server.app)
     login(a, "ivy")
     login(b, "ivy")
-    wrong = a.post("/api/auth/password",
-                   json={"current_password": "nope nope nope", "new_password": "x" * 12}, headers=H)
+    wrong = a.post(
+        "/api/auth/password", json={"current_password": "nope nope nope", "new_password": "x" * 12}, headers=H
+    )
     assert wrong.status_code == 400
     weak = a.post("/api/auth/password", json={"current_password": PW, "new_password": "short"}, headers=H)
     assert weak.status_code == 400
-    ok = a.post("/api/auth/password", json={"current_password": PW, "new_password": "ivy's new password"},
-                headers=H)
+    ok = a.post(
+        "/api/auth/password", json={"current_password": PW, "new_password": "ivy's new password"}, headers=H
+    )
     assert ok.status_code == 204
     assert a.get("/api/auth/me").status_code == 200  # current session kept
     assert b.get("/api/auth/me").status_code == 401  # other session signed out
@@ -306,6 +315,7 @@ def test_admin_bootstrap_only_once(make_settings):
 
 
 # ── frontend serving ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def dist(tmp_path):

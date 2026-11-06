@@ -3,6 +3,7 @@
 By default every test gets a fresh SQLite database. Set PCAPVIS_TEST_DATABASE_URL to a
 PostgreSQL URL to run the same suite against PostgreSQL; the schema is wiped before each test.
 """
+
 import os
 
 import pytest
