@@ -1,4 +1,10 @@
-"""Aggregate decoded packets into directional flows and hosts, then classify hosts with evidence."""
+"""Aggregate decoded packets into directional flows and hosts, then classify hosts with evidence.
+
+Order independence: every "first seen" choice uses packet timestamps (ties broken by value), flows are
+numbered at the end by first appearance, and lists are sorted deterministically. So an Aggregator fed
+the whole capture and several Aggregators fed host-pair partitions then ``merge``d produce the same
+result. That is what makes parallel analysis (parallel.py) safe.
+"""
 
 from collections import Counter, defaultdict
 
@@ -13,6 +19,7 @@ from pcapvis.engine.tshark_env import TsharkEnv
 BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
 MAX_DNS_QUERIES_PER_HOST = 500
 MAX_SET_ITEMS = 200
+MAX_NAMES = 20
 # A MAC that is the L2 source for this many distinct IPs is a router/gateway, not the hosts' NIC.
 GATEWAY_MAC_MIN_IPS = 3
 ICMP_ECHO_REQUEST = {8, 128}  # ICMPv4, ICMPv6
@@ -21,7 +28,7 @@ MAX_OT_COMMANDS = 200_000
 MAX_FLOW_TIMES = 64  # per flow
 MAX_TIMED_FLOWS = 200_000  # bound memory on huge captures
 _L234_PREFIXES = ("frame_", "eth_", "sll_", "vlan_", "ieee8021ad_", "ip_", "ipv6_", "tcp_", "udp_", "_ws")
-MAX_TRACKED_SEGMENTS = 2_000_000  # only data segments of OT/credential/app protocols are tracked
+MAX_TRACKED_SEGMENTS = 500_000  # data segments of OT/credential/app protocols; bounds memory
 OT_DISSECTORS = {"modbus", "dnp3", "s7comm", "enip", "cip", "iec60870_asdu", "bacapp"}
 APP_DISSECTORS = {"http", "mqtt", "coap"}
 CRED_DISSECTORS = {"ftp", "pop", "imap", "smtp", "http", "mqtt", "snmp", "telnet", "urlencoded-form"}
@@ -32,9 +39,21 @@ def _add_capped(s: set, value, cap: int = MAX_SET_ITEMS) -> None:
         s.add(value)
 
 
+def _first(store: dict, key, ts: float, value) -> None:
+    """Keep the earliest observation of ``key`` (ties: smallest value), as (ts, value)."""
+    cur = store.get(key)
+    if cur is None or (ts, value) < cur:
+        store[key] = (ts, value)
+
+
+def _merge_first(dst: dict, src: dict) -> None:
+    for k, (ts, v) in src.items():
+        _first(dst, k, ts, v)
+
+
 class FlowAcc:
     __slots__ = (
-        "id",
+        "key",
         "transport",
         "client",
         "client_port",
@@ -56,10 +75,11 @@ class FlowAcc:
         "ot_errors",
         "fc_counts",
         "times",
+        "cmd_seq",
     )
 
-    def __init__(self, fid, transport, client, cport, server, sport, basis, ts):
-        self.id = fid
+    def __init__(self, key, transport, client, cport, server, sport, basis, ts):
+        self.key = key
         self.transport = transport
         self.client, self.client_port = client, cport
         self.server, self.server_port = server, sport
@@ -73,6 +93,7 @@ class FlowAcc:
         self.ot_reads = self.ot_writes = self.ot_errors = 0
         self.fc_counts: Counter[str] = Counter()
         self.times: list[float] = []  # first client→server packet times, for beacon detection
+        self.cmd_seq = 0  # OT commands recorded on this flow so far (orders commands within a flow)
 
     def flip(self, basis: str) -> None:
         """Swap client and server (a later SYN proved the first guess wrong)."""
@@ -85,10 +106,13 @@ class FlowAcc:
     def protocol_label(self) -> str:
         return flow_label(self.transport, self.server_port, self.client_port, self.detected)
 
+    def sort_key(self):
+        return (self.first, self.transport, self.client, self.client_port, self.server, self.server_port)
+
 
 def flow_label(transport: str, server_port: int, client_port: int, detected: Counter) -> str:
     """tshark-identified application protocol first, then the port table, then the transport."""
-    for proto, _ in detected.most_common():
+    for proto, _ in sorted(detected.items(), key=lambda kv: (-kv[1], kv[0])):
         if proto == "TLS":
             if server_port in K.TLS_WEB_PORTS:
                 return "HTTPS"
@@ -148,13 +172,13 @@ class HostAcc:
         self.untagged = False
         self.qinq = False
         self.protocols: set[str] = set()
-        self.hostnames: dict[str, str] = {}  # name -> source (first source wins)
+        self.hostnames: dict[str, tuple[float, str]] = {}  # name → (first ts, source)
         self.dns_queries: set[str] = set()
         self.tls_sni: set[str] = set()
         self.tls_ja3: set[str] = set()
         self.tls_ja4: set[str] = set()
-        self.identity: dict[str, str] = {}
-        self.extra_hints: list[tuple[str, Evidence]] = []  # (host type, evidence)
+        self.identity: dict[str, tuple[float, str]] = {}  # key → (first ts, value)
+        self.extra_hints: dict[str, tuple[float, tuple[str, Evidence]]] = {}  # kind → (ts, (type, evidence))
         self.broadcast_dst = False
         self.modbus_units: set[int] = set()
         self.dnp3_addrs: set[int] = set()
@@ -167,21 +191,57 @@ class HostAcc:
         if self.last is None or ts > self.last:
             self.last = ts
 
-    def add_name(self, name: str | None, source: str) -> None:
-        if name and len(self.hostnames) < 20:
-            self.hostnames.setdefault(name.rstrip("."), source)
+    def add_name(self, name: str | None, source: str, ts: float) -> None:
+        if name and (len(self.hostnames) < MAX_NAMES or name.rstrip(".") in self.hostnames):
+            _first(self.hostnames, name.rstrip("."), ts, source)
+
+    def merge(self, o: "HostAcc") -> None:
+        self.macs.update(o.macs)
+        self.ttls.update(o.ttls)
+        self.pkts_sent += o.pkts_sent
+        self.pkts_recv += o.pkts_recv
+        self.bytes_sent += o.bytes_sent
+        self.bytes_recv += o.bytes_recv
+        for ts in (o.first, o.last):
+            if ts is not None:
+                self.seen(ts)
+        for mine, theirs, cap in (
+            (self.vlans, o.vlans, MAX_SET_ITEMS),
+            (self.vlan_outer, o.vlan_outer, MAX_SET_ITEMS),
+            (self.tls_sni, o.tls_sni, MAX_SET_ITEMS),
+            (self.tls_ja3, o.tls_ja3, MAX_SET_ITEMS),
+            (self.tls_ja4, o.tls_ja4, MAX_SET_ITEMS),
+            (self.modbus_units, o.modbus_units, MAX_SET_ITEMS),
+            (self.dnp3_addrs, o.dnp3_addrs, MAX_SET_ITEMS),
+            (self.dns_queries, o.dns_queries, MAX_DNS_QUERIES_PER_HOST),
+        ):
+            for v in sorted(theirs):
+                _add_capped(mine, v, cap)
+        self.pcps |= o.pcps
+        self.protocols |= o.protocols
+        self.untagged |= o.untagged
+        self.qinq |= o.qinq
+        self.broadcast_dst |= o.broadcast_dst
+        self.ot_master |= o.ot_master
+        self.ot_outstation |= o.ot_outstation
+        _merge_first(self.hostnames, o.hostnames)
+        _merge_first(self.identity, o.identity)
+        for kind, (ts, hint) in o.extra_hints.items():
+            cur = self.extra_hints.get(kind)
+            if cur is None or ts < cur[0]:
+                self.extra_hints[kind] = (ts, hint)
 
 
 class Aggregator:
-    """Feed packets in with ``add``; call ``finish`` for hosts and flows."""
+    """Feed packets with ``add``; combine partition aggregators with ``merge``; then ``finish``."""
 
     def __init__(self, env: TsharkEnv | None = None):
         self.env = env
-        self.ot_commands: list[OtCommand] = []
-        self.ot_truncated = False
         self.notes = FlowNotes()
         self.creds = CredentialTracker()
-        self.credentials: dict[tuple, Credential] = {}
+        self._ot_raw: list[tuple[OtCommand, tuple, int]] = []  # (command, flow key, per-flow seq)
+        self.ot_truncated = False
+        self._creds_raw: dict[tuple, tuple[Credential, tuple]] = {}  # key → (credential, flow key)
         self.app_protocols_seen: set[str] = set()
         self._seen_segments: set[tuple] = set()
         self.retransmissions = 0
@@ -189,8 +249,8 @@ class Aggregator:
         self.flows: dict[tuple, FlowAcc] = {}
         self.mac_src_ips: dict[str, set[str]] = defaultdict(set)
         self.arp_ip_for_mac: dict[str, set[str]] = defaultdict(set)
-        self.mac_names: dict[str, list[tuple[str, str]]] = defaultdict(list)  # mac -> [(name, source)]
-        self.mac_identity: dict[str, dict[str, str]] = defaultdict(dict)
+        self.mac_names: dict[str, dict[str, tuple[float, str]]] = defaultdict(dict)  # mac → name → (ts, src)
+        self.mac_identity: dict[str, dict[str, tuple[float, str]]] = defaultdict(dict)
         self.mac_vendor: dict[str, str] = {}
         self.packets = 0
         self.bytes = 0
@@ -198,10 +258,12 @@ class Aggregator:
         self.last_ts: float | None = None
         self.malformed = 0
         self.link_types: Counter[str] = Counter()
-        self._next_flow_id = 1
         self.vlan_packets: Counter = Counter()  # VLAN id (None = untagged) → frames
         self.vlan_broadcast: Counter = Counter()  # VLAN id → frames to ff:ff:ff:ff:ff:ff
         self.arp_claims: dict[tuple, set[str]] = defaultdict(set)  # (VLAN, IP) → MACs claiming it
+        # Filled by finish():
+        self.ot_commands: list[OtCommand] = []
+        self.credentials: list[Credential] = []
 
     # ── helpers ────────────────────────────────────────────────────────────
     def host(self, ip: str) -> HostAcc:
@@ -218,10 +280,9 @@ class Aggregator:
         if f is None:
             client_is_src, basis = self._initial_direction(p)
             if client_is_src:
-                f = FlowAcc(self._next_flow_id, p.transport, p.src, p.sport, p.dst, p.dport, basis, p.ts)
+                f = FlowAcc(key, p.transport, p.src, p.sport, p.dst, p.dport, basis, p.ts)
             else:
-                f = FlowAcc(self._next_flow_id, p.transport, p.dst, p.dport, p.src, p.sport, basis, p.ts)
-            self._next_flow_id += 1
+                f = FlowAcc(key, p.transport, p.dst, p.dport, p.src, p.sport, basis, p.ts)
             self.flows[key] = f
         elif p.transport == "tcp" and p.syn and f.basis != "handshake":
             # A handshake packet is authoritative: SYN comes from the client, SYN-ACK from the server.
@@ -316,7 +377,7 @@ class Aggregator:
         if c2s:
             f.pkts_c2s += 1
             f.bytes_c2s += p.length
-            if len(f.times) < MAX_FLOW_TIMES and f.id <= MAX_TIMED_FLOWS:
+            if len(f.times) < MAX_FLOW_TIMES and len(self.flows) <= MAX_TIMED_FLOWS:
                 f.times.append(p.ts)
         else:
             f.pkts_s2c += 1
@@ -345,10 +406,10 @@ class Aggregator:
         if self.env is not None and protos & OT_DISSECTORS:
             self._ot(p, f, c2s, sh, dh)
         if protos & APP_DISSECTORS:
-            for k, v in self.notes.extract(p, f.id).items():
-                sh.identity.setdefault(k, v)  # first observation wins
+            for k, v in self.notes.extract(p, f.key).items():
+                _first(sh.identity, k, p.ts, v)
         if protos & CRED_DISSECTORS:
-            for hit in self.creds.extract(p, f.id, c2s):
+            for hit in self.creds.extract(p, f.key, c2s):
                 self._credential(hit, f, p.ts)
 
     def _is_retransmission(self, p: Packet, f: FlowAcc, c2s: bool) -> bool:
@@ -362,7 +423,7 @@ class Aggregator:
         app = hash(
             tuple(sorted((k, tuple(v)) for k, v in p.layers.items() if not k.startswith(_L234_PREFIXES)))
         )
-        key = (f.id, c2s, p.seq_raw, p.payload_len, app)
+        key = (f.key, c2s, p.seq_raw, p.payload_len, app)
         if key in self._seen_segments:
             self.retransmissions += 1
             return True
@@ -389,60 +450,61 @@ class Aggregator:
                 if ev.protocol == "Modbus" and ev.unit is not None:
                     _add_capped(dh.modbus_units, ev.unit)
             if ev.protocol == "DNP3":
-                src_addr = (
-                    ev.master_addr
-                    if p.layers.get("dnp3_ctl_dir", ["False"])[0] == "True"
-                    else ev.outstation_addr
-                )
-                _add_capped(sh.dnp3_addrs, src_addr)
-                if p.layers.get("dnp3_ctl_dir", ["False"])[0] == "True":
+                from_master = p.layers.get("dnp3_ctl_dir", ["False"])[0] == "True"
+                _add_capped(sh.dnp3_addrs, ev.master_addr if from_master else ev.outstation_addr)
+                if from_master:
                     sh.ot_master = True
                     dh.ot_outstation = True
                 else:
                     sh.ot_outstation = True
                     dh.ot_master = True
-            if ev.s7_download and not any(e.kind == "s7_download" for _, e in sh.extra_hints):
-                sh.extra_hints.append(
-                    (
-                        "Engineering Workstation",
-                        Evidence(
-                            kind="s7_download",
-                            detail=f"Downloads PLC program blocks to {p.dst} over S7comm",
-                            weight=10,
-                        ),
-                    )
+            if ev.s7_download:
+                hint = (
+                    "Engineering Workstation",
+                    Evidence(
+                        kind="s7_download",
+                        detail=f"Downloads PLC program blocks to {p.dst} over S7comm",
+                        weight=10,
+                    ),
                 )
+                cur = sh.extra_hints.get("s7_download")
+                if cur is None or p.ts < cur[0]:
+                    sh.extra_hints["s7_download"] = (p.ts, hint)
             if ev.identity:
-                sh.identity.update(ev.identity)
+                for k, v in ev.identity.items():
+                    _first(sh.identity, k, p.ts, v)
             if ev.is_request or ev.kind == "error" or ev.identity:
-                if len(self.ot_commands) < MAX_OT_COMMANDS:
-                    self.ot_commands.append(
-                        OtCommand(
-                            time=p.ts,
-                            flow_id=f.id,
-                            src=p.src,
-                            dst=p.dst,
-                            protocol=ev.protocol,
-                            function_code=ev.function_code,
-                            function=ev.function,
-                            kind=ev.kind,
-                            is_request=ev.is_request,
-                            unit=ev.unit,
-                            address=ev.address,
-                            quantity=ev.quantity,
-                            detail=ev.detail,
-                        )
+                if len(self._ot_raw) < MAX_OT_COMMANDS:
+                    cmd = OtCommand(
+                        time=p.ts,
+                        flow_id=0,  # assigned in finish()
+                        src=p.src,
+                        dst=p.dst,
+                        protocol=ev.protocol,
+                        function_code=ev.function_code,
+                        function=ev.function,
+                        kind=ev.kind,
+                        is_request=ev.is_request,
+                        unit=ev.unit,
+                        address=ev.address,
+                        quantity=ev.quantity,
+                        detail=ev.detail,
                     )
+                    self._ot_raw.append((cmd, f.key, f.cmd_seq))
+                    f.cmd_seq += 1
                 else:
                     self.ot_truncated = True
 
     def _credential(self, hit, f: FlowAcc, ts: float) -> None:
         key = (hit.protocol, f.client, f.server, hit.username, hit.secret)
-        c = self.credentials.get(key)
-        if c is not None:
-            c.count += 1
-        elif len(self.credentials) < MAX_CREDENTIALS:
-            self.credentials[key] = Credential(
+        cur = self._creds_raw.get(key)
+        if cur is not None:
+            cur[0].count += 1
+            if ts < cur[0].first_seen:
+                cur[0].first_seen = ts
+                self._creds_raw[key] = (cur[0], f.key)
+        elif len(self._creds_raw) < MAX_CREDENTIALS:
+            c = Credential(
                 protocol=hit.protocol,
                 kind=hit.kind,
                 client=f.client,
@@ -450,9 +512,10 @@ class Aggregator:
                 server_port=f.server_port,
                 username=hit.username,
                 secret=hit.secret,
-                flow_id=f.id,
+                flow_id=0,  # assigned in finish()
                 first_seen=ts,
             )
+            self._creds_raw[key] = (c, f.key)
 
     def _discovery(self, p: Packet, layers: dict) -> None:
         """ARP, LLDP, CDP, DHCP: tie MACs to IPs and names."""
@@ -483,14 +546,14 @@ class Aggregator:
                 if not vals:
                     continue
                 if source:
-                    self.mac_names[p.src_mac].append((vals[0], source))
+                    _first(self.mac_names[p.src_mac], vals[0], p.ts, source)
                 else:
-                    self.mac_identity[p.src_mac].setdefault(ident, vals[0][:300])
+                    _first(self.mac_identity[p.src_mac], ident, p.ts, vals[0][:300])
             if "cdp_native_vlan" in layers:
-                self.mac_identity[p.src_mac].setdefault("cdp_native_vlan", layers["cdp_native_vlan"][0])
+                _first(self.mac_identity[p.src_mac], "cdp_native_vlan", p.ts, layers["cdp_native_vlan"][0])
             if "dhcp_option_hostname" in layers:
                 mac = (layers.get("dhcp_hw_mac_addr") or [p.src_mac])[0]
-                self.mac_names[mac].append((layers["dhcp_option_hostname"][0], "dhcp"))
+                _first(self.mac_names[mac], layers["dhcp_option_hostname"][0], p.ts, "dhcp")
 
     def _names_and_tls(self, p: Packet, sh: HostAcc, dh: HostAcc, layers: dict) -> None:
         if "dns_qry_name" in layers:
@@ -501,7 +564,7 @@ class Aggregator:
                     sh.dns_queries.add(qname)
             else:
                 for ip in layers.get("dns_a", []) + layers.get("dns_aaaa", []):
-                    self.host(ip).add_name(qname, "dns")
+                    self.host(ip).add_name(qname, "dns", p.ts)
         if "tls_handshake_extensions_server_name" in layers:
             _add_capped(sh.tls_sni, layers["tls_handshake_extensions_server_name"][0])
             # The server's name is what the client asked for.
@@ -512,6 +575,57 @@ class Aggregator:
         if "tls_handshake_ja4" in layers:
             _add_capped(sh.tls_ja4, layers["tls_handshake_ja4"][0])
 
+    # ── merge (parallel partitions) ────────────────────────────────────────
+    def merge(self, o: "Aggregator") -> None:
+        """Fold another partition's aggregator into this one. Partitions never share a flow."""
+        self.packets += o.packets
+        self.bytes += o.bytes
+        for ts in (o.first_ts, o.last_ts):
+            if ts is not None:
+                self.first_ts = ts if self.first_ts is None else min(self.first_ts, ts)
+                self.last_ts = ts if self.last_ts is None else max(self.last_ts, ts)
+        self.malformed += o.malformed
+        self.retransmissions += o.retransmissions
+        self.link_types.update(o.link_types)
+        self.vlan_packets.update(o.vlan_packets)
+        self.vlan_broadcast.update(o.vlan_broadcast)
+        self.app_protocols_seen |= o.app_protocols_seen
+        for mac, vendor in o.mac_vendor.items():
+            self.mac_vendor.setdefault(mac, vendor)
+        for src, dst in ((o.mac_src_ips, self.mac_src_ips), (o.arp_ip_for_mac, self.arp_ip_for_mac)):
+            for mac, ips in src.items():
+                dst[mac] |= ips
+        for key, macs in o.arp_claims.items():
+            self.arp_claims[key] |= macs
+        for src, dst in ((o.mac_names, self.mac_names), (o.mac_identity, self.mac_identity)):
+            for mac, entries in src.items():
+                _merge_first(dst[mac], entries)
+        for ip, h in o.hosts.items():
+            if ip in self.hosts:
+                self.hosts[ip].merge(h)
+            else:
+                self.hosts[ip] = h
+        for key, f in o.flows.items():
+            if key in self.flows:  # cannot happen with host-pair partitioning
+                raise ValueError(f"flow {key} appears in two partitions")
+            self.flows[key] = f
+        self.notes.merge(o.notes)
+        self._ot_raw.extend(o._ot_raw)
+        self.ot_truncated |= o.ot_truncated
+        if len(self._ot_raw) > MAX_OT_COMMANDS:
+            self._ot_raw.sort(key=lambda t: (t[0].time, t[1], t[2]))
+            del self._ot_raw[MAX_OT_COMMANDS:]
+            self.ot_truncated = True
+        for key, (c, fkey) in o._creds_raw.items():
+            cur = self._creds_raw.get(key)
+            if cur is None:
+                self._creds_raw[key] = (c, fkey)
+            else:
+                cur[0].count += c.count
+                if c.first_seen < cur[0].first_seen:
+                    cur[0].first_seen = c.first_seen
+                    self._creds_raw[key] = (cur[0], fkey)
+
     # ── finish ─────────────────────────────────────────────────────────────
     def finish(self) -> tuple[list[Host], list[Flow]]:
         gateway_macs = {
@@ -519,7 +633,22 @@ class Aggregator:
             for mac, ips in self.mac_src_ips.items()
             if len(ips) >= GATEWAY_MAC_MIN_IPS or any(not K.ip_info(ip)[1] for ip in ips)
         }
-        flows = [self._flow_out(f) for f in sorted(self.flows.values(), key=lambda f: f.id)]
+        ordered = sorted(self.flows.values(), key=FlowAcc.sort_key)
+        flow_ids = {f.key: i for i, f in enumerate(ordered, start=1)}
+        flows = [self._flow_out(f, flow_ids[f.key]) for f in ordered]
+
+        commands = sorted(self._ot_raw, key=lambda t: (t[0].time, flow_ids[t[1]], t[2]))
+        self.ot_commands = []
+        for cmd, fkey, _seq in commands:
+            cmd.flow_id = flow_ids[fkey]
+            self.ot_commands.append(cmd)
+        self.credentials = []
+        for c, fkey in self._creds_raw.values():
+            c.flow_id = flow_ids[fkey]
+            self.credentials.append(c)
+        self.credentials.sort(
+            key=lambda c: (c.first_seen, c.flow_id, c.protocol, c.username or "", c.secret or "")
+        )
 
         served: dict[str, dict[tuple[str, int], dict]] = defaultdict(dict)
         for f in flows:
@@ -538,9 +667,9 @@ class Aggregator:
         hosts.sort(key=lambda h: (h.ip_version, _ip_sort_key(h.ip)))
         return hosts, flows
 
-    def _flow_out(self, f: FlowAcc) -> Flow:
+    def _flow_out(self, f: FlowAcc, fid: int) -> Flow:
         return Flow(
-            id=f.id,
+            id=fid,
             transport=f.transport,
             client=f.client,
             client_port=f.client_port,
@@ -561,8 +690,8 @@ class Aggregator:
             ot_reads=f.ot_reads,
             ot_writes=f.ot_writes,
             ot_errors=f.ot_errors,
-            function_counts=dict(f.fc_counts),
-            notes=self.notes.notes.get(f.id, {}),
+            function_counts=dict(sorted(f.fc_counts.items())),
+            notes=self.notes.notes.get(f.key, {}),
             c2s_times=f.times,
         )
 
@@ -572,20 +701,23 @@ class Aggregator:
 
         # MAC: ARP-claimed MACs are authoritative; a gateway MAC is not this host's NIC
         # unless the host itself claimed it in ARP (i.e. it *is* the gateway).
-        arp_macs = [m for m, ips in self.arp_ip_for_mac.items() if h.ip in ips]
-        candidates = [m for m, _ in h.macs.most_common()]
+        by_count = lambda m: (-h.macs[m], m)  # noqa: E731
+        arp_macs = sorted((m for m, ips in self.arp_ip_for_mac.items() if h.ip in ips), key=by_count)
+        candidates = sorted(h.macs, key=by_count)
         own = [m for m in candidates if m not in gateway_macs or m in arp_macs]
         mac = arp_macs[0] if arp_macs else (own[0] if own else None)
         mac_is_gateway = mac is None and bool(candidates)
 
-        names = [HostName(name=n, source=s) for n, s in h.hostnames.items()]
+        name_entries = dict(h.hostnames)
         if mac:
-            for n, s in self.mac_names.get(mac, []):
-                if n and n not in h.hostnames:
-                    names.append(HostName(name=n, source=s))
-                    h.hostnames[n] = s
-        identity = dict(self.mac_identity.get(mac, {})) if mac else {}
-        identity.update(h.identity)
+            for n, (ts, src) in self.mac_names.get(mac, {}).items():
+                _first(name_entries, n, ts, src)
+        ordered_names = sorted(name_entries.items(), key=lambda kv: (kv[1][0], kv[0]))[:MAX_NAMES]
+        names = [HostName(name=n, source=src) for n, (_ts, src) in ordered_names]
+
+        ident_entries = dict(self.mac_identity.get(mac, {})) if mac else {}
+        _merge_first(ident_entries, h.identity)
+        identity = {k: v for k, (_ts, v) in sorted(ident_entries.items())}
 
         services = sorted(
             (
@@ -598,9 +730,9 @@ class Aggregator:
                 )
                 for (t, port), v in served.items()
             ),
-            key=lambda s: (-s.packets, s.port),
+            key=lambda s: (-s.packets, s.port, s.transport),
         )
-        ttl = h.ttls.most_common(1)[0][0] if h.ttls else None
+        ttl = min(h.ttls, key=lambda t: (-h.ttls[t], t)) if h.ttls else None
         os_hint = K.os_from_ttl(ttl) if ttl is not None else None
 
         host = Host(
@@ -666,10 +798,12 @@ class Aggregator:
 
         hints: dict[str, list[Evidence]] = defaultdict(list)
         strong: set[str] = set()  # types backed by tshark-identified protocols
-        for (transport, port), v in served.items():
+        for (transport, port), v in sorted(served.items()):
             hint = None
             detected = v["detected"]
-            for proto in sorted(detected, key=lambda x: K.priority_rank(K.SERVER_TYPE_BY_LABEL.get(x) or "")):
+            for proto in sorted(
+                detected, key=lambda x: (K.priority_rank(K.SERVER_TYPE_BY_LABEL.get(x) or ""), x)
+            ):
                 if K.SERVER_TYPE_BY_LABEL.get(proto):
                     hint = K.SERVER_TYPE_BY_LABEL[proto]
                     strong.add(hint)
@@ -686,8 +820,13 @@ class Aggregator:
                         weight=v["packets"],
                     )
                 )
-        if mac and mac in self.mac_names and any(s in ("lldp", "cdp") for _, s in self.mac_names[mac]):
-            name, src = next((n, s) for n, s in self.mac_names[mac] if s in ("lldp", "cdp"))
+        lldp_cdp = (
+            sorted((ts, n, s) for n, (ts, s) in self.mac_names.get(mac, {}).items() if s in ("lldp", "cdp"))
+            if mac
+            else []
+        )
+        if lldp_cdp:
+            _ts, name, src = lldp_cdp[0]
             hints["Network Device"].append(
                 Evidence(kind=src, detail=f"Announces itself via {src.upper()} as '{name}'", weight=5)
             )
@@ -702,20 +841,21 @@ class Aggregator:
                 )
             )
             strong.add("Router")
-        for t, ev in h.extra_hints:
+        for _kind, (_ts, (t, ev)) in sorted(h.extra_hints.items()):
             hints[t].append(ev)
             strong.add(t)
 
         if hints:
-            best = min(hints, key=K.priority_rank)
+            best = min(hints, key=lambda t: (K.priority_rank(t), t))
             host.host_type = best
-            host.host_type_evidence = sorted(hints[best], key=lambda e: -e.weight)
+            host.host_type_evidence = sorted(hints[best], key=lambda e: (-e.weight, e.detail))
             others = [t for t in hints if t != best]
             if others:
                 host.host_type_evidence.append(
                     Evidence(
                         kind="also_suggested",
-                        detail="Also looks like: " + ", ".join(sorted(others, key=K.priority_rank)),
+                        detail="Also looks like: "
+                        + ", ".join(sorted(others, key=lambda t: (K.priority_rank(t), t))),
                         weight=0,
                     )
                 )

@@ -29,10 +29,10 @@ class _TelnetState:
 
 @dataclass
 class CredentialTracker:
-    pending_user: dict[int, str] = field(default_factory=dict)  # flow id → username awaiting PASS
-    telnet: dict[int, _TelnetState] = field(default_factory=dict)
+    pending_user: dict[tuple, str] = field(default_factory=dict)  # flow key → username awaiting PASS
+    telnet: dict[tuple, _TelnetState] = field(default_factory=dict)
 
-    def extract(self, p: Packet, flow_id: int, c2s: bool) -> list[CredentialHit]:
+    def extract(self, p: Packet, flow_id: tuple, c2s: bool) -> list[CredentialHit]:
         L = p.layers
         hits: list[CredentialHit] = []
         # FTP / POP3: USER then PASS on the same connection.
@@ -89,7 +89,7 @@ class CredentialTracker:
             hits.extend(self._telnet(flow_id, c2s, "".join(L["telnet_data"])))
         return hits
 
-    def _telnet(self, flow_id: int, c2s: bool, text: str) -> list[CredentialHit]:
+    def _telnet(self, flow_id: tuple, c2s: bool, text: str) -> list[CredentialHit]:
         st = self.telnet.setdefault(flow_id, _TelnetState())
         hits = []
         if not c2s:  # server output: look for prompts
