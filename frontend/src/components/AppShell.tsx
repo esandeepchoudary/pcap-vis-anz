@@ -24,7 +24,7 @@ export function AppShell({ system, user }: { system: SystemInfo; user: User }) {
         <footer className="timeline" aria-label="Timeline">
           <span>Timeline</span>
           <div className="timeline-track" />
-          <span>Interactive timeline arrives with the flow views (M7)</span>
+          <span>Interactive timeline: planned after v1.0</span>
         </footer>
       </div>
     </InspectorContext.Provider>
