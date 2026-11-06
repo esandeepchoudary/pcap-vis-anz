@@ -36,7 +36,7 @@ RUN useradd --system --uid 10001 --home-dir /data --shell /usr/sbin/nologin pcap
  && mkdir -p /data && chown pcapvis /data
 USER pcapvis
 
-ENV PCAPVIS_HOST=0.0.0.0 PCAPVIS_PORT=8080 PCAPVIS_DATA_DIR=/data PCAPVIS_FRONTEND_DIST=/app/frontend
+ENV PCAPVIS_HOST=0.0.0.0 PCAPVIS_PORT=8080 PCAPVIS_DATA_DIR=/data PCAPVIS_FRONTEND_DIST=/app/frontend PYTHONUNBUFFERED=1
 VOLUME ["/data"]
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

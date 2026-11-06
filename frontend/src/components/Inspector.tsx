@@ -1,10 +1,13 @@
 import { MousePointerClick, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useState } from 'react'
+import { useInspector } from '../inspector/context'
+import { HostDetails } from './HostDetails'
 
 const KEY = 'pcapvis.inspector.collapsed'
 
 export function Inspector() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(KEY) === '1')
+  const { selection, select } = useInspector()
   const toggle = () => {
     setCollapsed((c) => {
       localStorage.setItem(KEY, c ? '0' : '1')
@@ -24,7 +27,12 @@ export function Inspector() {
           {collapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
         </button>
       </div>
-      {!collapsed && (
+      {!collapsed && selection?.kind === 'host' && (
+        <div className="inspector-body">
+          <HostDetails host={selection.host} onClose={() => select(null)} />
+        </div>
+      )}
+      {!collapsed && !selection && (
         <div className="inspector-body">
           <div className="empty">
             <MousePointerClick size={36} strokeWidth={1.5} aria-hidden />

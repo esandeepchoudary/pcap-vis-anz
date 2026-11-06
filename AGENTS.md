@@ -122,6 +122,19 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
   dark optional; **all colours come from `theme/tokens.css`** so both themes stay complete), icons from
   `lucide-react` (no emoji).
 
+### Engagements and jobs (M2)
+
+- **Access:** every engagement route goes through `EngagementAccess` (`as_viewer` / `as_editor` /
+  `as_lead`) in `api/routes_engagements.py`; non-members get **404**, never 403, so names don't leak.
+  Engagement roles are capped by global role (`MAX_MEMBER_ROLE`); Quick looks belong only to their creator.
+- **Mutations call `eng.touch()`** (bumps `revision`) and `audit.record(...)`. The live-update stream
+  (`/events`) and the frontend's cache invalidation depend on the revision changing.
+- **Jobs:** `jobs/runner.py`. Claim with a conditional UPDATE (never "select then update"); progress,
+  heartbeat and cancel go through the DB so `pcapvis worker` processes behave like the in-app runner.
+- **Storage layout:** `engagements/storage.py` is the only place that builds paths; user-supplied names
+  go through `safe_filename`. Imported bundles are untrusted: extend `bundle.py`'s whitelist and
+  validation, never bypass it.
+
 ### Packet engine (`backend/pcapvis/engine/`, M1)
 
 - **Flow:** `analyze.analyze_capture(path)` → `runner.stream_packets` (tshark `-T ek`, capture fed via

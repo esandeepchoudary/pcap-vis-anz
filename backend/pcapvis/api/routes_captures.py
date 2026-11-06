@@ -26,6 +26,7 @@ from pcapvis.api.schemas import (
 from pcapvis.db.models import Capture, CapturePoint, CaptureStatus, Engagement, MemberRole, User
 from pcapvis.engagements import access, audit
 from pcapvis.engagements.storage import Storage, safe_filename
+from pcapvis.engine.model import AnalysisResult
 
 router = APIRouter(prefix="/api", tags=["captures"])
 CHUNK = 1 << 20
@@ -286,7 +287,7 @@ def delete_capture(
 @router.get(
     "/engagements/{engagement_id}/captures/{capture_id}/result",
     responses={
-        200: {"content": {"application/json": {}}, "description": "Full AnalysisResult (gzip)"},
+        200: {"model": AnalysisResult, "description": "Full analysis result (sent gzip-encoded)"},
         409: {"model": ErrorOut},
     },
 )

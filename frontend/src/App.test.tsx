@@ -4,54 +4,58 @@ import { describe, expect, it } from 'vitest'
 import App from './App'
 import { STAGES } from './stages'
 import {
-  adminUser, json, laptopSystem, localUser, mockApi, renderWithProviders, serverSystem,
+  adminUser, engagement, json, laptopSystem, localUser, mockApi, renderWithProviders, serverSystem,
 } from './test/utils'
 
 describe('App: laptop mode', () => {
   it('opens straight into the workbench without sign-in', async () => {
-    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser })
+    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser, 'GET /api/engagements': [] })
     renderWithProviders(<App />)
-    expect(await screen.findByRole('heading', { name: 'Welcome' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Engagements' })).toBeInTheDocument()
     expect(within(screen.getByRole('banner')).getByText('v9.8.7')).toBeInTheDocument()
     expect(screen.getByText('Laptop mode')).toBeInTheDocument()
     expect(screen.queryByLabelText('Sign in')).not.toBeInTheDocument()
   })
 
-  it('shows every workflow stage in the rail, in order', async () => {
-    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser })
+  it('rail shows Home, the stages (disabled until an engagement is open) and Quick look', async () => {
+    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser, 'GET /api/engagements': [] })
     renderWithProviders(<App />)
     const rail = await screen.findByRole('navigation', { name: 'Workflow stages' })
-    const labels = within(rail).getAllByRole('link').map((a) => a.textContent)
-    expect(labels).toEqual(STAGES.map((s) => s.label))
-    expect(within(rail).queryByText('Users')).not.toBeInTheDocument() // no user admin in laptop mode
+    const labels = Array.from(rail.querySelectorAll('.rail-link')).map((a) => a.textContent)
+    expect(labels).toEqual(['Home', ...STAGES.map((s) => s.label), 'Quick look'])
+    for (const s of STAGES) expect(within(rail).getByText(s.label).closest('.rail-link')).toHaveAttribute('aria-disabled')
   })
 
-  it('navigates to a stage and marks it active', async () => {
-    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser })
-    renderWithProviders(<App />)
-    const rail = await screen.findByRole('navigation', { name: 'Workflow stages' })
+  it('opening an engagement enables its stages and marks the active one', async () => {
+    mockApi({
+      'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser, 'GET /api/engagements': [engagement],
+      'GET /api/engagements/7': engagement, 'GET /api/engagements/7/captures': [], 'GET /api/engagements/7/capture-points': [],
+      'GET /api/engagements/7/audit': [],
+    })
+    renderWithProviders(<App />, { route: '/e/7/overview' })
+    expect(await screen.findByRole('heading', { name: 'ACME Plant 3', level: 1 })).toBeInTheDocument()
+    const rail = screen.getByRole('navigation', { name: 'Workflow stages' })
     await userEvent.click(within(rail).getByRole('link', { name: /Assets/ }))
     expect(await screen.findByRole('heading', { name: 'Asset inventory' })).toBeInTheDocument()
-    expect(screen.getByText('Arrives in M3')).toBeInTheDocument()
     expect(within(rail).getByRole('link', { name: /Assets/ })).toHaveClass('active')
-    expect(within(rail).getByRole('link', { name: /Overview/ })).not.toHaveClass('active')
+    expect(within(rail).getByRole('link', { name: /Assets/ })).toHaveAttribute('href', '/e/7/assets')
   })
 
-  it('redirects unknown routes to the overview', async () => {
-    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser })
+  it('redirects unknown routes home', async () => {
+    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser, 'GET /api/engagements': [] })
     renderWithProviders(<App />, { route: '/no/such/page' })
-    expect(await screen.findByRole('heading', { name: 'Welcome' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Engagements' })).toBeInTheDocument()
   })
 
   it('hides account and admin routes in laptop mode', async () => {
-    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser })
+    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser, 'GET /api/engagements': [] })
     renderWithProviders(<App />, { route: '/admin/users' })
-    expect(await screen.findByRole('heading', { name: 'Welcome' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Engagements' })).toBeInTheDocument()
   })
 
   it('warns prominently when tshark is unavailable', async () => {
     const broken = { ...laptopSystem, tshark: { ...laptopSystem.tshark, ok: false, version: null, path: null, message: 'tshark not found.' } }
-    mockApi({ 'GET /api/system': broken, 'GET /api/auth/me': localUser })
+    mockApi({ 'GET /api/system': broken, 'GET /api/auth/me': localUser, 'GET /api/engagements': [] })
     renderWithProviders(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('tshark not found.')
     expect(screen.getByText('unavailable')).toBeInTheDocument()
@@ -77,12 +81,13 @@ describe('App: server mode', () => {
       'GET /api/system': serverSystem,
       'GET /api/auth/me': json(401, { detail: 'Not signed in.' }),
       'POST /api/auth/login': adminUser,
+      'GET /api/engagements': [],
     })
     renderWithProviders(<App />)
     await userEvent.type(await screen.findByLabelText('Username'), 'admin')
     await userEvent.type(screen.getByLabelText('Password'), 'correct horse battery')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect(await screen.findByRole('heading', { name: 'Welcome' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Engagements' })).toBeInTheDocument()
     const login = calls.find((c) => c.path === '/api/auth/login')!
     expect(login.body).toEqual({ username: 'admin', password: 'correct horse battery' })
     expect(login.headers.get('X-PcapVis-Client')).toBe('1')
@@ -116,20 +121,20 @@ describe('App: server mode', () => {
   })
 
   it('admins see the Users link; others do not', async () => {
-    mockApi({ 'GET /api/system': serverSystem, 'GET /api/auth/me': adminUser })
+    mockApi({ 'GET /api/system': serverSystem, 'GET /api/auth/me': adminUser, 'GET /api/engagements': [] })
     const { unmount } = renderWithProviders(<App />)
     expect(await screen.findByRole('link', { name: /Users/ })).toBeInTheDocument()
     unmount()
-    mockApi({ 'GET /api/system': serverSystem, 'GET /api/auth/me': { ...adminUser, role: 'consultant' } })
+    mockApi({ 'GET /api/system': serverSystem, 'GET /api/auth/me': { ...adminUser, role: 'consultant' }, 'GET /api/engagements': [] })
     renderWithProviders(<App />)
-    await screen.findByRole('heading', { name: 'Welcome' })
+    await screen.findByRole('heading', { name: 'Engagements' })
     expect(screen.queryByRole('link', { name: /Users/ })).not.toBeInTheDocument()
   })
 
   it('non-admins cannot reach the users page by URL', async () => {
-    mockApi({ 'GET /api/system': serverSystem, 'GET /api/auth/me': { ...adminUser, role: 'viewer' } })
+    mockApi({ 'GET /api/system': serverSystem, 'GET /api/auth/me': { ...adminUser, role: 'viewer' }, 'GET /api/engagements': [] })
     renderWithProviders(<App />, { route: '/admin/users' })
-    expect(await screen.findByRole('heading', { name: 'Welcome' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Engagements' })).toBeInTheDocument()
   })
 
   it('signs out from the user menu', async () => {
@@ -137,6 +142,7 @@ describe('App: server mode', () => {
     const { calls } = mockApi({
       'GET /api/system': serverSystem,
       'GET /api/auth/me': () => (signedIn ? json(200, adminUser) : json(401, { detail: 'Not signed in.' })),
+      'GET /api/engagements': [],
       'POST /api/auth/logout': () => { signedIn = false; return new Response(null, { status: 204 }) },
     })
     renderWithProviders(<App />)
@@ -147,7 +153,7 @@ describe('App: server mode', () => {
   })
 
   it('user menu closes on Escape', async () => {
-    mockApi({ 'GET /api/system': serverSystem, 'GET /api/auth/me': adminUser })
+    mockApi({ 'GET /api/system': serverSystem, 'GET /api/auth/me': adminUser, 'GET /api/engagements': [] })
     renderWithProviders(<App />)
     await userEvent.click(await screen.findByRole('button', { name: /Ada Admin/ }))
     expect(screen.getByRole('menu')).toBeInTheDocument()
@@ -158,7 +164,7 @@ describe('App: server mode', () => {
 
 describe('Header', () => {
   it('toggles the theme from the header button', async () => {
-    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser })
+    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser, 'GET /api/engagements': [] })
     renderWithProviders(<App />)
     await userEvent.click(await screen.findByRole('button', { name: 'Switch to dark theme' }))
     expect(document.documentElement.dataset.theme).toBe('dark')
@@ -166,7 +172,7 @@ describe('Header', () => {
   })
 
   it('inspector collapses and remembers it', async () => {
-    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser })
+    mockApi({ 'GET /api/system': laptopSystem, 'GET /api/auth/me': localUser, 'GET /api/engagements': [] })
     renderWithProviders(<App />)
     await userEvent.click(await screen.findByRole('button', { name: 'Collapse inspector' }))
     expect(screen.queryByText('Nothing selected')).not.toBeInTheDocument()

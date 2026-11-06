@@ -165,7 +165,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 |---|---|
 | M0 ✅ | Foundations: repo layout, FastAPI + React skeleton, design tokens and both themes, DB + migrations, local accounts, CI (tests, lint, type-check, build) |
 | M1 ✅ | Engine: capture reader, directional flows, host and asset identity, IT/OT/IoT protocol parsers, anomaly rules; differential harness against legacy |
-| M2 | Engagements and captures: create and open engagements, upload with background parsing and progress, capture points, Quick look, `.pcapvis` export and import |
+| M2 ✅ | Engagements and captures: create and open engagements, upload with background parsing and progress, capture points, Quick look, `.pcapvis` export and import |
 | M3 | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
 | M4 | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
 | M5 | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
@@ -224,3 +224,23 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
   EtherNet/IP parser never decodes CIP services; BACnet parser reads the service from the wrong byte and its
   service table is shifted (readProperty counted as a write); DNP3 "unusual function" labels wrong; port-scan
   and exfiltration direction bugs; OT rules only saw the first 50 packets per connection.
+
+**M2, engagements and captures: done (v0.4.0, 2026-11-06).**
+- Engagements (create, edit, archive, delete), per-engagement members with roles capped by the user's
+  global role (server mode), capture points, audit log of every action.
+- Capture upload (streamed, hashed, format-checked, size-limited, de-duplicated) and background analysis:
+  a DB-backed job queue claimed atomically, so it runs in the web process (laptop) or in separate
+  `pcapvis worker` processes / a `worker` container (team server), with heartbeat, crash recovery,
+  progress and cancel. Results stored as gzip JSON next to the original captures.
+- Live updates via server-sent events driven by a per-engagement revision counter (works across processes).
+- Quick look: a personal engagement per capture, promotable to a real engagement by leads/admins.
+- `.pcapvis` export/import with defensive import (path whitelist, zip-bomb and size guards, hash
+  re-verification, result validation, all-or-nothing).
+- UI: engagements home, engagement switcher, engagement-aware stage rail, overview (totals, members,
+  export, settings, activity), Captures (capture points, drag-and-drop upload with progress, live status
+  table), capture report (findings with ATT&CK IDs, hosts with evidence in the inspector, OT commands,
+  masked credentials, files), Quick look page.
+- docker-compose: web app + analysis worker + PostgreSQL; verified end to end.
+- Tests: backend 337, frontend 62, e2e 11 (journey with live analysis, export/re-import, Quick look,
+  viewer/outsider permissions), legacy 375.
+- Routine: CI auto-merges owner PRs into `develop` once every check passes.

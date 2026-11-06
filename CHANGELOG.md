@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v0.4.0 -- 2026-11-06
+
+- v2 rebuild M2 engagements and captures: engagements and members, capture points, uploads with background analysis (in-app or worker), live updates, capture report UI, Quick look, .pcapvis export/import, CI auto-merge routine
+
 ## v0.3.0 -- 2026-11-06
 
 - v2 rebuild M1 packet engine: tshark-based analysis (flows, hosts, OT commands, credentials, files, 34 anomaly rules), parallel memory-bounded processing, legacy parity harness, pcapvis analyze CLI

@@ -1,24 +1,32 @@
-import { Outlet } from 'react-router-dom'
+import { useState } from 'react'
+import { Outlet, useMatch } from 'react-router-dom'
 import type { SystemInfo, User } from '../api/client'
+import { InspectorContext, type Selection } from '../inspector/context'
 import './AppShell.css'
 import { Header } from './Header'
 import { Inspector } from './Inspector'
 import { StageRail } from './StageRail'
+import './ui.css'
 
 export function AppShell({ system, user }: { system: SystemInfo; user: User }) {
+  const match = useMatch('/e/:eid/*')
+  const eid = match ? Number(match.params.eid) || null : null
+  const [selection, select] = useState<Selection>(null)
   return (
-    <div className="shell">
-      <Header system={system} user={user} />
-      <StageRail showAdmin={system.auth_required && user.role === 'admin'} />
-      <main className="main">
-        <Outlet />
-      </main>
-      <Inspector />
-      <footer className="timeline" aria-label="Timeline">
-        <span>Timeline</span>
-        <div className="timeline-track" />
-        <span>No capture loaded</span>
-      </footer>
-    </div>
+    <InspectorContext.Provider value={{ selection, select }}>
+      <div className="shell">
+        <Header system={system} user={user} eid={eid} />
+        <StageRail eid={eid} showAdmin={system.auth_required && user.role === 'admin'} />
+        <main className="main">
+          <Outlet />
+        </main>
+        <Inspector />
+        <footer className="timeline" aria-label="Timeline">
+          <span>Timeline</span>
+          <div className="timeline-track" />
+          <span>Interactive timeline arrives with the flow views (M7)</span>
+        </footer>
+      </div>
+    </InspectorContext.Provider>
   )
 }

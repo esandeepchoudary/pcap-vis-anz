@@ -338,28 +338,24 @@ and a container build, on every push and pull request.
 
 ## v2 quick start (preview)
 
-The rebuild is at milestone **M1 (packet engine)**: workbench UI, accounts, laptop and team-server modes,
-container packaging, and the new tshark-based analysis engine. Uploading captures in the UI arrives in M2;
-until then, analyse a capture from the command line:
-
-```bash
-cd backend && uv run pcapvis analyze ../fixtures/network-capture-demo.pcap        # summary
-uv run pcapvis analyze capture.pcapng --json result.json --pretty                 # full result as JSON
-docker run --rm -v "$PWD":/caps pcapvis analyze /caps/capture.pcap               # in the container
-```
+The rebuild is at milestone **M2 (engagements and captures)**: create engagements, tag capture points, upload
+captures (analysed in the background with live progress), browse findings, hosts with evidence, OT commands,
+credentials and extracted files, Quick look for one-off captures, and `.pcapvis` export/import for handover.
 
 ```bash
 # Laptop mode (single user, no sign-in), in a container:
 docker build -t pcapvis .
 docker run -p 8080:8080 -v ./engagements:/data pcapvis          # http://localhost:8080
 
-# Team server with PostgreSQL:
+# Team server: web app + analysis worker + PostgreSQL
 cp .env.example .env    # set POSTGRES_PASSWORD and PCAPVIS_ADMIN_PASSWORD
 docker compose up -d    # http://<server>:8080, sign in as admin
+docker compose up -d --scale worker=2                           # more analysis capacity
 
 # Without a container (needs tshark 4.0+, Python 3.12+, uv, Node 22):
 cd backend && uv sync && uv run pcapvis serve --reload
 cd frontend && npm ci && npm run dev                            # http://localhost:5173
+uv run pcapvis analyze capture.pcapng                           # command-line analysis
 ```
 
 ## Versioning
