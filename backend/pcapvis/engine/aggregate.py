@@ -8,8 +8,8 @@ result. That is what makes parallel analysis (parallel.py) safe.
 
 from collections import Counter, defaultdict
 
+from pcapvis.engine import fingerprint, ot
 from pcapvis.engine import knowledge as K
-from pcapvis.engine import ot
 from pcapvis.engine.apps import FlowNotes
 from pcapvis.engine.credentials import MAX_CREDENTIALS, CredentialTracker
 from pcapvis.engine.model import Credential, Evidence, Flow, Host, HostName, OtCommand, Service
@@ -416,6 +416,11 @@ class Aggregator:
         self.app_protocols_seen |= protos
 
         self._names_and_tls(p, sh, dh, layers)
+        if protos & fingerprint.FINGERPRINT_DISSECTORS:
+            fp = fingerprint.extract(p, self.env, protos)
+            if fp is not None:
+                for k, v in fp.identity.items():
+                    _first(sh.identity, k, p.ts, v)
         if protos & (OT_DISSECTORS | CRED_DISSECTORS | APP_DISSECTORS) and self._is_retransmission(p, f, c2s):
             return  # already extracted from the original segment
         if self.env is not None and protos & OT_DISSECTORS:
@@ -564,6 +569,16 @@ class Aggregator:
                     _first(self.mac_names[p.src_mac], vals[0], p.ts, source)
                 else:
                     _first(self.mac_identity[p.src_mac], ident, p.ts, vals[0][:300])
+            if "pn_dcp" in p.protocols:  # PROFINET DCP is layer 2: identity belongs to the MAC
+                fp = fingerprint.extract(p, self.env, {"pn_dcp"})
+                if fp is not None:
+                    for k, v in fp.identity.items():
+                        _first(self.mac_identity[p.src_mac], k, p.ts, v)
+                    if fp.ip and fp.ip != "0.0.0.0":  # noqa: S104 - an address, not a bind
+                        self.arp_ip_for_mac[p.src_mac].add(fp.ip)
+                        h = self.host(fp.ip)
+                        h.seen(p.ts)
+                        h.macs[p.src_mac] += 1
             if "cdp_native_vlan" in layers:
                 _first(self.mac_identity[p.src_mac], "cdp_native_vlan", p.ts, layers["cdp_native_vlan"][0])
             if "dhcp_option_hostname" in layers:
@@ -765,7 +780,10 @@ class Aggregator:
             key=lambda s: (-s.packets, s.port, s.transport),
         )
         ttl = min(h.ttls, key=lambda t: (-h.ttls[t], t)) if h.ttls else None
-        os_hint = K.os_from_ttl(ttl) if ttl is not None else None
+        # A DHCP vendor class names the OS outright; the TTL is only a hint.
+        os_hint = fingerprint.os_from_dhcp(identity.get("dhcp_vendor_class")) or (
+            K.os_from_ttl(ttl) if ttl is not None else None
+        )
 
         host = Host(
             ip=h.ip,
@@ -876,6 +894,9 @@ class Aggregator:
         for _kind, (_ts, (t, ev)) in sorted(h.extra_hints.items()):
             hints[t].append(ev)
             strong.add(t)
+        for t, ev in fingerprint.type_hints(host.identity):
+            hints[t].append(ev)
+            strong.add(t)
 
         if hints:
             best = min(hints, key=lambda t: (K.priority_rank(t), t))
@@ -893,11 +914,19 @@ class Aggregator:
                 )
             host.host_type_confidence = "high" if best in strong else "medium"
         elif host.os_hint:
-            host.host_type = {"Windows": "Windows Host", "Linux/Unix/macOS": "Linux Host"}.get(
-                host.os_hint, "Network Device"
-            )
+            host.host_type = {
+                "Windows": "Windows Host",
+                "Linux/Unix/macOS": "Linux Host",
+                "Android": "Mobile Device",
+            }.get(host.os_hint, "Network Device")
+            dhcp_os = fingerprint.os_from_dhcp(host.identity.get("dhcp_vendor_class"))
             host.host_type_evidence = [
-                Evidence(kind="os_ttl", detail=f"TTL {host.ttl} suggests {host.os_hint}")
+                Evidence(
+                    kind="dhcp_vendor" if dhcp_os else "os_ttl",
+                    detail=f"DHCP vendor class '{host.identity['dhcp_vendor_class']}' says {dhcp_os}"
+                    if dhcp_os
+                    else f"TTL {host.ttl} suggests {host.os_hint}",
+                )
             ]
             host.host_type_confidence = "low"
         elif not host.is_private:

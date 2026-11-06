@@ -434,3 +434,117 @@ def snmp_get(community: str) -> bytes:
             PDU=SNMPget(varbindlist=[SNMPvarbind(oid=ASN1_OID("1.3.6.1.2.1.1.1.0"))]),
         )
     )
+
+
+# ── Device identity (passive fingerprinting, M5) ─────────────────────────────────────────
+
+
+def modbus_device_id_request() -> bytes:
+    """FC 43 / MEI 14 Read Device Identification, basic objects."""
+    return b"\x2b\x0e\x01\x00"
+
+
+def modbus_device_id_response(objects: dict[int, str]) -> bytes:
+    """FC 43 / MEI 14 response: object id → string (0 vendor, 1 product code, 2 revision, 4 product, 5 model)."""
+    body = b"".join(bytes([oid, len(v.encode())]) + v.encode() for oid, v in objects.items())
+    return b"\x2b\x0e\x01\x01\x00\x00" + bytes([len(objects)]) + body
+
+
+S7_SZL_REQUEST_PARAM = bytes.fromhex("000112041144010" + "0")
+
+
+def s7_szl_request(szl_id: int, index: int = 0) -> bytes:
+    data = b"\xff\x09\x00\x04" + szl_id.to_bytes(2, "big") + index.to_bytes(2, "big")
+    return s7(7, S7_SZL_REQUEST_PARAM, data)
+
+
+def s7_szl_response(szl_id: int, records: list[bytes], record_len: int) -> bytes:
+    """Userdata response carrying a partial SZL list (records must already be record_len bytes)."""
+    param = bytes.fromhex("000112081284010100000000")
+    szl = (
+        szl_id.to_bytes(2, "big")
+        + b"\x00\x00"
+        + record_len.to_bytes(2, "big")
+        + len(records).to_bytes(2, "big")
+    )
+    payload = szl + b"".join(records)
+    data = b"\xff\x09" + len(payload).to_bytes(2, "big") + payload
+    return s7(7, param, data)
+
+
+def szl_0011_record(index: int, mlfb: str, bgtyp: int = 0, ausbg: int = 0, ausbe: int = 0) -> bytes:
+    """SZL 0x0011 module identification record (28 bytes)."""
+    return (
+        index.to_bytes(2, "big")
+        + mlfb.encode().ljust(20, b" ")[:20]
+        + bgtyp.to_bytes(2, "big")
+        + ausbg.to_bytes(2, "big")
+        + ausbe.to_bytes(2, "big")
+    )
+
+
+def szl_001c_record(index: int, text: str) -> bytes:
+    """SZL 0x001C component identification record (34 bytes)."""
+    return index.to_bytes(2, "big") + text.encode().ljust(32, b"\x00")[:32]
+
+
+def profinet_dcp_identify_response(
+    name: str, type_of_station: str, vendor_id: int, device_id: int, ip: str, role: int | None = None
+) -> bytes:
+    """PROFINET DCP Identify response payload (after the Ethernet header, EtherType 0x8892)."""
+
+    def block(opt: int, sub: int, data: bytes, info: int = 0) -> bytes:
+        body = info.to_bytes(2, "big") + data
+        out = bytes([opt, sub]) + len(body).to_bytes(2, "big") + body
+        return out + (b"\x00" if len(body) % 2 else b"")
+
+    import ipaddress as _ip
+
+    blocks = (
+        block(2, 1, type_of_station.encode())
+        + block(2, 2, name.encode())
+        + block(2, 3, vendor_id.to_bytes(2, "big") + device_id.to_bytes(2, "big"))
+        + (block(2, 4, bytes([role, 0])) if role is not None else b"")
+        + block(1, 2, _ip.ip_address(ip).packed + bytes([255, 255, 255, 0]) + b"\x00\x00\x00\x00", info=1)
+    )
+    return (
+        b"\xfe\xff"
+        + bytes([5, 1])
+        + b"\x00\x00\x00\x01"
+        + b"\x00\x00"
+        + len(blocks).to_bytes(2, "big")
+        + blocks
+    )
+
+
+def cip_identity_attributes(
+    name: str = "1769-L33ER",
+    vendor: int = 1,
+    devtype: int = 14,
+    product: int = 103,
+    rev=(30, 11),
+    serial: int = 0x40ABCDEF,
+) -> bytes:
+    """Identity object Get_Attributes_All response data (instance attributes 1-7)."""
+    nm = name.encode()
+    return (
+        vendor.to_bytes(2, "little")
+        + devtype.to_bytes(2, "little")
+        + product.to_bytes(2, "little")
+        + bytes(rev)
+        + b"\x60\x00"
+        + serial.to_bytes(4, "little")
+        + bytes([len(nm)])
+        + nm
+    )
+
+
+def bacnet_read_property_ack_object_name(instance: int, name: str, invoke: int = 1) -> bytes:
+    """BACnet/IP complex ACK to readProperty(device, object-name) with a character string."""
+    obj = ((8 << 22) | instance).to_bytes(4, "big")
+    s = b"\x00" + name.encode()
+    tag = bytes([0x75, len(s)]) if len(s) > 4 else bytes([0x70 | len(s)])
+    apdu = bytes([0x30, invoke, 0x0C]) + b"\x0c" + obj + b"\x19\x4d" + b"\x3e" + tag + s + b"\x3f"
+    npdu = b"\x01\x00"
+    bvlc_len = 4 + len(npdu) + len(apdu)
+    return b"\x81\x0a" + bvlc_len.to_bytes(2, "big") + npdu + apdu
