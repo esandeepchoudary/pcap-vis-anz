@@ -110,3 +110,5 @@ export type AssetEdit = S['AssetEdit']
 export type AssetBulkEdit = S['AssetBulkEdit']
 export type AssetCreate = S['AssetCreate']
 export type FieldValue = string | number | string[] | null
+export type Link = S['LinkOut']
+export type OtOperation = S['OtOperationOut']

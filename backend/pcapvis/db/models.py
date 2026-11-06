@@ -303,3 +303,46 @@ class AssetChange(Base):
     old: Mapped[object | None] = mapped_column(JSON, nullable=True)
     new: Mapped[object | None] = mapped_column(JSON, nullable=True)
     reason: Mapped[str] = mapped_column(Text, default="")
+
+
+class AssetLink(Base):
+    """Traffic one capture saw from one asset (client) to another (server) over one protocol (M4)."""
+
+    __tablename__ = "asset_links"
+    __table_args__ = (UniqueConstraint("capture_id", "src_asset_id", "dst_asset_id", "protocol"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("engagements.id", ondelete="CASCADE"), index=True)
+    capture_id: Mapped[int] = mapped_column(ForeignKey("captures.id", ondelete="CASCADE"), index=True)
+    src_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    dst_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    protocol: Mapped[str] = mapped_column(String(64))
+    ports: Mapped[list] = mapped_column(JSON, default=list)  # server ports, e.g. ["tcp/502"]
+    flows: Mapped[int] = mapped_column(Integer, default=0)
+    packets: Mapped[int] = mapped_column(BigInteger, default=0)
+    bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    ot_reads: Mapped[int] = mapped_column(Integer, default=0)
+    ot_writes: Mapped[int] = mapped_column(Integer, default=0)
+    ot_errors: Mapped[int] = mapped_column(Integer, default=0)
+    first_seen: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_seen: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class AssetOtOp(Base):
+    """OT commands one capture saw between two assets, grouped by function (M4 command log)."""
+
+    __tablename__ = "asset_ot_ops"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("engagements.id", ondelete="CASCADE"), index=True)
+    capture_id: Mapped[int] = mapped_column(ForeignKey("captures.id", ondelete="CASCADE"), index=True)
+    src_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    dst_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    protocol: Mapped[str] = mapped_column(String(64))
+    function: Mapped[str] = mapped_column(String(128))
+    function_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(8))  # read | write | error | other
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    first_seen: Mapped[float] = mapped_column(Float)
+    last_seen: Mapped[float] = mapped_column(Float)
+    sample: Mapped[str] = mapped_column(String(300), default="")  # e.g. register range or block name

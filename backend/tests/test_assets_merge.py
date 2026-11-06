@@ -15,8 +15,6 @@ from pcapvis.db.models import (
     AssetSighting,
     Capture,
     CaptureStatus,
-    Engagement,
-    User,
 )
 from pcapvis.engagements.storage import Storage
 from pcapvis.engine.model import AnalysisResult, CaptureSummary, Evidence, Host, HostName
@@ -40,22 +38,6 @@ def result(*hosts) -> AnalysisResult:
         hosts=list(hosts),
         flows=[],
     )
-
-
-@pytest.fixture
-def eng(db):
-    e = Engagement(name="Plant")
-    db.add(e)
-    db.commit()
-    return e
-
-
-@pytest.fixture
-def user(db):
-    u = User(username="alice", role="consultant")
-    db.add(u)
-    db.commit()
-    return u
 
 
 def capture(db, eng, name="a.pcap") -> Capture:

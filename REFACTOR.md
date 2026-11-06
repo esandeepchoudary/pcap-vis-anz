@@ -167,7 +167,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M1 ✅ | Engine: capture reader, directional flows, host and asset identity, IT/OT/IoT protocol parsers, anomaly rules; differential harness against legacy |
 | M2 ✅ | Engagements and captures: create and open engagements, upload with background parsing and progress, capture points, Quick look, `.pcapvis` export and import |
 | M3 ✅ | Asset inventory: grid with bulk edit, inspector with per-field overrides and reasons, evidence, change history, live updates between users |
-| M4 | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
+| M4 ✅ | Purdue map: editable (React Flow), level and zone assignment by drag, dropdown, or bulk; matrix; OT command log |
 | M5 | Passive fingerprinting: EtherNet/IP ListIdentity, Modbus FC43/14, S7 SZL, BACnet I-Am, PROFINET DCP, LLDP, DHCP, NetBIOS, SNMP |
 | M6 | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
 | M7 | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
@@ -266,3 +266,19 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
 - Tests: backend 405 (merge identity and edge cases, API permissions and conflicts, PostgreSQL concurrency,
   bundle v2 round trip and hostile asset data), frontend 75, e2e 13 (edit/bulk/CSV journey, live update
   across two browser sessions), legacy 375.
+
+**M4, Purdue map: done (v0.6.0, 2026-11-06).**
+- Asset-to-asset links (per protocol, ports, flows, packets, OT reads/writes/errors) and OT operations
+  (grouped by function, oriented master → device, with first/last seen and a sample) are built per capture
+  at merge time and aggregated across captures; existing captures are re-merged on upgrade.
+- Purdue map (React Flow): a lane per level and a box per zone; drag assets (or a shift-selected group)
+  between lanes and zones to set level and zone, recorded in history as "Moved on the Purdue map"; create
+  new zones on the map; highlight search; OT-only and external toggles; edges coloured for OT, writes and
+  DMZ bypass; minimap and zoom.
+- Level matrix (client level × server level) flagging DMZ bypass (L4 and above talking directly to L3 and
+  below), with the asset pairs behind each cell; OT matrix (masters × devices, writes in red); engagement-wide
+  OT command log with kind/protocol/search filters; connection inspector (protocols, ports, OT commands).
+- Decision: "skips a level" was replaced by "bypasses the DMZ" after review; engineering workstations at L3
+  programming L1 PLCs is normal and shouldn't be flagged.
+- Tests: backend 412 (links aggregation, orientation, idempotent re-merge, removal, bundle round trip,
+  migration backfill, permissions), frontend 100, e2e 14 (drag on the map → inventory, history, matrices).

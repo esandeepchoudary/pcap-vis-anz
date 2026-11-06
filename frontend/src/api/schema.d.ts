@@ -483,6 +483,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Links */
+        get: operations["links_api_engagements__engagement_id__links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/members": {
         parameters: {
             query?: never;
@@ -513,6 +530,23 @@ export interface paths {
         post?: never;
         /** Remove Member */
         delete: operations["remove_member_api_engagements__engagement_id__members__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/ot-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ot Operations */
+        get: operations["ot_operations_api_engagements__engagement_id__ot_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1546,6 +1580,60 @@ export interface components {
              */
             source: "dns" | "dhcp" | "lldp" | "cdp" | "nbns";
         };
+        /**
+         * LinkOut
+         * @description All traffic seen from one asset (client) to another (server), across captures.
+         */
+        LinkOut: {
+            /** Bytes */
+            bytes: number;
+            /** Captures */
+            captures: number[];
+            /** Dst */
+            dst: number;
+            /** First Seen */
+            first_seen: number | null;
+            /** Flows */
+            flows: number;
+            /**
+             * Is Ot
+             * @description Carries an OT protocol or OT commands
+             */
+            is_ot: boolean;
+            /** Last Seen */
+            last_seen: number | null;
+            /** Ot Errors */
+            ot_errors: number;
+            /** Ot Reads */
+            ot_reads: number;
+            /** Ot Writes */
+            ot_writes: number;
+            /** Packets */
+            packets: number;
+            /** Protocols */
+            protocols: components["schemas"]["LinkProtocolOut"][];
+            /** Src */
+            src: number;
+        };
+        /** LinkProtocolOut */
+        LinkProtocolOut: {
+            /** Bytes */
+            bytes: number;
+            /** Flows */
+            flows: number;
+            /** Ot Errors */
+            ot_errors: number;
+            /** Ot Reads */
+            ot_reads: number;
+            /** Ot Writes */
+            ot_writes: number;
+            /** Packets */
+            packets: number;
+            /** Ports */
+            ports: string[];
+            /** Protocol */
+            protocol: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Password */
@@ -1609,6 +1697,37 @@ export interface components {
             time: number;
             /** Unit */
             unit?: number | null;
+        };
+        /**
+         * OtOperationOut
+         * @description OT commands of one function from one asset to another, across captures.
+         */
+        OtOperationOut: {
+            /** Captures */
+            captures: number[];
+            /** Count */
+            count: number;
+            /** Dst */
+            dst: number;
+            /** First Seen */
+            first_seen: number;
+            /** Function */
+            function: string;
+            /** Function Code */
+            function_code: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "read" | "write" | "error" | "other";
+            /** Last Seen */
+            last_seen: number;
+            /** Protocol */
+            protocol: string;
+            /** Sample */
+            sample: string;
+            /** Src */
+            src: number;
         };
         /** OverrideOut */
         OverrideOut: {
@@ -3081,6 +3200,37 @@ export interface operations {
             };
         };
     };
+    links_api_engagements__engagement_id__links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_members_api_engagements__engagement_id__members_get: {
         parameters: {
             query?: never;
@@ -3175,6 +3325,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ot_operations_api_engagements__engagement_id__ot_operations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OtOperationOut"][];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -5,6 +5,7 @@ import { useMe, useSystem } from './api/hooks'
 import { AppShell } from './components/AppShell'
 import { Account } from './pages/Account'
 import { AssetsPage } from './pages/AssetsPage'
+import { PurduePage } from './pages/PurduePage'
 import { CaptureReport } from './pages/CaptureReport'
 import { CapturesPage } from './pages/CapturesPage'
 import { EngagementLayout } from './pages/EngagementLayout'
@@ -20,7 +21,7 @@ function FullPage({ children }: { children: React.ReactNode }) {
   return <div className="auth-page"><div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>{children}</div></div>
 }
 
-const BUILT = new Set(['overview', 'captures', 'assets'])
+const BUILT = new Set(['overview', 'captures', 'assets', 'purdue'])
 const LATER_STAGES = STAGES.filter((s) => !BUILT.has(s.id))
 
 export default function App() {
@@ -60,6 +61,7 @@ export default function App() {
           <Route path="captures" element={<CapturesPage />} />
           <Route path="captures/:cid" element={<CaptureReport />} />
           <Route path="assets" element={<AssetsPage />} />
+          <Route path="purdue" element={<PurduePage />} />
           {LATER_STAGES.map((s) => <Route key={s.id} path={s.segment} element={<StagePage stage={s} />} />)}
         </Route>
         {sys.auth_required && <Route path="account" element={<Account />} />}

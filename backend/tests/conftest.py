@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from pcapvis.config import Settings
+from pcapvis.db import models
 from pcapvis.db.migrate import upgrade_to_head
 from pcapvis.db.session import make_engine, make_session_factory
 
@@ -57,3 +58,19 @@ def db(settings):
     with factory() as session:
         yield session
     engine.dispose()
+
+
+@pytest.fixture
+def eng(db):
+    e = models.Engagement(name="Plant")
+    db.add(e)
+    db.commit()
+    return e
+
+
+@pytest.fixture
+def user(db):
+    u = models.User(username="alice", role="consultant")
+    db.add(u)
+    db.commit()
+    return u

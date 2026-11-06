@@ -33,7 +33,7 @@ export const STAGES: Stage[] = [
   {
     id: 'purdue', segment: 'purdue', label: 'Purdue', title: 'Purdue map', icon: Layers, milestone: 'M4',
     summary: 'Assets by Purdue level and zone, editable by drag, dropdown, or bulk assignment.',
-    plans: ['Editable Purdue lanes', 'OT communication matrix', 'OT command log'],
+    plans: [],
   },
   {
     id: 'architecture', segment: 'architecture', label: 'Architecture', title: 'Network architecture', icon: Network, milestone: 'M6',
