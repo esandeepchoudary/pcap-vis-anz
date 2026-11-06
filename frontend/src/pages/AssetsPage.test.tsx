@@ -18,6 +18,7 @@ const fields: AssetFields = {
     { name: 'purdue_level', label: 'Purdue level', kind: 'level', max_len: 200, auto: true },
     { name: 'zone', label: 'Zone', kind: 'text', max_len: 100, auto: false },
     { name: 'criticality', label: 'Criticality', kind: 'choice', max_len: 200, auto: false },
+    { name: 'vendor', label: 'Vendor', kind: 'text', max_len: 200, auto: true },
     { name: 'tags', label: 'Tags', kind: 'tags', max_len: 200, auto: false },
     { name: 'notes', label: 'Notes', kind: 'longtext', max_len: 10000, auto: false },
   ],
@@ -44,8 +45,9 @@ const assets: Asset[] = [
 const detail: AssetDetail = {
   ...base,
   auto: { asset_type: 'PLC', purdue_level: 1, vendor: 'Siemens' },
+  auto_sources: { vendor: 'S7 identification (SZL)', asset_type: 'classification' },
   overrides: {}, services: [{ transport: 'tcp', port: 102, protocol: 'S7comm', packets: 10, clients: 1 }], vlans: [20],
-  identity: { enip_vendor: 'Siemens' }, hostnames: [], tls_sni: [], modbus_unit_ids: [], dnp3_addresses: [], ttl: null,
+  identity: { s7_order_number: '6ES7 516-3AN01-0AB0', s7_firmware: 'V2.9.4', snmp_sys_location: 'Cabinet 12' }, hostnames: [], tls_sni: [], modbus_unit_ids: [], dnp3_addresses: [], ttl: null,
   type_evidence: [{ kind: 'serves', detail: 'Serves S7comm on tcp/102', weight: 5 }], purdue_evidence: [],
   sightings: [{ capture_id: 11, file_name: 'line2.pcap', capture_point: 'Core SPAN', ip: '10.0.2.51', mac: '00:0c:29:00:00:51',
     first_seen: 1700000000, last_seen: 1700000050, packets: 10, host_type: 'PLC', purdue_level: 1 }],
@@ -124,6 +126,7 @@ describe('Asset inventory', () => {
     const api = setup({ 'PATCH /api/engagements/7/assets/1': saved })
     await userEvent.click(await screen.findByText('10.0.2.51'))
     const form = await screen.findByRole('form', { name: 'Asset fields' })
+    expect(within(form).getByText('From S7 identification (SZL)')).toBeInTheDocument() // vendor's source
     await userEvent.selectOptions(within(form).getByLabelText('Purdue level'), '2')
     await userEvent.type(within(form).getByLabelText('Zone'), 'Cell 1')
     await userEvent.type(within(form).getByLabelText('Reason (recorded in history)'), 'Walkdown')
@@ -163,6 +166,8 @@ describe('Asset inventory', () => {
     await userEvent.click(await screen.findByText('10.0.2.51'))
     await userEvent.click(await screen.findByRole('tab', { name: 'Evidence' }))
     expect(screen.getByText('Serves S7comm on tcp/102')).toBeInTheDocument()
+    expect(screen.getByLabelText('Identity from S7 identification (SZL)')).toHaveTextContent('Order number6ES7 516-3AN01-0AB0')
+    expect(screen.getByLabelText('Identity from SNMP')).toHaveTextContent('Sys locationCabinet 12')
     expect(within(screen.getByLabelText('Sightings')).getByRole('link', { name: 'line2.pcap' })).toHaveAttribute('href', '/e/7/captures/11')
     await userEvent.click(screen.getByRole('tab', { name: 'History' }))
     const list = await screen.findByLabelText('Change history')

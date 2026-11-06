@@ -817,6 +817,13 @@ export interface components {
             auto: {
                 [key: string]: string | number | string[] | null;
             };
+            /**
+             * Auto Sources
+             * @description Where each detected value came from
+             */
+            auto_sources: {
+                [key: string]: string;
+            };
             /** Bytes */
             bytes: number;
             /** Capture Count */

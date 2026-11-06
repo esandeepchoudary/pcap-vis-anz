@@ -91,6 +91,7 @@ def asset_detail(db: Session, a: Asset) -> AssetDetail:
         **_base(a),
         auto={k: v for k, v in (a.auto or {}).items() if k in F.FIELDS},
         overrides=a.overrides or {},
+        auto_sources={k: v for k, v in obs.get("auto_sources", {}).items() if k in F.FIELDS},
         services=obs.get("services", []),
         vlans=obs.get("vlans", []),
         identity=obs.get("identity", {}),

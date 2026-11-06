@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { ApiError, type AssetDetail, type AssetField, type AssetFields, type EditableField, type FieldValue } from '../api/client'
 import { useAsset, useAssetFields, useAssetHistory, useDeleteAsset, useEditAsset } from '../api/assets'
 import { useEngagement } from '../api/engagements'
-import { assetLabel, describeChange, formatValue, levelName, parseTags } from '../lib/assets'
+import { assetLabel, describeChange, formatValue, identityGroups, levelName, parseTags } from '../lib/assets'
 import { formatBytes, formatDateTime, formatNumber, relativeTime } from '../lib/format'
 import { ConfirmButton, ErrorNote, Tabs } from './ui'
 
@@ -122,7 +122,10 @@ function Details({ d, fields, canEdit, eid }: { d: AssetDetail; fields: AssetFie
             <FieldControl field={f} value={display(f)} onChange={(v) => change(f, v)} fields={fields} disabled={!canEdit} />
             {ov && !pendingReset && ov.reason && <div className="asset-hint">Why: {ov.reason}</div>}
             {f.auto && ov && !pendingReset && (
-              <div className="asset-hint">Detected: {formatValue(f.name, autoValue)}</div>
+              <div className="asset-hint">Detected: {formatValue(f.name, autoValue)}{d.auto_sources[f.name] && ` (${d.auto_sources[f.name]})`}</div>
+            )}
+            {f.auto && !ov && d.auto_sources[f.name] && f.name !== 'asset_type' && (
+              <div className="asset-hint">From {d.auto_sources[f.name]}</div>
             )}
           </div>
         )
@@ -154,7 +157,7 @@ function Details({ d, fields, canEdit, eid }: { d: AssetDetail; fields: AssetFie
 }
 
 function Evidence({ d, eid }: { d: AssetDetail; eid: number }) {
-  const identity = Object.entries(d.identity)
+  const identity = identityGroups(d.identity)
   return (
     <div>
       <div className="inspector-section">
@@ -180,9 +183,16 @@ function Evidence({ d, eid }: { d: AssetDetail; eid: number }) {
           {d.modbus_unit_ids.length > 0 && <><dt>Modbus units</dt><dd>{d.modbus_unit_ids.join(', ')}</dd></>}
           {d.dnp3_addresses.length > 0 && <><dt>DNP3 addresses</dt><dd>{d.dnp3_addresses.join(', ')}</dd></>}
           {d.hostnames.length > 0 && <><dt>Names</dt><dd>{d.hostnames.map((n) => `${n.name} (${n.source})`).join(', ')}</dd></>}
-          {identity.map(([k, v]) => <Fragment key={k}><dt>{k.replaceAll('_', ' ')}</dt><dd>{v}</dd></Fragment>)}
         </dl>
       </div>
+      {identity.map(([source, entries]) => (
+        <div className="inspector-section" key={source}>
+          <h3>{source}</h3>
+          <dl className="kv" aria-label={`Identity from ${source}`}>
+            {entries.map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd>{v}</dd></Fragment>)}
+          </dl>
+        </div>
+      ))}
       {d.services.length > 0 && (
         <div className="inspector-section">
           <h3>Services</h3>

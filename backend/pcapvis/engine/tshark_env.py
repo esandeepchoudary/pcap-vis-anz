@@ -22,6 +22,8 @@ NAMED_FIELDS = {
     "cip.genstat",
     "enip.lir.vendor",
     "enip.lir.devtype",
+    "cip.id.vendor_id",
+    "cip.id.device_type",
     "iec60870_104.type",
     "iec60870_asdu.typeid",
     "iec60870_asdu.causetx",

@@ -173,7 +173,41 @@ DETAIL = [
     "imap.request.password",
 ]
 
-ALL_FIELDS: list[str] = list(dict.fromkeys(CORE + NAMES + TLS + HTTP + OT + IOT + CREDENTIALS + DETAIL))
+# Device identity revealed in responses (passive fingerprinting, M5; see fingerprint.py).
+IDENTITY = [
+    "modbus.object_id",
+    "modbus.object_str_value",
+    "s7comm.szl.xy11.0001.index",
+    "s7comm.szl.xy11.0001.anz",
+    "s7comm.szl.xy11.0001.ausbg",
+    "s7comm.szl.xy11.0001.ausbe",
+    "s7comm.szl.001c.0001.name",
+    "s7comm.szl.001c.0002.name",
+    "s7comm.szl.001c.0003.tag",
+    "s7comm.szl.001c.0005.serialn",
+    "s7comm.szl.001c.0007.cputypname",
+    "cip.id.vendor_id",
+    "cip.id.device_type",
+    "cip.id.product_code",
+    "cip.id.major_rev",
+    "cip.id.minor_rev",
+    "cip.id.serial_number",
+    "cip.id.product_name",
+    "pn_dcp.suboption_device_nameofstation",
+    "pn_dcp.suboption_device_devicevendorvalue",
+    "pn_dcp.suboption_vendor_id",
+    "pn_dcp.suboption_device_id",
+    "pn_dcp.suboption_device_role",
+    "pn_dcp.suboption_ip_ip",
+    "snmp.name",
+    "snmp.value.octets",
+    "bacapp.property_identifier",
+    "bacapp.object_name",
+]
+
+ALL_FIELDS: list[str] = list(
+    dict.fromkeys(CORE + NAMES + TLS + HTTP + OT + IOT + CREDENTIALS + DETAIL + IDENTITY)
+)
 
 
 def ek_name(field: str) -> str:

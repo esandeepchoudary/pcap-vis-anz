@@ -41,11 +41,40 @@ MAX_IPS_PER_MAC = 16
 UNKNOWN_TYPES = {"Unknown Host", ""}
 # Identity keys (from protocol fingerprints) that feed the editable fields, best first.
 IDENTITY_SOURCES = {
-    "vendor": ("enip_vendor", "bacnet_vendor", "modbus_vendor", "s7_vendor"),
-    "model": ("enip_product_name", "modbus_product", "s7_module", "cdp_platform"),
+    "vendor": ("enip_vendor", "modbus_vendor", "bacnet_vendor", "s7_vendor"),
+    "model": (
+        "enip_product_name",
+        "modbus_model",
+        "modbus_product",
+        "s7_module_type",
+        "s7_module_name",
+        "s7_order_number",
+        "pn_type_of_station",
+        "cdp_platform",
+    ),
     "firmware": ("enip_revision", "modbus_revision", "s7_firmware", "cdp_software"),
     "serial": ("enip_serial", "s7_serial"),
+    "location": ("snmp_sys_location",),
 }
+# Names a device gives itself, used when no DNS/DHCP/LLDP name is known.
+SELF_NAMES = ("s7_plc_name", "pn_name_of_station", "snmp_sys_name", "bacnet_device_name")
+SOURCE_LABELS = {
+    "enip_": "EtherNet/IP identity",
+    "modbus_": "Modbus device identification",
+    "s7_": "S7 identification (SZL)",
+    "pn_": "PROFINET DCP",
+    "snmp_": "SNMP",
+    "bacnet_": "BACnet",
+    "cdp_": "CDP",
+    "lldp_": "LLDP",
+    "dhcp_": "DHCP",
+}
+
+
+def source_label(key: str) -> str:
+    return next((label for prefix, label in SOURCE_LABELS.items() if key.startswith(prefix)), key)
+
+
 MAX_LIST = 200
 
 
@@ -348,16 +377,37 @@ def derive(hosts: list[Host]) -> tuple[dict, dict]:
     identity: dict[str, str] = {}
     for h in reversed(hosts):  # oldest first so newer values overwrite
         identity.update(h.identity)
+    if any(k.startswith("s7_") for k in identity):
+        identity.setdefault("s7_vendor", "Siemens")  # only Siemens CPUs answer S7 SZL reads
+    sources: dict[str, str] = {}
+    named = next(
+        ((h.hostname, h.hostnames[0].source if h.hostnames else "hostname") for h in hosts if h.hostname),
+        None,
+    )
     auto: dict[str, Any] = {
-        "name": _first(h.hostname for h in hosts),
+        "name": named[0] if named else None,
         "asset_type": best.host_type if best.host_type not in UNKNOWN_TYPES else None,
         "purdue_level": _num(leveled.purdue_level) if leveled else -1,
     }
+    if named:
+        sources["name"] = named[1].upper()
+    else:
+        key = next((k for k in SELF_NAMES if identity.get(k)), None)
+        if key:
+            auto["name"], sources["name"] = identity[key], source_label(key)
+    if auto["asset_type"]:
+        sources["asset_type"] = "classification"
     for field, keys in IDENTITY_SOURCES.items():
-        auto[field] = _first(identity.get(k) for k in keys)
+        key = next((k for k in keys if identity.get(k)), None)
+        auto[field] = identity[key] if key else None
+        if key:
+            sources[field] = source_label(key)
     if not auto["vendor"]:
         auto["vendor"] = _first(h.mac_vendor for h in hosts)
+        if auto["vendor"]:
+            sources["vendor"] = "MAC address vendor (OUI)"
     auto = {k: v for k, v in auto.items() if v is not None and v != EMPTY.get(k)}
+    sources = {k: v for k, v in sources.items() if k in auto}
 
     services: dict[tuple, dict] = {}
     for h in hosts:
@@ -399,6 +449,7 @@ def derive(hosts: list[Host]) -> tuple[dict, dict]:
         "type_confidence": best.host_type_confidence,
         "type_evidence": [e.model_dump() for e in best.host_type_evidence],
         "purdue_evidence": [e.model_dump() for e in (leveled or best).purdue_evidence],
+        "auto_sources": sources,
     }
     return auto, observed
 

@@ -166,6 +166,17 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
   React Flow) applies drops through the bulk-edit endpoint with an optimistic cache update. React Flow
   needs the jsdom stubs in `test/setup.ts`; drag behaviour is covered by `e2e/purdue.spec.ts`.
 
+### Passive fingerprinting (M5)
+
+- `engine/fingerprint.py` reads identity a device reveals in its **own responses** (S7 SZL, Modbus FC43/14,
+  CIP identity object, PROFINET DCP, SNMP system group, BACnet object-name) into `Host.identity`, with keys
+  namespaced by source (`s7_`, `modbus_`, `enip_`, `pn_`, `snmp_`, `bacnet_`). Values are untrusted: always
+  go through `clean()`.
+- Device-type hints come from the final identity (`type_hints`), not per packet, so parallel == serial holds.
+- `assets/merge.py` maps identity keys to asset fields (`IDENTITY_SOURCES`, `SELF_NAMES`) and records where
+  each value came from (`observed.auto_sources`, labels in `SOURCE_LABELS`, mirrored in the frontend's
+  `lib/assets.ts`). Add a protocol: fields in `fields.py`, extractor + builder + test (verify with `tshark -V`).
+
 ### Packet engine (`backend/pcapvis/engine/`, M1)
 
 - **Flow:** `analyze.analyze_capture(path)` → `runner.stream_packets` (tshark `-T ek`, capture fed via

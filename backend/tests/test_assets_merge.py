@@ -455,3 +455,50 @@ def test_concurrent_edits_one_wins(db, eng, user, settings):
     finally:
         other.close()
         engine.dispose()
+
+
+def test_fingerprints_fill_fields_and_record_their_source(db, eng):
+    ingest(
+        db,
+        eng,
+        host(
+            "10.0.2.51",
+            MAC_A,
+            mac_vendor="Siemens AG",
+            identity={
+                "s7_plc_name": "PLC_LINE2",
+                "s7_module_type": "CPU 1516-3 PN/DP",
+                "s7_order_number": "6ES7 516-3AN01-0AB0",
+                "s7_firmware": "V2.9.4",
+                "s7_serial": "S C-X4U421302020",
+                "snmp_sys_location": "Cabinet 12",
+            },
+        ),
+    )
+    (a,) = assets(db, eng)
+    assert a.auto["name"] == "PLC_LINE2"  # no DNS/DHCP name, so the device's own name
+    assert (a.auto["vendor"], a.auto["model"], a.auto["firmware"]) == (
+        "Siemens",
+        "CPU 1516-3 PN/DP",
+        "V2.9.4",
+    )
+    assert a.auto["serial"] == "S C-X4U421302020" and a.auto["location"] == "Cabinet 12"
+    src = a.observed["auto_sources"]
+    assert src["model"] == "S7 identification (SZL)" and src["location"] == "SNMP"
+    assert src["name"] == "S7 identification (SZL)"
+
+
+def test_mac_vendor_source_is_recorded(db, eng):
+    ingest(
+        db,
+        eng,
+        host(
+            "10.0.0.5",
+            MAC_A,
+            mac_vendor="Siemens AG",
+            hostname="x",
+            hostnames=[HostName(name="x", source="dhcp")],
+        ),
+    )
+    src = assets(db, eng)[0].observed["auto_sources"]
+    assert src == {"name": "DHCP", "vendor": "MAC address vendor (OUI)"}
