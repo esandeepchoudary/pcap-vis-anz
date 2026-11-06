@@ -26,6 +26,17 @@ except Exception:
     import numpy as _xp
     GPU_AVAILABLE = False
 
+def _read_version():
+    """Return the app version from the VERSION file (bumped via scripts/bump_version.py)."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")) as fh:
+            return fh.read().strip() or "0.0.0"
+    except OSError:
+        return "0.0.0"
+
+
+__version__ = _read_version()
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024  # 1 GB
 MAX_UPLOAD_FILES = 100  # max files per /upload request (checked in handler + frontend)
@@ -3640,7 +3651,13 @@ def set_security_headers(response):
 @app.route("/")
 def index():
     """Render the single-page app shell (templates/index.html)."""
-    return render_template("index.html")
+    return render_template("index.html", app_version=__version__)
+
+
+@app.route("/version")
+def version():
+    """Return the running app version."""
+    return jsonify({"version": __version__})
 
 
 @app.route("/upload", methods=["POST"])

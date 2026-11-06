@@ -4324,6 +4324,9 @@ document.querySelectorAll("#conn-table th.sortable").forEach(th => {
   });
 });
 
+// App version, rendered into the header by Flask from the VERSION file
+const APP_VERSION = (document.getElementById("app-version")?.textContent || "").replace(/^v/, "") || null;
+
 /* ── OT Map Edit State ───────────────────────────────────────────────────── */
 let otEditMode   = false;
 let otFilterAll  = false;       // bypass activeTypes filter in OT map
@@ -5309,6 +5312,7 @@ function exportOTMapJson() {
       : (n.purdue_level !== undefined ? n.purdue_level : purdueLevel(n));
   });
   const payload = {
+    app_version: APP_VERSION,
     exported_at: new Date().toISOString(),
     edit_session: {
       level_overrides: Object.keys(otOverrides).length,
@@ -8392,6 +8396,7 @@ function downloadCsv(rows, filename) {
 document.getElementById("save-session-btn").addEventListener("click", () => {
   if (!graphData) { showToast("No data loaded.", "error"); return; }
   const sessionData = {
+    app_version: APP_VERSION,
     nodes: graphData.nodes,
     edges: graphData.edges,
     stats: graphData.stats,
