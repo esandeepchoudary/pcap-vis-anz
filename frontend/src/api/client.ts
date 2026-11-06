@@ -99,3 +99,14 @@ export function uploadForm<T>(
     xhr.send(form)
   })
 }
+
+export type Asset = S['AssetOut']
+export type AssetDetail = S['AssetDetail']
+export type AssetChange = S['AssetChangeOut']
+export type AssetFields = S['AssetFieldsOut']
+export type AssetField = S['AssetFieldOut']
+export type EditableField = AssetField['name']
+export type AssetEdit = S['AssetEdit']
+export type AssetBulkEdit = S['AssetBulkEdit']
+export type AssetCreate = S['AssetCreate']
+export type FieldValue = string | number | string[] | null

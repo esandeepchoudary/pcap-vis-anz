@@ -28,7 +28,7 @@ export const STAGES: Stage[] = [
   {
     id: 'assets', segment: 'assets', label: 'Assets', title: 'Asset inventory', icon: Boxes, milestone: 'M3',
     summary: 'Every device seen on the wire, editable, with evidence and change history.',
-    plans: ['Grid with filtering and bulk edit', 'Per-field manual overrides with reasons', 'Evidence for each classification', 'Live updates between collaborators'],
+    plans: [],
   },
   {
     id: 'purdue', segment: 'purdue', label: 'Purdue', title: 'Purdue map', icon: Layers, milestone: 'M4',

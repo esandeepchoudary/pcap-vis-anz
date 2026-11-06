@@ -20,6 +20,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from pcapvis import __version__
+from pcapvis.assets import merge as asset_merge
 from pcapvis.config import Settings
 from pcapvis.db.base import utcnow
 from pcapvis.db.models import Capture, CaptureStatus, Engagement
@@ -79,6 +80,7 @@ class JobRunner:
     # ── lifecycle ─────────────────────────────────────────────────────────
     def start(self) -> None:
         self.recover_stale()
+        self.merge_pending()
         for i in range(self.concurrency):
             t = threading.Thread(target=self._loop, name=f"pcapvis-job-{i}", daemon=True)
             t.start()
@@ -119,6 +121,15 @@ class JobRunner:
                 self._requeue(db, c)
             db.commit()
             return len(stale)
+
+    def merge_pending(self) -> int:
+        """Merge finished captures whose hosts aren't in the asset inventory yet (e.g. after upgrading)."""
+        try:
+            with self.sf() as db:
+                return asset_merge.merge_pending(db, self.storage)
+        except Exception:  # noqa: BLE001 - inventory backfill must never stop analysis
+            log.exception("asset backfill failed")
+            return 0
 
     def claim(self) -> int | None:
         """Atomically take the oldest queued capture. Returns its id, or None."""
@@ -241,10 +252,24 @@ class JobRunner:
                 cap.status, cap.progress, cap.error = CaptureStatus.done, 1.0, None
                 cap.summary = summarize(result)
                 cap.engine_version = __version__
+                self._merge_assets(db, cap, result)
             cap.finished_at = utcnow() if cap.status != CaptureStatus.queued else None
             cap.worker = None
             self._touch_engagement(db, cid)
             db.commit()
+
+    @staticmethod
+    def _merge_assets(db: Session, cap: Capture, result: AnalysisResult) -> None:
+        """Fold the capture's hosts into the asset inventory, in the same transaction as 'done'.
+
+        A failure here must not lose the analysis: it's logged and retried at the next start.
+        """
+        try:
+            with db.begin_nested():
+                asset_merge.ingest_capture(db, cap, result)
+        except Exception:  # noqa: BLE001
+            log.exception("merging capture %s into assets failed", cap.id)
+            cap.assets_merged_at = None
 
     def _write_result(self, eid: int, cid: int, result: AnalysisResult) -> None:
         dest = self.storage.result_path(eid, cid)

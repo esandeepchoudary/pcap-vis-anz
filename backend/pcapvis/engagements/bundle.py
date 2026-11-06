@@ -2,7 +2,8 @@
 
 A bundle is a zip archive:
 
-    manifest.json                    what's inside (validated strictly on import)
+    manifest.json                    what's inside (validated strictly on import), including the
+                                     asset inventory: manual values, provenance, history (v2+)
     captures/<key>/<file name>       original captures (optional)
     results/<key>.json.gz            analysis results
     files/<sha256>                   files extracted from traffic (optional)
@@ -20,15 +21,22 @@ import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from pcapvis import __version__
+from pcapvis.assets import fields as F
+from pcapvis.assets import merge as asset_merge
+from pcapvis.assets.service import MAC_RE, parse_identifiers
 from pcapvis.db.base import utcnow
 from pcapvis.db.models import (
+    Asset,
+    AssetChange,
+    AssetOrigin,
+    AssetSighting,
     Capture,
     CapturePoint,
     CaptureStatus,
@@ -42,7 +50,7 @@ from pcapvis.engagements.storage import Storage, safe_filename
 from pcapvis.engine.model import AnalysisResult
 
 FORMAT = "pcapvis-engagement"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2  # 2: asset inventory (M3)
 MAX_RATIO = 200  # uncompressed/compressed, per deflated member
 CHUNK = 1 << 20
 _CAPTURE_PATH = re.compile(r"^captures/(\d{1,12})/([A-Za-z0-9._ -]{1,200})$")
@@ -85,6 +93,42 @@ class _CaptureMeta(BaseModel):
     has_result: bool
 
 
+class _OverrideMeta(BaseModel):
+    value: Any = None
+    reason: str = Field(default="", max_length=F.MAX_REASON)
+    by: str = Field(default="", max_length=255)
+    at: str = Field(default="", max_length=64)
+
+
+class _ChangeMeta(BaseModel):
+    at: datetime
+    actor: str = Field(default="", max_length=255)
+    kind: Literal["created", "override", "reset", "auto", "import"]
+    field: str | None = Field(default=None, max_length=32)
+    old: Any = None
+    new: Any = None
+    reason: str = Field(default="", max_length=F.MAX_REASON)
+
+
+class _SightingMeta(BaseModel):
+    capture_key: int
+    ip: str = Field(max_length=64)
+    mac: str | None = Field(default=None, max_length=17)
+
+
+class _AssetMeta(BaseModel):
+    key: int
+    origin: AssetOrigin
+    ips: list[str] = Field(default_factory=list, max_length=1000)
+    macs: list[str] = Field(default_factory=list, max_length=1000)
+    declared_ips: list[str] = Field(default_factory=list, max_length=32)
+    declared_macs: list[str] = Field(default_factory=list, max_length=32)
+    auto: dict[str, Any] = Field(default_factory=dict)
+    overrides: dict[str, _OverrideMeta] = Field(default_factory=dict)
+    sightings: list[_SightingMeta] = Field(default_factory=list, max_length=100_000)
+    history: list[_ChangeMeta] = Field(default_factory=list, max_length=20_000)
+
+
 class Manifest(BaseModel):
     format: Literal["pcapvis-engagement"]
     format_version: int = Field(ge=1, le=FORMAT_VERSION)
@@ -94,6 +138,7 @@ class Manifest(BaseModel):
     capture_points: list[_PointMeta] = Field(default_factory=list, max_length=10_000)
     captures: list[_CaptureMeta] = Field(default_factory=list, max_length=10_000)
     files: list[str] = Field(default_factory=list, max_length=100_000)
+    assets: list[_AssetMeta] | None = Field(default=None, max_length=200_000)  # None: v1, derive from results
 
 
 # ── export ────────────────────────────────────────────────────────────────────
@@ -146,6 +191,7 @@ def export_bundle(
                 if f.is_file() and re.fullmatch(r"[0-9a-f]{64}", f.name):
                     z.write(f, f"files/{f.name}", compress_type=zipfile.ZIP_DEFLATED)
                     file_hashes.append(f.name)
+        with_result = {c.key for c in captures if c.has_result}
         manifest = Manifest(
             format=FORMAT,
             format_version=FORMAT_VERSION,
@@ -159,8 +205,38 @@ def export_bundle(
             ],
             captures=captures,
             files=file_hashes,
+            assets=[_asset_meta(a, with_result) for a in eng.assets],
         )
         z.writestr("manifest.json", manifest.model_dump_json(indent=2), compress_type=zipfile.ZIP_DEFLATED)
+
+
+def _asset_meta(a: Asset, with_result: set[int]) -> _AssetMeta:
+    declared = a.declared or {}
+    return _AssetMeta(
+        key=a.id,
+        origin=a.origin,
+        ips=a.ips or [],
+        macs=a.macs or [],
+        declared_ips=declared.get("ips", []),
+        declared_macs=declared.get("macs", []),
+        auto={k: v for k, v in (a.auto or {}).items() if k in F.FIELDS},
+        overrides={k: _OverrideMeta(**v) for k, v in (a.overrides or {}).items()},
+        sightings=[
+            _SightingMeta(capture_key=s.capture_id, ip=s.ip, mac=s.mac)
+            for s in sorted(a.sightings, key=lambda s: (s.capture_id, s.ip))
+            if s.capture_id in with_result
+        ],
+        history=[
+            _ChangeMeta(
+                at=c.at, actor=c.actor, kind=c.kind, field=c.field, old=c.old, new=c.new, reason=c.reason
+            )
+            for c in sorted(_history(a), key=lambda c: c.id)
+        ],
+    )
+
+
+def _history(a: Asset) -> list[AssetChange]:
+    return list(object_session(a).scalars(select(AssetChange).where(AssetChange.asset_id == a.id)))
 
 
 # ── import ────────────────────────────────────────────────────────────────────
@@ -255,8 +331,16 @@ def import_bundle(db: Session, storage: Storage, user: User, bundle: Path, *, ma
                 db.add(point)
                 db.flush()
                 point_ids[p.key] = point.id
+            cap_ids: dict[int, Capture] = {}
             for cm in manifest.captures:
-                _import_capture(db, z, members, storage, eng, user, cm, point_ids)
+                cap_ids[cm.key] = _import_capture(db, z, members, storage, eng, user, cm, point_ids)
+            done = {k: c for k, c in cap_ids.items() if c.status == CaptureStatus.done}
+            if manifest.assets is not None:
+                _import_assets(db, storage, eng, manifest.assets, done)
+            for cap in done.values():  # hosts the manifest didn't map (and every host for v1 bundles)
+                asset_merge.ingest_capture(
+                    db, cap, _load_result(storage, cap), keep_existing=True, actor="import", record_auto=False
+                )
             for sha in manifest.files:
                 info = members.get(f"files/{sha}")
                 if info is None:
@@ -284,7 +368,7 @@ def import_bundle(db: Session, storage: Storage, user: User, bundle: Path, *, ma
     return eng
 
 
-def _import_capture(db, z, members, storage: Storage, eng, user, cm: _CaptureMeta, point_ids) -> None:
+def _import_capture(db, z, members, storage: Storage, eng, user, cm: _CaptureMeta, point_ids) -> Capture:
     status = (
         CaptureStatus.done
         if cm.has_result
@@ -330,6 +414,94 @@ def _import_capture(db, z, members, storage: Storage, eng, user, cm: _CaptureMet
             AnalysisResult.model_validate_json(data)
         except (OSError, EOFError, ValidationError, ValueError, json.JSONDecodeError) as exc:
             raise BundleError(f"Invalid analysis result for {cm.file_name!r}.") from exc
+    return cap
+
+
+def _load_result(storage: Storage, cap: Capture) -> AnalysisResult:
+    with gzip.open(storage.result_path(cap.engagement_id, cap.id), "rb") as fh:
+        return AnalysisResult.model_validate_json(fh.read())
+
+
+def _clean_values(values: dict[str, Any], what: str) -> dict[str, Any]:
+    try:
+        return {k: F.validate(k, v) for k, v in values.items()}
+    except F.FieldError as exc:
+        raise BundleError(f"Invalid asset {what}: {exc}") from exc
+
+
+def _import_assets(db, storage: Storage, eng, metas: list[_AssetMeta], done: dict[int, Capture]) -> None:
+    keys = [m.key for m in metas]
+    if len(set(keys)) != len(keys):
+        raise BundleError("Invalid manifest: duplicate asset keys.")
+    by_capture: dict[int, list[tuple[Asset, _SightingMeta]]] = {}
+    for m in metas:
+        try:
+            ips, macs = parse_identifiers(m.ips, m.macs, limit=2000)
+            d_ips, d_macs = parse_identifiers(m.declared_ips, m.declared_macs)
+        except F.FieldError as exc:
+            raise BundleError(f"Invalid asset address: {exc}") from exc
+        overrides = _clean_values({k: o.value for k, o in m.overrides.items()}, "value")
+        a = Asset(
+            engagement_id=eng.id,
+            origin=m.origin,
+            ips=ips,
+            macs=macs,
+            declared={"ips": d_ips, "macs": d_macs} if d_ips or d_macs else {},
+            auto=_clean_values(m.auto, "automatic value"),
+            observed={"captures": 0},
+            overrides={
+                k: {"value": overrides[k], "reason": o.reason, "by": o.by, "at": o.at}
+                for k, o in m.overrides.items()
+            },
+        )
+        db.add(a)
+        db.flush()
+        for h in m.history:
+            if h.field is not None and h.field not in F.FIELDS:
+                raise BundleError(f"Invalid asset history: unknown field {h.field[:32]!r}.")
+            db.add(
+                AssetChange(
+                    asset_id=a.id,
+                    engagement_id=eng.id,
+                    at=h.at,
+                    actor=h.actor,
+                    kind=h.kind,
+                    field=h.field,
+                    old=_jsonable(h.old),
+                    new=_jsonable(h.new),
+                    reason=h.reason,
+                )
+            )
+        for s in m.sightings:
+            if s.capture_key in done:
+                by_capture.setdefault(s.capture_key, []).append((a, s))
+    for key, pairs in by_capture.items():
+        cap = done[key]
+        hosts = {h.ip: h for h in _load_result(storage, cap).hosts}
+        seen: set[str] = set()
+        for a, s in pairs:
+            host = hosts.get(s.ip)
+            if host is None or s.ip in seen:
+                continue  # left for the merge to place
+            seen.add(s.ip)
+            mac = s.mac.lower() if s.mac and MAC_RE.match(s.mac.lower()) else None
+            db.add(
+                AssetSighting(
+                    asset_id=a.id, capture_id=cap.id, ip=s.ip, mac=mac, host=host.model_dump(mode="json")
+                )
+            )
+    db.flush()
+
+
+def _jsonable(v: Any) -> Any:
+    """History values are shown, never interpreted; keep them small and plain."""
+    if v is None or isinstance(v, (bool, int, float)):
+        return v
+    if isinstance(v, str):
+        return v[:10_000]
+    if isinstance(v, list):
+        return [str(x)[:200] for x in v[:50]]
+    return str(v)[:1000]
 
 
 def remove_tree(path: Path) -> None:

@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/asset-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Asset Fields
+         * @description What can be edited on an asset, and the allowed values.
+         */
+        get: operations["asset_fields_api_asset_fields_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -144,6 +164,106 @@ export interface paths {
         head?: never;
         /** Update Engagement */
         patch: operations["update_engagement_api_engagements__engagement_id__patch"];
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Assets */
+        get: operations["list_assets_api_engagements__engagement_id__assets_get"];
+        put?: never;
+        /**
+         * Create Asset
+         * @description Add an asset by hand, e.g. a firewall or data diode never seen on the wire.
+         */
+        post: operations["create_asset_api_engagements__engagement_id__assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/assets/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Edit
+         * @description Set or reset fields on many assets at once (last write wins; every change is in history).
+         */
+        post: operations["bulk_edit_api_engagements__engagement_id__assets_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/assets/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Assets
+         * @description The asset register as CSV (opens in Excel).
+         */
+        get: operations["export_assets_api_engagements__engagement_id__assets_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Asset */
+        get: operations["get_asset_api_engagements__engagement_id__assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Asset
+         * @description Delete a manual asset, or one no capture shows any more. Observed assets would just come back.
+         */
+        delete: operations["delete_asset_api_engagements__engagement_id__assets__asset_id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit Asset */
+        patch: operations["edit_asset_api_engagements__engagement_id__assets__asset_id__patch"];
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/assets/{asset_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Asset History */
+        get: operations["asset_history_api_engagements__engagement_id__assets__asset_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/engagements/{engagement_id}/audit": {
@@ -590,6 +710,306 @@ export interface components {
             macs: string[];
             /** Vlan */
             vlan: number | null;
+        };
+        /** AssetBulkEdit */
+        AssetBulkEdit: {
+            /** Asset Ids */
+            asset_ids: number[];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Reset */
+            reset?: ("name" | "asset_type" | "purdue_level" | "zone" | "criticality" | "vendor" | "model" | "firmware" | "serial" | "location" | "owner" | "tags" | "notes")[];
+            /** Set */
+            set?: {
+                [key: string]: unknown;
+            };
+        };
+        /** AssetBulkResult */
+        AssetBulkResult: {
+            /** Assets */
+            assets: number;
+            /** Changes */
+            changes: number;
+        };
+        /** AssetChangeOut */
+        AssetChangeOut: {
+            /** Actor */
+            actor: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Field */
+            field: ("name" | "asset_type" | "purdue_level" | "zone" | "criticality" | "vendor" | "model" | "firmware" | "serial" | "location" | "owner" | "tags" | "notes") | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "created" | "override" | "reset" | "auto" | "import";
+            /** New */
+            new: string | number | string[] | null;
+            /** Old */
+            old: string | number | string[] | null;
+            /** Reason */
+            reason: string;
+        };
+        /** AssetCreate */
+        AssetCreate: {
+            /** Ips */
+            ips?: string[];
+            /** Macs */
+            macs?: string[];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            };
+        };
+        /** AssetDetail */
+        AssetDetail: {
+            /** Asset Type */
+            asset_type: string | null;
+            /** Auto */
+            auto: {
+                [key: string]: string | number | string[] | null;
+            };
+            /** Bytes */
+            bytes: number;
+            /** Capture Count */
+            capture_count: number;
+            /** Criticality */
+            criticality: ("low" | "medium" | "high" | "critical") | null;
+            /** Dnp3 Addresses */
+            dnp3_addresses: number[];
+            /** Firmware */
+            firmware: string | null;
+            /** First Seen */
+            first_seen: number | null;
+            /** Hostnames */
+            hostnames: components["schemas"]["HostName"][];
+            /** Id */
+            id: number;
+            /** Identity */
+            identity: {
+                [key: string]: string;
+            };
+            /** Ips */
+            ips: string[];
+            /** Is Private */
+            is_private: boolean;
+            /** Last Seen */
+            last_seen: number | null;
+            /** Location */
+            location: string | null;
+            /** Mac Vendor */
+            mac_vendor: string | null;
+            /** Macs */
+            macs: string[];
+            /** Modbus Unit Ids */
+            modbus_unit_ids: number[];
+            /** Model */
+            model: string | null;
+            /** Name */
+            name: string | null;
+            /** Notes */
+            notes: string | null;
+            origin: components["schemas"]["AssetOrigin"];
+            /** Os Hint */
+            os_hint: string | null;
+            /** Ot Role */
+            ot_role: string;
+            /**
+             * Overridden
+             * @description Fields with a manual value
+             */
+            overridden: ("name" | "asset_type" | "purdue_level" | "zone" | "criticality" | "vendor" | "model" | "firmware" | "serial" | "location" | "owner" | "tags" | "notes")[];
+            /** Overrides */
+            overrides: {
+                [key: string]: components["schemas"]["OverrideOut"];
+            };
+            /** Owner */
+            owner: string | null;
+            /** Packets */
+            packets: number;
+            /** Protocols */
+            protocols: string[];
+            /** Purdue Evidence */
+            purdue_evidence: components["schemas"]["Evidence"][];
+            /** Purdue Level */
+            purdue_level: number;
+            /** Serial */
+            serial: string | null;
+            /** Services */
+            services: components["schemas"]["Service"][];
+            /** Sightings */
+            sightings: components["schemas"]["SightingOut"][];
+            /** Tags */
+            tags: string[];
+            /** Tls Sni */
+            tls_sni: string[];
+            /** Ttl */
+            ttl: number | null;
+            /** Type Confidence */
+            type_confidence: ("high" | "medium" | "low") | null;
+            /** Type Evidence */
+            type_evidence: components["schemas"]["Evidence"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Vendor */
+            vendor: string | null;
+            /** Version */
+            version: number;
+            /** Vlans */
+            vlans: number[];
+            /** Zone */
+            zone: string | null;
+        };
+        /** AssetEdit */
+        AssetEdit: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Reset */
+            reset?: ("name" | "asset_type" | "purdue_level" | "zone" | "criticality" | "vendor" | "model" | "firmware" | "serial" | "location" | "owner" | "tags" | "notes")[];
+            /** Set */
+            set?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Version
+             * @description The version you edited; a mismatch returns 409
+             */
+            version: number;
+        };
+        /** AssetFieldOut */
+        AssetFieldOut: {
+            /** Auto */
+            auto: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "longtext" | "level" | "choice" | "tags";
+            /** Label */
+            label: string;
+            /** Max Len */
+            max_len: number;
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "name" | "asset_type" | "purdue_level" | "zone" | "criticality" | "vendor" | "model" | "firmware" | "serial" | "location" | "owner" | "tags" | "notes";
+        };
+        /** AssetFieldsOut */
+        AssetFieldsOut: {
+            /**
+             * Asset Types
+             * @description Types the engine knows (suggestions; any text is allowed)
+             */
+            asset_types: string[];
+            /** Criticalities */
+            criticalities: ("low" | "medium" | "high" | "critical")[];
+            /** Fields */
+            fields: components["schemas"]["AssetFieldOut"][];
+            /** Purdue Levels */
+            purdue_levels: number[];
+            /** Purdue Names */
+            purdue_names: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * AssetOrigin
+         * @enum {string}
+         */
+        AssetOrigin: "observed" | "manual";
+        /**
+         * AssetOut
+         * @description One row of the inventory: effective values plus the facts the grid shows.
+         */
+        AssetOut: {
+            /** Asset Type */
+            asset_type: string | null;
+            /** Bytes */
+            bytes: number;
+            /** Capture Count */
+            capture_count: number;
+            /** Criticality */
+            criticality: ("low" | "medium" | "high" | "critical") | null;
+            /** Firmware */
+            firmware: string | null;
+            /** First Seen */
+            first_seen: number | null;
+            /** Id */
+            id: number;
+            /** Ips */
+            ips: string[];
+            /** Is Private */
+            is_private: boolean;
+            /** Last Seen */
+            last_seen: number | null;
+            /** Location */
+            location: string | null;
+            /** Mac Vendor */
+            mac_vendor: string | null;
+            /** Macs */
+            macs: string[];
+            /** Model */
+            model: string | null;
+            /** Name */
+            name: string | null;
+            /** Notes */
+            notes: string | null;
+            origin: components["schemas"]["AssetOrigin"];
+            /** Os Hint */
+            os_hint: string | null;
+            /** Ot Role */
+            ot_role: string;
+            /**
+             * Overridden
+             * @description Fields with a manual value
+             */
+            overridden: ("name" | "asset_type" | "purdue_level" | "zone" | "criticality" | "vendor" | "model" | "firmware" | "serial" | "location" | "owner" | "tags" | "notes")[];
+            /** Owner */
+            owner: string | null;
+            /** Packets */
+            packets: number;
+            /** Protocols */
+            protocols: string[];
+            /** Purdue Level */
+            purdue_level: number;
+            /** Serial */
+            serial: string | null;
+            /** Tags */
+            tags: string[];
+            /** Type Confidence */
+            type_confidence: ("high" | "medium" | "low") | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Vendor */
+            vendor: string | null;
+            /** Version */
+            version: number;
+            /** Zone */
+            zone: string | null;
         };
         /** AuditEventOut */
         AuditEventOut: {
@@ -1190,6 +1610,17 @@ export interface components {
             /** Unit */
             unit?: number | null;
         };
+        /** OverrideOut */
+        OverrideOut: {
+            /** At */
+            at: string;
+            /** By */
+            by: string;
+            /** Reason */
+            reason: string;
+            /** Value */
+            value: string | number | string[] | null;
+        };
         /** PasswordChange */
         PasswordChange: {
             /** Current Password */
@@ -1225,6 +1656,29 @@ export interface components {
             protocol: string;
             /** Transport */
             transport: string;
+        };
+        /** SightingOut */
+        SightingOut: {
+            /** Capture Id */
+            capture_id: number;
+            /** Capture Point */
+            capture_point: string | null;
+            /** File Name */
+            file_name: string;
+            /** First Seen */
+            first_seen: number | null;
+            /** Host Type */
+            host_type: string;
+            /** Ip */
+            ip: string;
+            /** Last Seen */
+            last_seen: number | null;
+            /** Mac */
+            mac: string | null;
+            /** Packets */
+            packets: number;
+            /** Purdue Level */
+            purdue_level: number;
         };
         /** SystemInfo */
         SystemInfo: {
@@ -1332,6 +1786,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    asset_fields_api_asset_fields_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetFieldsOut"];
+                };
+            };
+        };
+    };
     login_api_auth_login_post: {
         parameters: {
             query?: never;
@@ -1707,6 +2181,297 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EngagementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_assets_api_engagements__engagement_id__assets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_asset_api_engagements__engagement_id__assets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetail"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    bulk_edit_api_engagements__engagement_id__assets_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetBulkEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetBulkResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    export_assets_api_engagements__engagement_id__assets_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_asset_api_engagements__engagement_id__assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_asset_api_engagements__engagement_id__assets__asset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_asset_api_engagements__engagement_id__assets__asset_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetail"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    asset_history_api_engagements__engagement_id__assets__asset_id__history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                asset_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetChangeOut"][];
                 };
             };
             /** @description Validation Error */

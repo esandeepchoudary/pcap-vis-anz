@@ -445,3 +445,13 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Bundle export builds the whole zip before sending; stream it for multi-GB engagements
 - [ ] Upgrade `gh` CLI on the dev machine (2.46 fails on `gh pr edit` because of retired Projects-classic API)
 
+### v2 rebuild: M3 asset inventory (2026-11-06, feature/m3-assets)
+
+- [x] Assets merged across captures with provenance; per-field manual overrides with reasons; history; optimistic locking
+- [x] Grid with search, filters, sorting, bulk edit; inspector with details, evidence, history; manual assets
+- [x] CSV asset register (formula-escaped); `.pcapvis` v2 carries the inventory; backfill of pre-M3 captures
+- [ ] Manually merge two assets / split one (when identity heuristics get it wrong)
+- [ ] Import asset edits back from a CSV/XLSX the client filled in
+- [ ] Grid renders up to 200 rows per "show more"; virtualise for 10k+ asset engagements
+- [ ] Engagement totals on the overview should count assets, not per-capture hosts
+

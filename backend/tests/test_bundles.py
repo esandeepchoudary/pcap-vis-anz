@@ -253,3 +253,171 @@ def test_export_file_is_cleaned_up(ac, tmp_path):
     eid = engagement(c)
     export(c, eid)
     assert list((app.state.settings.data_dir / "tmp").iterdir()) == []
+
+
+# ── asset inventory in bundles (format v2) ────────────────────────────────────
+
+
+def _seed_with_result(app, eid, *hosts, name="a.pcap"):
+    """A finished capture with a stored result (no capture file), merged into the inventory."""
+    import gzip
+    import hashlib
+
+    from pcapvis.assets import merge
+    from pcapvis.db.models import Capture, CaptureStatus
+    from pcapvis.engagements.storage import Storage
+    from tests.test_assets_merge import result
+
+    res = result(*hosts)
+    with app.state.session_factory() as db:
+        cap = Capture(
+            engagement_id=eid,
+            file_name=name,
+            size=1,
+            sha256=hashlib.sha256(name.encode()).hexdigest(),
+            status=CaptureStatus.done,
+        )
+        db.add(cap)
+        db.flush()
+        path = Storage(app.state.settings.data_dir).result_path(eid, cap.id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(gzip.compress(res.model_dump_json().encode()))
+        merge.ingest_capture(db, cap, res)
+        db.commit()
+
+
+def test_round_trip_keeps_asset_edits_history_and_manual_assets(ac):
+    from tests.test_assets_merge import MAC_A, MAC_B, host
+
+    app, c = ac
+    eid = engagement(c, "Assets")
+    _seed_with_result(
+        app, eid, host("10.0.0.5", MAC_A, host_type="PLC", purdue_level=1), host("10.0.0.6", MAC_B)
+    )
+    plc = next(a for a in c.get(f"/api/engagements/{eid}/assets").json() if a["ips"] == ["10.0.0.5"])
+    c.patch(
+        f"/api/engagements/{eid}/assets/{plc['id']}",
+        json={
+            "version": 1,
+            "set": {"name": "Filler PLC", "zone": "Cell 1", "tags": ["sis"]},
+            "reason": "Walkdown",
+        },
+        headers=H,
+    )
+    c.post(
+        f"/api/engagements/{eid}/assets",
+        json={
+            "ips": ["10.0.0.254"],
+            "values": {"name": "FW-1", "asset_type": "Firewall"},
+            "reason": "Diagram",
+        },
+        headers=H,
+    )
+    data = export(c, eid, captures=False)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        m = json.loads(z.read("manifest.json"))
+    assert m["format_version"] == 2 and len(m["assets"]) == 3
+
+    r = import_(c, data)
+    assert r.status_code == 201, r.text
+    new = r.json()["id"]
+    rows = {tuple(a["ips"]): a for a in c.get(f"/api/engagements/{new}/assets").json()}
+    assert set(rows) == {("10.0.0.5",), ("10.0.0.6",), ("10.0.0.254",)}
+    p = rows[("10.0.0.5",)]
+    assert (p["name"], p["zone"], p["tags"], p["asset_type"], p["purdue_level"]) == (
+        "Filler PLC",
+        "Cell 1",
+        ["sis"],
+        "PLC",
+        1,
+    )
+    assert p["macs"] == [MAC_A] and p["capture_count"] == 1 and p["version"] == 1
+    d = c.get(f"/api/engagements/{new}/assets/{p['id']}").json()
+    assert d["overrides"]["zone"]["reason"] == "Walkdown" and d["overrides"]["zone"]["by"] == "local"
+    hist = c.get(f"/api/engagements/{new}/assets/{p['id']}/history").json()
+    assert {h["field"] for h in hist if h["kind"] == "override"} == {"name", "zone", "tags"}
+    assert not any(h["kind"] == "auto" for h in hist)  # importing doesn't invent history
+    fw = rows[("10.0.0.254",)]
+    assert fw["origin"] == "manual" and fw["name"] == "FW-1" and fw["capture_count"] == 0
+
+
+def test_v1_bundle_derives_the_inventory_from_results(ac):
+    import gzip
+    import hashlib
+
+    from tests.test_assets_merge import MAC_A, host, result
+
+    sha = hashlib.sha256(b"abc").hexdigest()
+    m = manifest(captures=[_capture_entry(sha=sha, has_result=True)])
+    res = result(host("10.0.0.5", MAC_A, host_type="HMI", purdue_level=2))
+    data = make_bundle(
+        {
+            "manifest.json": json.dumps(m).encode(),
+            "captures/7/x.pcap": b"abc",
+            "results/7.json.gz": gzip.compress(res.model_dump_json().encode()),
+        }
+    )
+    r = import_(ac[1], data)
+    assert r.status_code == 201, r.text
+    (a,) = ac[1].get(f"/api/engagements/{r.json()['id']}/assets").json()
+    assert a["asset_type"] == "HMI" and a["macs"] == [MAC_A]
+
+
+def _asset(**over):
+    a = {"key": 1, "origin": "manual", "ips": ["10.0.0.1"], "declared_ips": ["10.0.0.1"]}
+    a.update(over)
+    return a
+
+
+@pytest.mark.parametrize(
+    ("asset", "msg"),
+    [
+        (_asset(overrides={"purdue_level": {"value": 42}}), "Invalid asset value"),
+        (_asset(overrides={"bogus": {"value": "x"}}), "Unknown asset field"),
+        (_asset(auto={"name": "a\nb"}), "Invalid asset automatic value"),
+        (_asset(ips=["10.0.0.999"]), "Invalid asset address"),
+        (_asset(declared_macs=["nope"]), "Invalid asset address"),
+        (
+            _asset(history=[{"at": "2026-11-06T10:00:00Z", "kind": "override", "field": "evil"}]),
+            "unknown field",
+        ),
+        (_asset(history=[{"at": "2026-11-06T10:00:00Z", "kind": "pwned"}]), "manifest"),
+    ],
+)
+def test_rejects_bad_asset_data(ac, asset, msg):
+    m = manifest(format_version=2, assets=[asset])
+    _assert_rejected(ac[1], make_bundle({"manifest.json": json.dumps(m).encode()}), msg)
+
+
+def test_rejects_duplicate_asset_keys(ac):
+    m = manifest(format_version=2, assets=[_asset(), _asset(ips=["10.0.0.2"], declared_ips=["10.0.0.2"])])
+    _assert_rejected(ac[1], make_bundle({"manifest.json": json.dumps(m).encode()}), "duplicate asset keys")
+
+
+def test_imported_history_values_are_trimmed(ac):
+    m = manifest(
+        format_version=2,
+        assets=[
+            _asset(
+                history=[
+                    {
+                        "at": "2026-11-06T10:00:00Z",
+                        "kind": "override",
+                        "field": "notes",
+                        "old": {"x": 1},
+                        "new": "y" * 20_000,
+                    }
+                ]
+            )
+        ],
+    )
+    r = import_(ac[1], make_bundle({"manifest.json": json.dumps(m).encode()}))
+    assert r.status_code == 201, r.text
+    eid = r.json()["id"]
+    (a,) = ac[1].get(f"/api/engagements/{eid}/assets").json()
+    h = [
+        x
+        for x in ac[1].get(f"/api/engagements/{eid}/assets/{a['id']}/history").json()
+        if x["field"] == "notes"
+    ][0]
+    assert h["old"] == "{'x': 1}" and len(h["new"]) == 10_000

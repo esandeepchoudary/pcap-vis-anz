@@ -19,7 +19,7 @@ def make_engine(url: str) -> Engine:
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL")  # crash-safe, readers don't block the writer
             cur.execute("PRAGMA foreign_keys=ON")
-            cur.execute("PRAGMA busy_timeout=5000")
+            cur.execute("PRAGMA busy_timeout=30000")
             cur.close()
 
         return engine
