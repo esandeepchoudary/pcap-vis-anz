@@ -18,6 +18,7 @@ export default defineConfig({
   build: { sourcemap: true },
   test: {
     environment: 'jsdom',
+    include: ['src/**/*.test.{ts,tsx}'], // e2e/ belongs to Playwright, not vitest
     setupFiles: ['./src/test/setup.ts'],
     css: false,
     restoreMocks: true,
