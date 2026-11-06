@@ -153,6 +153,19 @@ python legacy/app.py                     # serves on http://localhost:5000 (--pu
   `AssetChange`. Bundles (format v2) carry assets, overrides, sightings and history; v1 bundles still import.
 - **CSV:** cells are formula-escaped (`csv_safe`): hostnames and identity strings come from untrusted traffic.
 
+### Purdue map (M4)
+
+- **Links and OT operations** (`AssetLink`, `AssetOtOp`) are built per capture in `merge.build_links`, from
+  that capture's sightings (IP → asset), and rebuilt from scratch on every merge of the capture. The API
+  (`api/routes_links.py`) aggregates across captures. OT operations are oriented master → device (an error
+  response is counted against the request's direction).
+- **A migration that adds merge-derived data** must reset `captures.assets_merged_at` so finished captures
+  are re-merged at the next start (see `0004`). Re-merging is idempotent.
+- **Frontend:** `lib/purdue.ts` holds the pure layout (`layoutPurdue`), drop detection (`dropTarget`) and the
+  DMZ-bypass rule (`bypassesDmz`: L4+ ↔ L3 and below); unit-test changes there. The map (`PurdueMap.tsx`,
+  React Flow) applies drops through the bulk-edit endpoint with an optimistic cache update. React Flow
+  needs the jsdom stubs in `test/setup.ts`; drag behaviour is covered by `e2e/purdue.spec.ts`.
+
 ### Packet engine (`backend/pcapvis/engine/`, M1)
 
 - **Flow:** `analyze.analyze_capture(path)` → `runner.stream_packets` (tshark `-T ek`, capture fed via

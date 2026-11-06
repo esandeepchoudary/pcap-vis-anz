@@ -455,3 +455,12 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Grid renders up to 200 rows per "show more"; virtualise for 10k+ asset engagements
 - [ ] Engagement totals on the overview should count assets, not per-capture hosts
 
+### v2 rebuild: M4 Purdue map (2026-11-06, feature/m4-purdue)
+
+- [x] Links and OT operations per capture, aggregated across captures; backfill on upgrade
+- [x] Editable Purdue map (drag to level/zone, multi-select, new zones), level matrix (DMZ bypass), OT matrix, OT command log, connection inspector
+- [ ] Map positions are auto-laid out; remember manual arrangement within a lane
+- [ ] Multicast/broadcast OT traffic (GOOSE, ENIP implicit I/O) isn't drawn because the destination isn't an asset; show it as a bus per VLAN
+- [ ] Zones are free text on assets; M6 turns them into first-class zones and conduits
+- [ ] Undo for a drag on the map (history shows the previous value; reset goes back to detected, not previous)
+

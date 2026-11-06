@@ -329,3 +329,51 @@ class AssetFieldsOut(BaseModel):
     purdue_names: dict[str, str]
     criticalities: list[Criticality]
     asset_types: list[str] = Field(description="Types the engine knows (suggestions; any text is allowed)")
+
+
+# ── Purdue map: links and OT operations (M4) ─────────────────────────────────
+
+
+class LinkProtocolOut(BaseModel):
+    protocol: str
+    ports: list[str]
+    flows: int
+    packets: int
+    bytes: int
+    ot_reads: int
+    ot_writes: int
+    ot_errors: int
+
+
+class LinkOut(BaseModel):
+    """All traffic seen from one asset (client) to another (server), across captures."""
+
+    src: int
+    dst: int
+    protocols: list[LinkProtocolOut]
+    is_ot: bool = Field(description="Carries an OT protocol or OT commands")
+    flows: int
+    packets: int
+    bytes: int
+    ot_reads: int
+    ot_writes: int
+    ot_errors: int
+    first_seen: float | None
+    last_seen: float | None
+    captures: list[int]
+
+
+class OtOperationOut(BaseModel):
+    """OT commands of one function from one asset to another, across captures."""
+
+    src: int
+    dst: int
+    protocol: str
+    function: str
+    function_code: int | None
+    kind: Literal["read", "write", "error", "other"]
+    count: int
+    first_seen: float
+    last_seen: float
+    sample: str
+    captures: list[int]

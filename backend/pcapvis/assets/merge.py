@@ -24,7 +24,9 @@ from pcapvis.db.base import utcnow
 from pcapvis.db.models import (
     Asset,
     AssetChange,
+    AssetLink,
     AssetOrigin,
+    AssetOtOp,
     AssetSighting,
     Capture,
     CaptureStatus,
@@ -182,6 +184,7 @@ def ingest_capture(
     new_ids = {a.id for a in new_assets}
     quiet = set(touched) if not record_auto else new_ids | (touched - had_sightings)
     recompute(db, [by_id[i] for i in touched if i in by_id], actor=actor, quiet=quiet)
+    build_links(db, cap, result)
     removed = prune(db, eid)
     cap.assets_merged_at = utcnow()
     return {"created": created, "updated": len(touched - new_ids), "removed": removed}
@@ -193,11 +196,102 @@ def remove_capture(db: Session, cap: Capture) -> None:
     aids = set(db.scalars(select(AssetSighting.asset_id).where(AssetSighting.capture_id == cap.id)))
     if not aids:
         return
+    _drop_links(db, cap.id)
     db.execute(delete(AssetSighting).where(AssetSighting.capture_id == cap.id))
     db.expire_all()
     assets = list(db.scalars(select(Asset).where(Asset.id.in_(aids))))
     recompute(db, assets, actor=f"capture {cap.file_name} removed")
     prune(db, cap.engagement_id)
+
+
+MAX_PORTS = 20
+
+
+def _drop_links(db: Session, cid: int) -> None:
+    db.execute(delete(AssetLink).where(AssetLink.capture_id == cid))
+    db.execute(delete(AssetOtOp).where(AssetOtOp.capture_id == cid))
+
+
+def build_links(db: Session, cap: Capture, result: AnalysisResult) -> None:
+    """Asset-to-asset traffic and OT operations for one capture, from its flows and commands.
+
+    Rebuilt from scratch for the capture each time, so re-merging is idempotent. Traffic to addresses that
+    aren't assets (multicast, broadcast) and an asset talking to itself are left out.
+    """
+    _drop_links(db, cap.id)
+    owner = dict(
+        db.execute(
+            select(AssetSighting.ip, AssetSighting.asset_id).where(AssetSighting.capture_id == cap.id)
+        ).all()
+    )
+    links: dict[tuple[int, int, str], dict] = {}
+    for f in result.flows:
+        src, dst = owner.get(f.client), owner.get(f.server)
+        if src is None or dst is None or src == dst:
+            continue
+        k = (src, dst, f.protocol[:64])
+        link = links.get(k)
+        if link is None:
+            link = links[k] = {
+                "ports": [],
+                "flows": 0,
+                "packets": 0,
+                "bytes": 0,
+                "ot_reads": 0,
+                "ot_writes": 0,
+                "ot_errors": 0,
+                "first_seen": f.first_seen,
+                "last_seen": f.last_seen,
+            }
+        port = f"{f.transport}/{f.server_port}"
+        if port not in link["ports"] and len(link["ports"]) < MAX_PORTS:
+            link["ports"].append(port)
+        link["flows"] += 1
+        link["packets"] += f.packets_c2s + f.packets_s2c
+        link["bytes"] += f.bytes_c2s + f.bytes_s2c
+        link["ot_reads"] += f.ot_reads
+        link["ot_writes"] += f.ot_writes
+        link["ot_errors"] += f.ot_errors
+        link["first_seen"] = min(link["first_seen"], f.first_seen)
+        link["last_seen"] = max(link["last_seen"], f.last_seen)
+    eid = cap.engagement_id
+    db.add_all(
+        AssetLink(engagement_id=eid, capture_id=cap.id, src_asset_id=s, dst_asset_id=d, protocol=p, **v)
+        for (s, d, p), v in links.items()
+    )
+    ops: dict[tuple, dict] = {}
+    for c in result.ot_commands:
+        if not c.is_request and c.kind != "error":
+            continue
+        # Orient everything master → device: an error response comes back from the device.
+        a, b = (c.src, c.dst) if c.is_request else (c.dst, c.src)
+        src, dst = owner.get(a), owner.get(b)
+        if src is None or dst is None:
+            continue
+        k = (src, dst, c.protocol[:64], c.function[:128], c.function_code, c.kind)
+        op = ops.get(k)
+        if op is None:
+            op = ops[k] = {"count": 0, "first_seen": c.time, "last_seen": c.time, "sample": ""}
+        op["count"] += 1
+        op["first_seen"] = min(op["first_seen"], c.time)
+        op["last_seen"] = max(op["last_seen"], c.time)
+        if not op["sample"] and c.detail:
+            op["sample"] = c.detail[:300]
+    db.add_all(
+        AssetOtOp(
+            engagement_id=eid,
+            capture_id=cap.id,
+            src_asset_id=s,
+            dst_asset_id=d,
+            protocol=p,
+            function=fn,
+            function_code=code,
+            kind=kind,
+            **v,
+        )
+        for (s, d, p, fn, code, kind), v in ops.items()
+    )
+    db.flush()
 
 
 def prune(db: Session, eid: int) -> int:
