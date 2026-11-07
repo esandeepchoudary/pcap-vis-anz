@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.4.0 -- 2026-11-07
+
+- Analysis soundness: hosts are only placed on VLANs they really sit on (not the sender's VLAN of routed traffic); regular internal OT/telemetry polling no longer reported as beaconing; business PCs talking OT stay at Level 4 so the DMZ bypass shows; IPs only named in DNS answers are no longer assets; ports that only answered a scan with resets aren't services. Synthetic plant + ground-truth soundness checker in fixtures/plant
+
 ## v1.3.0 -- 2026-11-06
 
 - Responsive layout: inspector as a drawer on tablets and a bottom sheet on phones, stage rail as a bottom bar, compact header, tables and tab bars scroll inside their box; responsive e2e check at 390 px and 820 px

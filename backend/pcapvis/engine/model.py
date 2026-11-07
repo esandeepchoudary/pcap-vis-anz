@@ -92,6 +92,7 @@ class Flow(BaseModel):
     vlans: list[int] = Field(default_factory=list)
     syn_seen: bool = False
     resets: int = 0
+    server_answered: bool = True  # TCP: the server sent something other than a reset (the port is open)
     ot_reads: int = 0
     ot_writes: int = 0
     ot_errors: int = 0

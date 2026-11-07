@@ -140,6 +140,39 @@ def test_single_vlan_and_untagged(tmp_path):
     assert flow(r, 502).vlans == [20]
 
 
+def test_routed_traffic_doesnt_put_hosts_on_the_senders_vlan(tmp_path):
+    """Between VLANs, frames reach the router tagged with the sender's VLAN: the receiver isn't on it."""
+    from scapy.all import IP, TCP, Dot1Q, Ether
+
+    router = "00:1b:54:00:00:01"
+    hmi, plc = ("00:0e:8c:00:00:01", "10.40.0.11"), ("00:1b:1b:00:00:10", "10.50.0.10")
+    cap = Cap()
+    for i in range(3):  # HMI on VLAN 400 → router; reply from the PLC on VLAN 500 → router
+        cap.add(
+            Ether(src=hmi[0], dst=router)
+            / Dot1Q(vlan=400)
+            / IP(src=hmi[1], dst=plc[1])
+            / TCP(sport=50000, dport=102, flags="S" if i == 0 else "A")
+        )
+        cap.add(
+            Ether(src=plc[0], dst=router)
+            / Dot1Q(vlan=500)
+            / IP(src=plc[1], dst=hmi[1])
+            / TCP(sport=102, dport=50000, flags="SA" if i == 0 else "A")
+        )
+    # A silent host (never answers) on VLAN 500, reached at its own MAC: it is on VLAN 500.
+    cap.add(
+        Ether(src=plc[0], dst="00:1b:1b:00:00:11")
+        / Dot1Q(vlan=500)
+        / IP(src=plc[1], dst="10.50.0.11")
+        / TCP(sport=40000, dport=102, flags="S")
+    )
+    r = run(cap, tmp_path)
+    assert host(r, "10.40.0.11").vlans == [400]
+    assert host(r, "10.50.0.10").vlans == [500]
+    assert host(r, "10.50.0.11").vlans == [500]
+
+
 @pytest.mark.parametrize("kw", [{"qinq": (100, 20)}, {"stacked": (100, 20)}])
 def test_qinq_inner_and_outer(tmp_path, kw):
     r = run(Cap().udp(C, S, 50000, 161, **kw), tmp_path)
@@ -156,11 +189,15 @@ def test_pcp_recorded(tmp_path):
 
 
 def test_dns_answers_name_hosts_and_queries_are_recorded(tmp_path):
-    cap = Cap().dns(C, S, "historian.plant.local", answers=["10.0.0.60"])
+    hist = ("00:0c:29:00:00:60", "10.0.0.60")
+    cap = Cap().dns(C, S, "historian.plant.local", answers=["10.0.0.60", "10.0.0.61"])
+    cap.tcp_session(C, hist, 50000, 443)  # the client then talks to the historian
     r = run(cap, tmp_path)
     assert host(r, "10.0.0.60").hostname == "historian.plant.local"
     assert host(r, "10.0.0.60").hostnames[0].source == "dns"
     assert host(r, "10.0.0.5").dns_queries == ["historian.plant.local"]
+    # 10.0.0.61 was only named in the answer, never seen on the wire: not a device in the inventory.
+    assert "10.0.0.61" not in {h.ip for h in r.hosts}
 
 
 def test_lldp_names_switch_and_classifies_network_device(tmp_path):
@@ -398,3 +435,107 @@ def test_plain_linux_host_is_unclassified_for_purdue(tmp_path):
     r = run(Cap().tcp_session(C, S, 50000, 50001, ttl_c=64), tmp_path)
     h = host(r, "10.0.0.5")
     assert h.host_type == "Linux Host" and h.purdue_level == -1  # consultant decides; no guessing
+
+
+def _office(cap: Cap, n: int, vlan: int, net: str):
+    """n Windows PCs on one VLAN browsing an internal web server (ordinary Level 4 hosts)."""
+    web = ("00:15:5d:00:00:fe", f"{net}.250")
+    for i in range(n):
+        pc = (f"3c:52:82:00:{vlan % 256:02x}:{i:02x}", f"{net}.{10 + i}")
+        cap.tcp_session(
+            pc,
+            web,
+            50000 + i,
+            80,
+            [("c", http_get("intranet")), ("s", http_ok())],
+            vlan=vlan,
+            ttl_c=128,
+            ttl_s=128,
+        )
+
+
+def test_business_pc_reaching_a_plc_stays_at_level_4(tmp_path):
+    """Moving it to Level 3 would hide the DMZ bypass the assessment is looking for."""
+    plc = ("00:1b:1b:00:00:10", "10.50.0.10")
+    cap = Cap()
+    _office(cap, 5, 100, "10.10.0")
+    rogue = ("3c:52:82:00:64:63", "10.10.0.99")
+    cap.tcp_session(
+        rogue,
+        plc,
+        50100,
+        502,
+        [("c", modbus(1, 1, b"\x03\x00\x00\x00\x02")), ("s", modbus(1, 1, b"\x03\x04\x00\x00\x00\x00"))],
+        vlan=100,
+        ttl_c=128,
+    )
+    r = run(cap, tmp_path)
+    h = host(r, "10.10.0.99")
+    assert h.purdue_level == 4
+    assert any(e.kind == "segment" and "business segment" in e.detail for e in h.purdue_evidence)
+
+
+def test_engineering_station_on_a_plant_segment_moves_to_level_3(tmp_path):
+    plc = ("00:1b:1b:00:00:10", "10.50.0.10")
+    cap = Cap()
+    _office(cap, 5, 100, "10.10.0")  # the office exists, but the station isn't on it
+    ews = ("00:1c:06:00:00:21", "10.30.0.21")
+    cap.tcp_session(
+        ews,
+        plc,
+        50100,
+        502,
+        [("c", modbus(1, 1, b"\x03\x00\x00\x00\x02")), ("s", modbus(1, 1, b"\x03\x04\x00\x00\x00\x00"))],
+        vlan=300,
+        ttl_c=128,
+    )
+    r = run(cap, tmp_path)
+    assert host(r, "10.30.0.21").purdue_level == 3
+
+
+def test_closed_ports_from_a_scan_are_not_services(tmp_path):
+    """A port that only answers with a reset is closed: a port scan must not make the target look like a PLC."""
+    from scapy.all import IP, TCP, Ether
+
+    scanner, target = ("f0:2f:74:de:ad:01", "10.10.0.200"), ("00:15:5d:30:00:0b", "10.30.0.11")
+    cap = Cap()
+    for port in (102, 502, 44818, 20000):
+        cap.add(
+            Ether(src=scanner[0], dst=target[0])
+            / IP(src=scanner[1], dst=target[1])
+            / TCP(sport=40000 + port % 1000, dport=port, flags="S")
+        )
+        cap.add(
+            Ether(src=target[0], dst=scanner[0])
+            / IP(src=target[1], dst=scanner[1], ttl=128)
+            / TCP(sport=port, dport=40000 + port % 1000, flags="RA")
+        )
+    cap.tcp_session(
+        ("00:15:5d:20:00:0a", "10.20.0.10"),
+        target,
+        50000,
+        443,
+        [("c", b"\x16\x03\x01" + bytes(60)), ("s", b"\x16\x03\x03" + bytes(60))],
+    )
+    r = run(cap, tmp_path)
+    h = host(r, "10.30.0.11")
+    assert [s.port for s in h.services] == [443]
+    assert h.host_type != "PLC"
+    assert {f.server_port for f in r.flows if not f.server_answered} == {102, 502, 44818, 20000}
+
+
+def test_one_way_tap_still_finds_services(tmp_path):
+    """Only client→server packets were captured: a client that keeps talking implies an open port."""
+    from scapy.all import IP, TCP, Ether
+
+    c, s = ("00:0c:29:00:00:05", "10.0.0.5"), ("00:1b:1b:00:00:10", "10.0.0.50")
+    cap = Cap()
+    for i in range(5):
+        cap.add(
+            Ether(src=c[0], dst=s[0])
+            / IP(src=c[1], dst=s[1])
+            / TCP(sport=50000, dport=102, flags="S" if i == 0 else "PA")
+            / (b"" if i == 0 else b"\x03\x00\x00\x16" + bytes(18))
+        )
+    r = run(cap, tmp_path)
+    assert [x.port for x in host(r, "10.0.0.50").services] == [102]
