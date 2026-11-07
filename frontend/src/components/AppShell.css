@@ -25,7 +25,7 @@
 .header-search {
   flex: 1; max-width: 460px; margin: 0 auto; position: relative;
 }
-.header-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
+.header-search > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
 .header-search input { width: 100%; padding-left: 34px; height: 32px; background: var(--surface-2); }
 .header-actions { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
 .user-chip {
@@ -224,3 +224,26 @@
 .header-search { min-width: 0; flex: 1 1 140px; }
 .header-actions { flex: none; }
 @media (max-width: 900px) { .brand-name { display: none; } }
+
+/* Global search */
+.header-search { position: relative; }
+.search-kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font: 11px var(--font-mono); color: var(--text-3);
+  border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; background: var(--surface); }
+.search-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30; margin: 0; padding: var(--space-1);
+  list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+  max-height: min(420px, 70dvh); overflow-y: auto; }
+.search-results li { display: flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-2); border-radius: var(--radius-sm);
+  cursor: pointer; font-size: var(--text-sm); color: var(--text); }
+.search-results li.active { background: var(--accent-soft); }
+.search-results li svg { flex: none; color: var(--text-3); }
+.search-label { flex: 1; min-width: 0; display: grid; overflow: hidden; }
+.search-label, .search-label small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search-label small { color: var(--text-3); font-size: var(--text-xs); }
+.search-kind { flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); }
+.search-results .search-empty { cursor: default; }
+.header-actions .show-phone, .header-search .search-close { display: none; }
+.search-overlay { position: absolute; inset: 0; z-index: 25; display: flex; align-items: center; padding: 0 var(--space-2); background: var(--surface); }
+.search-overlay .header-search { display: flex; flex: 1; max-width: none; margin: 0; }
+.search-overlay .header-search .search-close { display: inline-flex; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+.header { position: relative; }
+@media (max-width: 720px) { .header-actions .show-phone { display: inline-flex; } }

@@ -5,6 +5,7 @@ import type { SystemInfo, User } from '../api/client'
 import { useLogout } from '../api/hooks'
 import { useTheme } from '../theme/context'
 import { VersionBadge } from './Credits'
+import { GlobalSearch } from './GlobalSearch'
 import { EngagementSwitcher } from './EngagementSwitcher'
 
 function initials(user: User) {
@@ -15,6 +16,7 @@ function initials(user: User) {
 export function Header({ system, user, eid }: { system: SystemInfo; user: User; eid: number | null }) {
   const { theme, toggle } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [searching, setSearching] = useState(false) // phones: the search box opens over the header
   const menuRef = useRef<HTMLDivElement>(null)
   const logout = useLogout()
 
@@ -41,12 +43,15 @@ export function Header({ system, user, eid }: { system: SystemInfo; user: User; 
         <VersionBadge version={system.version} />
       </div>
       <EngagementSwitcher eid={eid} />
-      <label className="header-search">
-        <span className="sr-only">Search</span>
-        <Search size={15} aria-hidden />
-        <input className="input" placeholder="Search assets, IPs, findings…" disabled title="Search arrives with the asset inventory (M3)" />
-      </label>
+      {searching ? (
+        <div className="search-overlay"><GlobalSearch eid={eid} onClose={() => setSearching(false)} /></div>
+      ) : (
+        <GlobalSearch eid={eid} />
+      )}
       <div className="header-actions" ref={menuRef}>
+        <button type="button" className="btn btn-ghost btn-icon show-phone" aria-label="Search" onClick={() => setSearching(true)}>
+          <Search size={18} />
+        </button>
         {system.mode === 'laptop' && <span className="badge hide-phone">Laptop mode</span>}
         <button
           type="button"

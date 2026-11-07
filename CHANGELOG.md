@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.4.0 -- 2026-11-07
+
+- Header search: assets, findings and zones of the open engagement (or engagements), keyboard driven, '/' to focus, opens results in the inspector; phone search overlay
+
 ## v1.3.0 -- 2026-11-06
 
 - Responsive layout: inspector as a drawer on tablets and a bottom sheet on phones, stage rail as a bottom bar, compact header, tables and tab bars scroll inside their box; responsive e2e check at 390 px and 820 px
