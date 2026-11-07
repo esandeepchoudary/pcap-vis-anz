@@ -1,20 +1,15 @@
-import {
-  Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps,
-} from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
 import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import type { AnalysisResult, Asset, Capture, Engagement, Link } from '../api/client'
+import type { AnalysisResult, Asset, Capture, Engagement } from '../api/client'
 import { useAssets } from '../api/assets'
 import { useCaptureResult, useCaptures } from '../api/engagements'
 import { useDiff, usePacket, usePackets } from '../api/forensics'
 import { useLinks } from '../api/purdue'
 import { AssetButton } from '../components/LinkDetails'
+import { NetworkGraph } from '../components/NetworkGraph'
 import { ErrorNote, Tabs } from '../components/ui'
 import { useInspector } from '../inspector/context'
-import { assetLabel } from '../lib/assets'
-import { formatBytes, formatDateTime, formatDuration, formatNumber, purdueLabel } from '../lib/format'
-import { G_NODE_H, G_NODE_W, subnetLayout } from '../lib/graph'
+import { formatBytes, formatDateTime, formatDuration, formatNumber } from '../lib/format'
 import './purdue.css'
 import './flows.css'
 
@@ -26,89 +21,6 @@ function CapturePicker({ captures, value, onChange, label = 'Capture' }: { captu
       <option value="" disabled>Choose a capture…</option>
       {captures.map((c) => <option key={c.id} value={c.id}>{c.file_name}{c.capture_point ? ` (${c.capture_point})` : ''}</option>)}
     </select>
-  )
-}
-
-type GraphData = { asset: Asset; dim: boolean }
-
-function GraphNode({ data, selected }: NodeProps<Node<GraphData>>) {
-  const a = data.asset
-  return (
-    <div className={`fg-node level-edge-${String(a.purdue_level).replace('.', '_').replace('-', 'm')}${selected ? ' selected' : ''}${data.dim ? ' dim' : ''}`}
-      title={`${assetLabel(a)} · ${a.ips.join(', ')} · ${a.asset_type ?? 'Unknown'}`}>
-      <Handle type="target" position={Position.Top} className="pm-handle" isConnectable={false} />
-      <div className="pm-asset-name">{assetLabel(a)}</div>
-      <div className="pm-asset-sub">{a.asset_type ?? 'Unknown'} · {purdueLabel(a.purdue_level)}</div>
-      <Handle type="source" position={Position.Bottom} className="pm-handle" isConnectable={false} />
-    </div>
-  )
-}
-
-function SubnetNode({ data }: NodeProps<Node<{ label: string }>>) {
-  return <div className="fg-subnet"><span>{data.label}</span></div>
-}
-const nodeTypes = { asset: GraphNode, subnet: SubnetNode }
-
-function Graph({ eng, assets, links }: { eng: Engagement; assets: Asset[]; links: Link[] }) {
-  const { selection, select } = useInspector()
-  const [otOnly, setOtOnly] = useState(false)
-  const [showExternal, setShowExternal] = useState(false)
-  const [hover, setHover] = useState<number | null>(null)
-  const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets])
-  const visible = (id: number) => { const a = byId.get(id); return !!a && (showExternal || a.is_private || a.origin === 'manual') }
-  const shown = links.filter((l) => (!otOnly || l.is_ot) && visible(l.src) && visible(l.dst))
-  const focus = hover ?? (selection?.kind === 'asset' && selection.eid === eng.id ? selection.id : null)
-  const neighbours = useMemo(() => {
-    const n = new Set<number>()
-    if (focus != null) for (const l of shown) if (l.src === focus || l.dst === focus) { n.add(l.src); n.add(l.dst) }
-    return n
-  }, [shown, focus])
-  const { nodes, edges } = useMemo(() => {
-    const ids = new Set(shown.flatMap((l) => [l.src, l.dst]))
-    const degree = new Map<number, number>()
-    for (const l of shown) for (const id of [l.src, l.dst]) degree.set(id, (degree.get(id) ?? 0) + 1)
-    const members = [...ids].map((id) => byId.get(id)!).filter(Boolean)
-    const layout = subnetLayout(members, degree)
-    const nodes: Node[] = [
-      ...layout.groups.map((g): Node => ({ id: `g-${g.key}`, type: 'subnet', position: { x: g.x, y: g.y }, data: { label: g.label },
-        draggable: false, selectable: false, focusable: false, zIndex: 0, style: { width: g.w, height: g.h } })),
-      ...members.map((a): Node => ({ id: String(a.id), type: 'asset', position: layout.positions.get(a.id)!, zIndex: 2,
-        data: { asset: a, dim: focus != null && !neighbours.has(a.id) }, style: { width: G_NODE_W, height: G_NODE_H } })),
-    ]
-    const edges: Edge[] = shown.map((l) => {
-      const on = focus == null || l.src === focus || l.dst === focus
-      return {
-        id: `${l.src}-${l.dst}`, source: String(l.src), target: String(l.dst), data: { link: l }, zIndex: on && focus != null ? 3 : 1,
-        className: `pm-edge pm-edge-${l.ot_writes ? 'write' : l.is_ot ? 'ot' : 'it'}${on ? '' : ' faded'}`,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-        style: { strokeWidth: Math.min(3, 1 + Math.log10(Math.max(1, l.packets)) / 2) },
-      }
-    })
-    return { nodes, edges }
-  }, [shown, byId, focus, neighbours])
-  if (!links.length) return <p className="muted">No traffic between assets yet.</p>
-  const external = assets.filter((a) => !a.is_private && a.origin === 'observed').length
-  return (
-    <div className="stack" style={{ gap: 'var(--space-3)' }}>
-      <div className="row">
-        <label className="row"><input type="checkbox" checked={otOnly} onChange={(e) => setOtOnly(e.target.checked)} /> OT traffic only</label>
-        {external > 0 && <label className="row"><input type="checkbox" checked={showExternal} onChange={(e) => setShowExternal(e.target.checked)} /> Show {external} external</label>}
-        <span className="muted">{nodes.filter((n) => n.type === 'asset').length} assets · {edges.length} connections, grouped by subnet. Hover an asset to see who it talks to.</span>
-        <span className="spacer" />
-        <span className="pm-legend"><i className="pm-key pm-key-ot" /> OT <i className="pm-key pm-key-write" /> writes <i className="pm-key pm-key-it" /> other</span>
-      </div>
-      <div className="purdue-canvas" aria-label="Network graph">
-        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.08 }} minZoom={0.05}
-          nodesDraggable={false} nodesConnectable={false} proOptions={{ hideAttribution: true }}
-          onNodeMouseEnter={(_e, n) => { if (n.type === 'asset') setHover(Number(n.id)) }}
-          onNodeMouseLeave={() => setHover(null)}
-          onNodeClick={(_e, n) => { if (n.type === 'asset') select({ kind: 'asset', eid: eng.id, id: Number(n.id) }) }}
-          onEdgeClick={(_e, e) => { const l = (e.data as { link: Link }).link; select({ kind: 'link', eid: eng.id, src: l.src, dst: l.dst }) }}>
-          <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
-          <Controls showInteractive={false} />
-        </ReactFlow>
-      </div>
-    </div>
   )
 }
 
@@ -302,7 +214,7 @@ export function FlowsPage() {
             { id: 'vlans', label: 'VLANs' }, { id: 'diff', label: 'Diff' }, { id: 'packets', label: 'Packets' },
           ]} />
           {perCapture && <div className="row" style={{ marginBottom: 'var(--space-3)' }}><CapturePicker captures={done} value={cid} onChange={setPicked} /></div>}
-          {tab === 'graph' && assets.data && links.data && <Graph eng={eng} assets={assets.data} links={links.data} />}
+          {tab === 'graph' && assets.data && links.data && <NetworkGraph eng={eng} assets={assets.data} links={links.data} />}
           {result.isError && perCapture && <ErrorNote>{result.error.message}</ErrorNote>}
           {tab === 'flows' && result.data && <FlowsTable r={result.data} eid={eng.id} assets={assets.data ?? []} />}
           {tab === 'dns' && result.data && <Dns r={result.data} />}

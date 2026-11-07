@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import type { Asset, AssetFields, EditableField, Engagement, FieldValue } from '../api/client'
 import { assetExportUrl, useAssetFields, useAssets, useBulkEdit, useCreateAsset } from '../api/assets'
+import { DeviceIcon } from '../components/DeviceIcon'
 import { ErrorNote } from '../components/ui'
 import { useInspector } from '../inspector/context'
 import { CRITICALITY_ORDER, assetLabel, levelName, parseList, parseTags, searchText } from '../lib/assets'
@@ -264,7 +265,7 @@ export function AssetsPage() {
                         </div>
                         <div className="muted mono asset-sub">{a.name ? [a.ips[0], a.macs[0]].filter(Boolean).join(' · ') : a.macs[0] ?? ''}{a.ips.length > 1 && ` +${a.ips.length - 1}`}</div>
                       </td>
-                      <td>{a.asset_type ?? <span className="muted">—</span>}<Edited a={a} field="asset_type" />
+                      <td><span className="type-cell"><DeviceIcon type={a.asset_type} isPrivate={a.is_private} size={15} label={false} />{a.asset_type ?? <span className="muted">—</span>}</span><Edited a={a} field="asset_type" />
                         {a.type_confidence === 'low' && <span className="muted" title="Low confidence"> ?</span>}</td>
                       <td title={levelName(fields.data, a.purdue_level)}>
                         <span className={`level level-${String(a.purdue_level).replace('.', '_')}`}>{purdueLabel(a.purdue_level)}</span>

@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.1.0 -- 2026-11-06
+
+- Network graph brought to (and past) v1 parity: force topology layout with subnet grouping, nodes sized by traffic, device icons by family, finding and credential badges, protocol filters, isolate, legend, minimap; device icons across the inventory, Purdue map and inspector
+
 ## v1.0.0 -- 2026-11-06
 
 - v1.0.0: the rebuilt app (engagements, asset inventory, fingerprinting, Purdue map, zones and conduits, flows and forensics, findings and reports, team server with laptop merge); legacy v1 app retired

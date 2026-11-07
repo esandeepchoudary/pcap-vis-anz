@@ -46,3 +46,4 @@
 .history li.history-auto { border-left-color: var(--sev-info); }
 .history-reason { font-style: italic; color: var(--text-2); }
 .asset-seen { white-space: nowrap; font-size: var(--text-xs); }
+.type-cell { display: inline-flex; align-items: center; gap: 6px; }
