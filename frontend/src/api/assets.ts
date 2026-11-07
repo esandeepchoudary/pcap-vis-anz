@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { components } from './schema'
 import {
-  api, unwrap,
+  api, unwrap, uploadForm,
   type AssetBulkEdit, type AssetCreate, type AssetDetail, type AssetEdit,
 } from './client'
 
@@ -108,5 +109,21 @@ export function useSplitAsset(eid: number, id: number) {
     mutationFn: async (body: { version: number; ips: string[]; reason: string }) =>
       unwrap(await api.POST('/api/engagements/{engagement_id}/assets/{asset_id}/split', { ...pa(eid, id), body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['engagement', eid] }),
+  })
+}
+
+export type AssetImport = components['schemas']['AssetImportOut']
+/** Preview (apply=false) or apply edits from a filled-in asset register. */
+export function useImportAssets(eid: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ file, apply, reason }: { file: File; apply: boolean; reason: string }) => {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('apply', apply ? 'true' : 'false')
+      form.append('reason', reason)
+      return uploadForm<AssetImport>(`/api/engagements/${eid}/assets/import`, form)
+    },
+    onSuccess: (r) => { if (r.applied) qc.invalidateQueries({ queryKey: ['engagement', eid] }) },
   })
 }

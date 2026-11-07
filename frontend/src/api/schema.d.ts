@@ -227,6 +227,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/assets/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Assets
+         * @description Read edits from a filled-in asset register (CSV or XLSX). Preview by default; ``apply`` saves them.
+         */
+        post: operations["import_assets_api_engagements__engagement_id__assets_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/assets/{asset_id}": {
         parameters: {
             query?: never;
@@ -1344,6 +1364,45 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** AssetImportChange */
+        AssetImportChange: {
+            /** Asset Id */
+            asset_id: number;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "name" | "asset_type" | "purdue_level" | "zone" | "criticality" | "vendor" | "model" | "firmware" | "serial" | "location" | "owner" | "tags" | "notes";
+            /** Label */
+            label: string;
+            /** New */
+            new: unknown;
+            /** Old */
+            old: unknown;
+        };
+        /**
+         * AssetImportOut
+         * @description What an imported register changes (a preview unless ``applied``).
+         */
+        AssetImportOut: {
+            /** Applied */
+            applied: boolean;
+            /**
+             * Assets Changed
+             * @default 0
+             */
+            assets_changed: number;
+            /** Changes */
+            changes: components["schemas"]["AssetImportChange"][];
+            /** Errors */
+            errors: string[];
+            /** Matched */
+            matched: number;
+            /** Rows */
+            rows: number;
+            /** Unmatched */
+            unmatched: string[];
+        };
         /**
          * AssetMerge
          * @description Fold other assets into this one (the matcher kept one device apart).
@@ -1484,6 +1543,21 @@ export interface components {
             target: string;
             /** User */
             user: string | null;
+        };
+        /** Body_import_assets_api_engagements__engagement_id__assets_import_post */
+        Body_import_assets_api_engagements__engagement_id__assets_import_post: {
+            /**
+             * Apply
+             * @default false
+             */
+            apply: boolean;
+            /** File */
+            file: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** Body_import_engagement_api_engagements_import_post */
         Body_import_engagement_api_engagements_import_post: {
@@ -3282,6 +3356,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_assets_api_engagements__engagement_id__assets_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_assets_api_engagements__engagement_id__assets_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetImportOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Content too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Validation Error */

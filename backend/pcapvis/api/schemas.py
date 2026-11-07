@@ -319,6 +319,26 @@ class AssetSplitResult(BaseModel):
     created: "AssetDetail"
 
 
+class AssetImportChange(BaseModel):
+    asset_id: int
+    label: str
+    field: EditableField
+    old: Any
+    new: Any
+
+
+class AssetImportOut(BaseModel):
+    """What an imported register changes (a preview unless ``applied``)."""
+
+    applied: bool
+    rows: int
+    matched: int
+    unmatched: list[str]
+    errors: list[str]
+    changes: list[AssetImportChange]
+    assets_changed: int = 0
+
+
 class AssetCreate(BaseModel):
     ips: list[str] = Field(default_factory=list, max_length=32)
     macs: list[str] = Field(default_factory=list, max_length=32)

@@ -2,12 +2,12 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Route, Routes } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Asset, AssetChange, AssetDetail, AssetFields, Engagement, FieldValue } from '../api/client'
 import { Inspector } from '../components/Inspector'
 import { InspectorContext, type Selection } from '../inspector/context'
 import { describeChange, formatValue, parseList, parseTags } from '../lib/assets'
-import { engagement, json, mockApi, renderWithProviders } from '../test/utils'
+import { engagement, FakeXhr, json, mockApi, renderWithProviders } from '../test/utils'
 import { AssetsPage } from './AssetsPage'
 import { EngagementLayout } from './EngagementLayout'
 
@@ -234,10 +234,33 @@ describe('Asset inventory', () => {
     await waitFor(() => expect(api.calls.some((c) => c.path === '/api/engagements/7/assets/9')).toBe(true)) // the new asset opens
   })
 
+  it('imports a filled-in register: preview first, then apply', async () => {
+    setup()
+    vi.stubGlobal('XMLHttpRequest', FakeXhr)
+    const preview = { applied: false, rows: 3, matched: 2, unmatched: ['row 4: no asset with ID 99'], errors: [], assets_changed: 0,
+      changes: [{ asset_id: 1, label: '10.0.2.51', field: 'zone', old: null, new: 'Cell 2' }] }
+    FakeXhr.respond = { status: 200, body: preview }
+    await userEvent.click(await screen.findByRole('button', { name: /Import edits/ }))
+    const panel = screen.getByRole('region', { name: 'Import asset edits' })
+    await userEvent.upload(within(panel).getByLabelText('Register file'), new File(['asset_id,zone\n1,Cell 2\n'], 'register.csv'))
+    expect(await within(panel).findByRole('status', { name: 'Import summary' })).toHaveTextContent('1 change2 of 3 rows matched')
+    expect((FakeXhr.last?.body as FormData).get('apply')).toBe('false')
+    const table = within(panel).getByRole('table', { name: 'Changes to apply' })
+    expect(table).toHaveTextContent('10.0.2.51Zone—Cell 2')
+    expect(within(panel).getByText('1 row skipped or with problems')).toBeInTheDocument()
+    FakeXhr.respond = { status: 200, body: { ...preview, applied: true, assets_changed: 1 } }
+    await userEvent.type(within(panel).getByLabelText('Import reason'), 'Walkdown')
+    await userEvent.click(within(panel).getByRole('button', { name: 'Apply 1 change' }))
+    expect(await within(panel).findByText(/Updated 1 asset/)).toBeInTheDocument()
+    const form = FakeXhr.last?.body as FormData
+    expect([form.get('apply'), form.get('reason'), (form.get('file') as File).name]).toEqual(['true', 'Walkdown', 'register.csv'])
+  })
+
   it('viewers can read but not edit', async () => {
     setup({}, { ...engagement, my_role: 'viewer' })
     await screen.findByText('eng-ws-01')
     expect(screen.queryByLabelText('Select all shown')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Import edits/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add asset/ })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Export CSV/ })).toHaveAttribute('href', '/api/engagements/7/assets/export')
     await userEvent.click(screen.getByText('10.0.2.51'))

@@ -47,3 +47,5 @@
 .history-reason { font-style: italic; color: var(--text-2); }
 .asset-seen { white-space: nowrap; font-size: var(--text-xs); }
 .type-cell { display: inline-flex; align-items: center; gap: 6px; }
+.import-panel { margin-bottom: var(--space-4); }
+.import-problems { margin: var(--space-2) 0 0; padding-left: var(--space-5); font-size: var(--text-sm); color: var(--text-2); max-height: 200px; overflow: auto; }

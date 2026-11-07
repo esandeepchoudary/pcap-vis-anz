@@ -4,7 +4,7 @@ import csv
 import io
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +20,8 @@ from pcapvis.api.schemas import (
     AssetEdit,
     AssetFieldOut,
     AssetFieldsOut,
+    AssetImportChange,
+    AssetImportOut,
     AssetMerge,
     AssetOut,
     AssetSplit,
@@ -28,7 +30,7 @@ from pcapvis.api.schemas import (
     SightingOut,
 )
 from pcapvis.assets import fields as F
-from pcapvis.assets import identity, service
+from pcapvis.assets import identity, importer, service
 from pcapvis.assets.fields import FieldError
 from pcapvis.db.models import Asset, AssetChange, AssetSighting, Capture, Engagement
 from pcapvis.engagements import audit
@@ -165,6 +167,52 @@ def create_asset(body: AssetCreate, ctx=Depends(as_editor)) -> AssetDetail:
     audit.record(db, user, "asset.create", engagement_id=eng.id, target=service.label(a))
     db.commit()
     return asset_detail(db, a)
+
+
+@router.post(
+    "/engagements/{engagement_id}/assets/import",
+    response_model=AssetImportOut,
+    responses={400: {"model": ErrorOut}, 413: {"model": ErrorOut}},
+)
+def import_assets(
+    file: UploadFile = File(...),
+    apply: bool = Form(default=False),
+    reason: str = Form(default="", max_length=1000),
+    ctx=Depends(as_editor),
+) -> AssetImportOut:
+    """Read edits from a filled-in asset register (CSV or XLSX). Preview by default; ``apply`` saves them."""
+    eng, _role, user, db = ctx
+    data = file.file.read(importer.MAX_BYTES + 1)
+    if len(data) > importer.MAX_BYTES:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "The file is larger than 10 MB.")
+    try:
+        rows = importer.read_rows(file.filename or "", data)
+        reason = F.validate_reason(reason or f"Imported from {file.filename or 'a spreadsheet'}")
+    except (importer.ImportError_, FieldError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    plan = importer.plan(db, eng.id, rows)
+    changed = 0
+    if apply and plan.changes:
+        changed = importer.apply(db, eng.id, plan, user, reason)
+        eng.touch()
+        audit.record(
+            db,
+            user,
+            "asset.import",
+            engagement_id=eng.id,
+            target=(file.filename or "spreadsheet")[:200],
+            details={"assets": changed, "changes": len(plan.changes)},
+        )
+        db.commit()
+    return AssetImportOut(
+        applied=bool(apply and plan.changes),
+        rows=plan.rows,
+        matched=plan.matched,
+        unmatched=plan.unmatched[:200],
+        errors=plan.errors[:200],
+        changes=[AssetImportChange(**c.__dict__) for c in plan.changes[:5000]],
+        assets_changed=changed,
+    )
 
 
 @router.get("/engagements/{engagement_id}/assets/export")

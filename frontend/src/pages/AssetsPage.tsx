@@ -1,9 +1,10 @@
-import { ArrowDown, ArrowUp, Boxes, Download, Pencil, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Boxes, Download, Pencil, Plus, Upload, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import type { Asset, AssetFields, EditableField, Engagement, FieldValue } from '../api/client'
 import { assetExportUrl, useAssetFields, useAssets, useBulkEdit, useCreateAsset, useMergeAssets } from '../api/assets'
 import { DeviceIcon } from '../components/DeviceIcon'
+import { ImportAssets } from '../components/ImportAssets'
 import { ErrorNote } from '../components/ui'
 import { useInspector } from '../inspector/context'
 import { CRITICALITY_ORDER, assetLabel, levelName, parseList, parseTags, searchText } from '../lib/assets'
@@ -172,6 +173,7 @@ export function AssetsPage() {
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [limit, setLimit] = useState(PAGE)
   const [adding, setAdding] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   const all = useMemo(() => assets.data ?? [], [assets.data])
   const types = useMemo(() => [...new Set(all.map((a) => a.asset_type).filter((t): t is string => !!t))].sort(), [all])
@@ -214,8 +216,10 @@ export function AssetsPage() {
         <div className="row">
           {canEdit && <button type="button" className="btn" onClick={() => setAdding(true)}><Plus size={14} /> Add asset</button>}
           <a className="btn" href={assetExportUrl(eng.id)} download><Download size={14} /> Export CSV</a>
+          {canEdit && <button type="button" className="btn" onClick={() => setImporting(true)}><Upload size={14} /> Import edits</button>}
         </div>
       </div>
+      {importing && fields.data && <ImportAssets eid={eng.id} fields={fields.data} onClose={() => setImporting(false)} />}
       {assets.isError && <ErrorNote>{assets.error.message}</ErrorNote>}
       {fields.isError && <ErrorNote>{fields.error.message}</ErrorNote>}
       {adding && fields.data && (

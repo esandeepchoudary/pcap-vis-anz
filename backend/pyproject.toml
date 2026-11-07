@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.33",
     "openpyxl>=3.1.5",
     "python-docx>=1.2.0",
+    "defusedxml>=0.7.1",
 ]
 
 [project.optional-dependencies]
