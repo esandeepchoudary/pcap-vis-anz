@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.6.0 -- 2026-11-07
+
+- Asset inventory: merge assets that are one device and split addresses that belong to another (remembered across re-analysis and bundles); import edits from a filled-in CSV/XLSX register with a preview before applying
+
 ## v1.5.0 -- 2026-11-07
 
 - Header search: assets, findings and zones of the open engagement (or engagements), keyboard driven, '/' to focus, opens results in the inspector; phone search overlay
