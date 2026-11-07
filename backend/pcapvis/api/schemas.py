@@ -578,3 +578,26 @@ class FindingCreate(BaseModel):
     severity: SeverityLit
     recommendation: str = Field(default="", max_length=20_000)
     asset_ids: list[int] = Field(default_factory=list, max_length=1000)
+
+
+# ── Merge a bundle into an engagement (M9) ───────────────────────────────────
+
+
+class MergeConflictOut(BaseModel):
+    asset_id: int
+    asset: str
+    field: str
+    kept: FieldValue = Field(description="The value already on this server (kept)")
+    imported: FieldValue = Field(description="The value in the bundle (not applied)")
+
+
+class MergeReportOut(BaseModel):
+    captures_added: int
+    captures_skipped: int = Field(description="Already in this engagement (same SHA-256)")
+    assets_created: int
+    assets_updated: int
+    fields_applied: int
+    conflicts: list[MergeConflictOut]
+    zones_added: int
+    conduits_added: int
+    findings_added: int
