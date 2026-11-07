@@ -166,3 +166,129 @@ def svg(data: ReportData) -> str:
         )
     out.append("</svg>")
     return "\n".join(out)
+
+
+# ── Architecture (zones and conduits) ────────────────────────────────────────
+
+ZONE_W, ZONE_H, ZONE_GAP_X, ZONE_GAP_Y = 230, 84, 90, 80
+APPROVED, UNAPPROVED = "#2f5bd3", "#d92d20"
+
+
+def arch_layout(data: ReportData) -> dict[str, Box]:
+    """Zone boxes: where they were arranged on the Architecture page, else a row per Purdue level (top: enterprise)."""
+    boxes: dict[str, Box] = {}
+    placed = [z for z in data.zones if z.x is not None and z.y is not None]
+    if placed and len(placed) == len(data.zones):
+        x0, y0 = min(z.x for z in placed), min(z.y for z in placed)
+        for z in data.zones:
+            boxes[z.name] = Box(round(z.x - x0 + 20), round(z.y - y0 + 20), ZONE_W, ZONE_H, z.name)
+        return boxes
+    rows: dict[float, list] = {}
+    for z in data.zones:
+        rows.setdefault(z.purdue_level if z.purdue_level is not None else -2, []).append(z)
+    y = 20.0
+    for level in sorted(rows, reverse=True):
+        for i, z in enumerate(sorted(rows[level], key=lambda z: z.name.lower())):
+            boxes[z.name] = Box(20 + i * (ZONE_W + ZONE_GAP_X), y, ZONE_W, ZONE_H, z.name)
+        y += ZONE_H + ZONE_GAP_Y
+    return boxes
+
+
+def _zone_sub(z) -> str:
+    parts = [level_name(z.purdue_level) if z.purdue_level is not None else "No level"]
+    if z.security_level:
+        parts.append(f"SL-T {z.security_level}")
+    parts.append(f"{len(z.asset_ids)} asset{'s' if len(z.asset_ids) != 1 else ''}")
+    return " · ".join(parts) + ("" if z.defined else " · not defined")
+
+
+def _arch_edges(data: ReportData):
+    """(zone a, zone b, label, approved?) for each conduit and each zone pair with unapproved traffic."""
+    name = {z.id: z.name for z in data.zones if z.id is not None}
+    edges = []
+    for c in data.conduits:
+        a, b = name.get(c.zone_a_id), name.get(c.zone_b_id)
+        if a and b:
+            label = (c.name + ": " if c.name else "") + (", ".join(c.allowed) or "any")
+            edges.append((a, b, label, True))
+    bad: dict[frozenset, set[str]] = {}
+    for v in data.violations:
+        bad.setdefault(frozenset((v.src_zone, v.dst_zone)), set()).update(v.protocols)
+    for pair, protos in sorted(bad.items(), key=lambda kv: sorted(kv[0])):
+        a, b = sorted(pair)
+        listed = sorted(protos)
+        edges.append(
+            (a, b, "Unapproved: " + ", ".join(listed[:4]) + (" …" if len(listed) > 4 else ""), False)
+        )
+    return edges
+
+
+def arch_drawio(data: ReportData) -> str:
+    boxes = arch_layout(data)
+    zones = {z.name: z for z in data.zones}
+    cells = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>']
+    ids = {}
+    for i, (zname, b) in enumerate(boxes.items()):
+        ids[zname] = f"z{i}"
+        z = zones[zname]
+        colour = LANE_COLOURS.get(z.purdue_level, "#f3f4f6") if z.purdue_level is not None else "#f3f4f6"
+        cells.append(
+            f'<mxCell id="z{i}" value={quoteattr(zname + chr(10) + _zone_sub(z))} style="rounded=1;whiteSpace=wrap;html=0;'
+            f'fillColor={colour};strokeColor=#5b6b85;fontSize=11;dashed={0 if z.defined else 1};" vertex="1" parent="1">'
+            f'<mxGeometry x="{b.x}" y="{b.y}" width="{b.w}" height="{b.h}" as="geometry"/></mxCell>'
+        )
+    for i, (a, b, label, ok) in enumerate(_arch_edges(data)):
+        if a not in ids or b not in ids:
+            continue
+        style = (
+            f"endArrow=none;html=0;strokeWidth=2;fontSize=9;strokeColor={APPROVED if ok else UNAPPROVED};"
+            + ("" if ok else "dashed=1;fontColor=#d92d20;")
+        )
+        cells.append(
+            f'<mxCell id="c{i}" value={quoteattr(label)} style="{style}" edge="1" parent="1" source="{ids[a]}" '
+            f'target="{ids[b]}"><mxGeometry relative="1" as="geometry"/></mxCell>'
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="pcapvis"><diagram id="architecture" name='
+        + quoteattr(f"Architecture – {data.engagement.name}")
+        + f'><mxGraphModel grid="1" gridSize="10"><root>{"".join(cells)}</root></mxGraphModel></diagram></mxfile>\n'
+    )
+
+
+def arch_svg(data: ReportData) -> str:
+    boxes = arch_layout(data)
+    zones = {z.name: z for z in data.zones}
+    w = max((b.x + b.w for b in boxes.values()), default=300) + 20
+    h = max((b.y + b.h for b in boxes.values()), default=120) + 20
+    out = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" font-family="Segoe UI, Arial, sans-serif">',
+        f"<title>{escape('Architecture – ' + data.engagement.name)}</title>",
+    ]
+    if not boxes:
+        out.append('<text x="20" y="60" font-size="13" fill="#6b7280">No zones defined yet.</text>')
+    centre = {n: (b.x + b.w / 2, b.y + b.h / 2) for n, b in boxes.items()}
+    for a, b, label, ok in _arch_edges(data):
+        if a not in centre or b not in centre:
+            continue
+        (x1, y1), (x2, y2) = centre[a], centre[b]
+        colour = APPROVED if ok else UNAPPROVED
+        dash = "" if ok else ' stroke-dasharray="7 5"'
+        out.append(
+            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{colour}" stroke-width="2"{dash}/>'
+        )
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2 + (-6 if ok else 12)
+        out.append(
+            f'<text x="{mx}" y="{my}" font-size="10" text-anchor="middle" fill="{colour}" paint-order="stroke" '
+            f'stroke="#ffffff" stroke-width="4">{escape(label[:80])}</text>'
+        )
+    for zname, b in boxes.items():
+        z = zones[zname]
+        fill = LANE_COLOURS.get(z.purdue_level, "#f3f4f6") if z.purdue_level is not None else "#f3f4f6"
+        dash = "" if z.defined else ' stroke-dasharray="5 4"'
+        out.append(
+            f'<rect x="{b.x}" y="{b.y}" width="{b.w}" height="{b.h}" rx="8" fill="{fill}" stroke="#5b6b85"{dash}/>'
+            f'<text x="{b.x + 12}" y="{b.y + 32}" font-size="13" font-weight="700" fill="#111827">{escape(zname[:30])}</text>'
+            f'<text x="{b.x + 12}" y="{b.y + 54}" font-size="10" fill="#4b5563">{escape(_zone_sub(z)[:44])}</text>'
+        )
+    out.append("</svg>")
+    return "\n".join(out)

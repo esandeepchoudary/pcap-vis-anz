@@ -239,3 +239,77 @@ def test_v2_bundle_still_imports(ac):
     m = manifest(format_version=2, assets=[])
     r = import_(ac[1], make_bundle({"manifest.json": json.dumps(m).encode()}))
     assert r.status_code == 201
+
+
+def test_rule_syntax():
+    from pcapvis.zones import clean_protocols, parse_rule
+
+    assert parse_rule("Modbus tcp/502 a->b").text() == "Modbus tcp/502 A→B"
+    assert parse_rule("* TCP/443 B→A").text() == "* tcp/443 B→A"
+    assert parse_rule("EtherNet/IP").text() == "EtherNet/IP"  # a slash in a protocol name isn't a port
+    assert parse_rule("tcp/102 both").text() == "* tcp/102"
+    assert clean_protocols(["modbus", "Modbus", " S7comm  tcp/102 ", ""]) == ["modbus", "S7comm tcp/102"]
+    for bad in ("tcp/70000", "A→B"):
+        with pytest.raises(Exception, match="out of range|needs a protocol"):
+            parse_rule(bad)
+
+
+def test_conduit_rules_by_port_and_direction(ac):
+    """Control (HMI) polls Cell 1 (PLC) over Modbus tcp/502: conduit A = Cell 1, B = Control, so the traffic is B→A."""
+    app, c = ac
+    eid, _a = setup_plant(app, c)
+    ctl, cell, sec = zone(c, eid, "Control"), zone(c, eid, "Cell 1"), zone(c, eid, "Security")
+    c.post(
+        f"/api/engagements/{eid}/conduits", json={"zone_a_id": ctl["id"], "zone_b_id": sec["id"]}, headers=H
+    )
+
+    def check(allowed):
+        r = c.post(
+            f"/api/engagements/{eid}/conduits",
+            json={"zone_a_id": cell["id"], "zone_b_id": ctl["id"], "allowed": allowed},
+            headers=H,
+        )
+        assert r.status_code == 201, r.text
+        v = [x["protocols"] for x in c.get(f"/api/engagements/{eid}/violations").json()]
+        c.delete(f"/api/engagements/{eid}/conduits/{r.json()['id']}", headers=H)
+        return v
+
+    assert check(["Modbus tcp/502 B→A"]) == []  # exactly what happens
+    assert check(["* tcp/502"]) == []  # any protocol on that port, either way
+    assert check(["Modbus A→B"]) == [["Modbus (B→A)"]]  # only the other way round is allowed
+    assert check(["Modbus tcp/503"]) == [["Modbus"]]  # wrong port
+    assert check(["S7comm"]) == [["Modbus"]]
+    r = c.post(
+        f"/api/engagements/{eid}/conduits",
+        json={"zone_a_id": cell["id"], "zone_b_id": ctl["id"], "allowed": ["Modbus tcp/99999"]},
+        headers=H,
+    )
+    assert r.status_code == 422 and "out of range" in r.text
+
+
+def test_architecture_diagram_exports(ac):
+    import xml.etree.ElementTree as ET
+
+    app, c = ac
+    eid, a = setup_plant(app, c)
+    set_zone(c, eid, a[CAM], "<Security & CCTV>")
+    ctl, cell = zone(c, eid, "Control", purdue_level=2), zone(c, eid, "Cell 1", purdue_level=1)
+    c.post(
+        f"/api/engagements/{eid}/conduits",
+        json={"zone_a_id": cell["id"], "zone_b_id": ctl["id"], "allowed": ["Modbus tcp/502 B→A"]},
+        headers=H,
+    )
+    d = c.get(f"/api/engagements/{eid}/reports/architecture.drawio")
+    assert d.status_code == 200 and "architecture.drawio" in d.headers["content-disposition"]
+    root = ET.fromstring(d.text)
+    values = [cell.get("value") or "" for cell in root.iter("mxCell")]
+    assert any(v.startswith("Control\n") and "Level 2" in v for v in values)
+    assert "Modbus tcp/502 B→A" in values  # the approved conduit
+    assert "Unapproved: RTSP" in values  # Control → <Security & CCTV> has no conduit
+    assert any(v.startswith("<Security & CCTV>") and "not defined" in v for v in values)
+    s = c.get(f"/api/engagements/{eid}/reports/architecture.svg").text
+    ET.fromstring(s)
+    assert "&lt;Security &amp; CCTV&gt;" in s and "<script" not in s
+    empty = engagement(c, "Empty")
+    assert "No zones defined yet" in c.get(f"/api/engagements/{empty}/reports/architecture.svg").text
+    ET.fromstring(c.get(f"/api/engagements/{empty}/reports/architecture.drawio").text)

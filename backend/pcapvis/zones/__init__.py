@@ -1,7 +1,9 @@
 """IEC 62443 zones and conduits, violation detection, and network inference (M6)."""
 
 import ipaddress
+import re
 from collections import defaultdict
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -91,17 +93,88 @@ def rename_zone(db: Session, eid: int, old: str, new: str, user: User | None) ->
     return n
 
 
+_PORT = re.compile(r"^(tcp|udp)/(\d{1,5})$", re.I)
+_DIRS = {"a->b": "A→B", "a→b": "A→B", "b->a": "B→A", "b→a": "B→A", "both": None, "<->": None, "↔": None}
+
+
+@dataclass(frozen=True)
+class Rule:
+    """One allowed path through a conduit: protocol (None: any), server port (None: any), direction."""
+
+    protocol: str | None
+    port: str | None  # "tcp/502"
+    direction: str | None  # "A→B" (zone A opens connections to zone B), "B→A", None: either way
+
+    def text(self) -> str:
+        parts = [self.protocol or "*"]
+        if self.port:
+            parts.append(self.port)
+        if self.direction:
+            parts.append(self.direction)
+        return " ".join(parts)
+
+
+def parse_rule(text: str) -> Rule:
+    """``Modbus``, ``Modbus tcp/502``, ``S7comm A→B``, ``* tcp/443 B->A`` (case-insensitive)."""
+    tokens = text.split()
+    port = direction = None
+    proto: list[str] = []
+    for t in tokens:
+        m = _PORT.match(t)
+        if m:
+            n = int(m.group(2))
+            if not 0 < n < 65536:
+                raise F.FieldError(f"Port {n} is out of range (1-65535).")
+            port = f"{m.group(1).lower()}/{n}"
+        elif t.lower() in _DIRS:
+            direction = _DIRS[t.lower()]
+        else:
+            proto.append(t)
+    name = " ".join(proto)
+    if not name and not port:
+        raise F.FieldError(f"'{text}' needs a protocol or a port.")
+    return Rule(None if name in ("", "*", "any") else name, port, direction)
+
+
 def clean_protocols(protocols: list[str]) -> list[str]:
+    """Validate and normalise conduit rules (plain protocol names are rules too)."""
     out: list[str] = []
     for p in protocols:
         p = p.strip()
         if not p:
             continue
         if len(p) > 64 or any(c in p for c in "\r\n\t\x00"):
-            raise F.FieldError("Protocol names must be short single-line text.")
-        if p.lower() not in {x.lower() for x in out}:
-            out.append(p)
+            raise F.FieldError("Rules must be short single-line text.")
+        text = parse_rule(p).text()
+        if text.lower() not in {x.lower() for x in out}:
+            out.append(text)
     return out[:MAX_PROTOCOLS]
+
+
+def _allows(r: Rule, protocol: str, port: str | None, direction: str | None) -> bool:
+    return (
+        (r.protocol is None or r.protocol.lower() == protocol.lower())
+        and (r.port is None or r.port == port)
+        and (direction is None or r.direction is None or r.direction == direction)
+    )
+
+
+def _not_covered(rules: list[Rule], link: LinkOut, direction: str) -> list[tuple[str, str]]:
+    """(protocol, what isn't allowed) for each protocol of the link that a rule doesn't cover:
+    "Modbus", "Modbus tcp/503" (that port isn't allowed) or "S7comm (B→A)" (only the other way round is)."""
+    out = []
+    for p in link.protocols:
+        ports = p.ports or [None]
+        bad = [port for port in ports if not any(_allows(r, p.protocol, port, direction) for r in rules)]
+        if not bad:
+            continue
+        if all(any(_allows(r, p.protocol, port, None) for r in rules) for port in bad):
+            out.append((p.protocol, f"{p.protocol} ({direction})"))
+        elif len(bad) < len(ports):
+            out.append((p.protocol, f"{p.protocol} {' '.join(b for b in bad if b)}"))
+        else:
+            out.append((p.protocol, p.protocol))
+    return out
 
 
 def violations(db: Session, eid: int, links: list[LinkOut] | None = None) -> list[ViolationOut]:
@@ -124,18 +197,23 @@ def violations(db: Session, eid: int, links: list[LinkOut] | None = None) -> lis
             protos = link.protocols
             kind = "no_conduit"
         else:
-            allowed = {p.lower() for p in conduit.allowed or []}
-            if not allowed:
+            if not conduit.allowed:
+                continue  # an open conduit allows anything
+            rules = [parse_rule(r) for r in conduit.allowed]
+            direction = "A→B" if zid.get(za) == conduit.zone_a_id else "B→A"
+            uncovered = _not_covered(rules, link, direction)
+            if not uncovered:
                 continue
-            protos = [p for p in link.protocols if p.protocol.lower() not in allowed]
-            if not protos:
-                continue
+            names = {name for name, _ in uncovered}
+            protos = [p for p in link.protocols if p.protocol in names]
             kind = "protocol_not_allowed"
         out.append(
             ViolationOut(
                 kind=kind,
                 conduit_id=conduit.id if conduit else None,
-                protocols=[p.protocol for p in protos],
+                protocols=[text for _, text in uncovered]
+                if conduit is not None
+                else [p.protocol for p in protos],
                 flows=sum(p.flows for p in protos),
                 packets=sum(p.packets for p in protos),
                 ot_writes=sum(p.ot_writes for p in protos),

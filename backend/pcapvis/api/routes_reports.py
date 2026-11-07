@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from pcapvis.api.routes_engagements import as_viewer
 from pcapvis.engagements import audit
 from pcapvis.reports import gather
-from pcapvis.reports.diagram import drawio, svg
+from pcapvis.reports.diagram import arch_drawio, arch_svg, drawio, svg
 from pcapvis.reports.document import to_docx, to_html
 from pcapvis.reports.xlsx import asset_register
 
@@ -51,6 +51,18 @@ def purdue_drawio(ctx=Depends(as_viewer)):
 @router.get("/engagements/{engagement_id}/reports/purdue.svg", responses=FILE, response_class=Response)
 def purdue_svg(ctx=Depends(as_viewer)):
     return _send(ctx, "Purdue diagram (SVG)", svg, "image/svg+xml", "purdue.svg")
+
+
+@router.get(
+    "/engagements/{engagement_id}/reports/architecture.drawio", responses=FILE, response_class=Response
+)
+def architecture_drawio(ctx=Depends(as_viewer)):
+    return _send(ctx, "Architecture diagram (draw.io)", arch_drawio, "application/xml", "architecture.drawio")
+
+
+@router.get("/engagements/{engagement_id}/reports/architecture.svg", responses=FILE, response_class=Response)
+def architecture_svg(ctx=Depends(as_viewer)):
+    return _send(ctx, "Architecture diagram (SVG)", arch_svg, "image/svg+xml", "architecture.svg")
 
 
 @router.get("/engagements/{engagement_id}/reports/report.docx", responses=FILE, response_class=Response)

@@ -159,11 +159,14 @@ function ConduitRow({ eng, c, nameOf, canEdit }: { eng: Engagement; c: Conduit; 
   const [allowed, setAllowed] = useState(c.allowed.join(', '))
   return (
     <tr>
-      <td>{nameOf.get(c.zone_a_id)} ↔ {nameOf.get(c.zone_b_id)}{c.name && <div className="muted">{c.name}</div>}</td>
+      <td>
+        <span title="A and B in rules">A: {nameOf.get(c.zone_a_id)} ↔ B: {nameOf.get(c.zone_b_id)}</span>
+        {c.name && <div className="muted">{c.name}</div>}
+      </td>
       <td>
         {canEdit ? (
           <input className="input" aria-label={`Allowed protocols ${nameOf.get(c.zone_a_id)} to ${nameOf.get(c.zone_b_id)}`} value={allowed}
-            placeholder="any protocol" onChange={(e) => setAllowed(e.target.value)}
+            placeholder="any traffic" onChange={(e) => setAllowed(e.target.value)}
             onBlur={() => update.mutate({ id: c.id, allowed: allowed.split(',').map((s) => s.trim()).filter(Boolean) })} />
         ) : c.allowed.join(', ') || 'any'}
         {update.error && <ErrorNote>{update.error.message}</ErrorNote>}
@@ -199,9 +202,13 @@ function ZonesTab({ eng, zones, conduits, canEdit }: { eng: Engagement; zones: Z
       </section>
       <section className="card stack" aria-label="Conduits">
         <h2 style={{ margin: 0 }}>Conduits</h2>
-        <p className="muted" style={{ margin: 0 }}>Approved paths between zones. List the protocols allowed through each (empty allows any); other cross-zone traffic is flagged.</p>
+        <p className="muted" style={{ margin: 0 }}>
+          Approved paths between zones; other cross-zone traffic is flagged. List what each allows, separated by commas (empty allows anything):
+          a protocol (<code>Modbus</code>), optionally a server port (<code>Modbus tcp/502</code>, <code>* tcp/443</code>) and a direction
+          (<code>A→B</code>: zone A opens the connections; type <code>A-&gt;B</code>).
+        </p>
         <table className="table">
-          <thead><tr><th>Between</th><th>Allowed protocols</th><th /></tr></thead>
+          <thead><tr><th>Between</th><th>Allowed</th><th /></tr></thead>
           <tbody>{conduits.map((c) => <ConduitRow key={c.id} eng={eng} c={c} nameOf={nameOf} canEdit={canEdit} />)}</tbody>
         </table>
         {canEdit && defined.length >= 2 && (
@@ -248,7 +255,7 @@ function ViolationsTab({ eng, byId, zones, canEdit }: { eng: Engagement; byId: M
           <tr key={`${x.src}-${x.dst}-${x.kind}`}>
             <td><AssetButton a={byId.get(x.src)} eid={eng.id} /><div className="muted">{x.src_zone}</div></td>
             <td><AssetButton a={byId.get(x.dst)} eid={eng.id} /><div className="muted">{x.dst_zone}</div></td>
-            <td><span className="badge badge-danger">{x.kind === 'no_conduit' ? 'no conduit' : 'protocol not allowed'}</span></td>
+            <td><span className="badge badge-danger">{x.kind === 'no_conduit' ? 'no conduit' : 'not allowed'}</span></td>
             <td>{x.protocols.join(', ')}</td>
             <td className="num">{formatNumber(x.flows)}</td>
             <td className="num">{x.ot_writes || '—'}</td>

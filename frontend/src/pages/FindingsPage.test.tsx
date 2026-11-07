@@ -100,7 +100,12 @@ it('report page offers every deliverable and says what the report will contain',
   expect(screen.getByRole('link', { name: /Word/ })).toHaveAttribute('href', '/api/engagements/7/reports/report.docx')
   expect(screen.getByRole('link', { name: /HTML/ })).toHaveAttribute('href', '/api/engagements/7/reports/report.html')
   expect(screen.getByRole('link', { name: /Excel/ })).toHaveAttribute('href', '/api/engagements/7/reports/assets.xlsx')
-  expect(screen.getByRole('link', { name: /draw.io/ })).toHaveAttribute('href', '/api/engagements/7/reports/purdue.drawio')
+  expect(screen.getAllByRole('link', { name: /draw.io/ }).map((l) => l.getAttribute('href'))).toEqual([
+    '/api/engagements/7/reports/purdue.drawio', '/api/engagements/7/reports/architecture.drawio',
+  ])
+  expect(screen.getAllByRole('link', { name: /SVG/ }).map((l) => l.getAttribute('href'))).toEqual([
+    '/api/engagements/7/reports/purdue.svg', '/api/engagements/7/reports/architecture.svg',
+  ])
   await userEvent.click(screen.getByLabelText('Include original captures'))
   expect(screen.getByRole('link', { name: /.pcapvis/ })).toHaveAttribute('href', '/api/engagements/7/export?captures=true&files=true')
 })

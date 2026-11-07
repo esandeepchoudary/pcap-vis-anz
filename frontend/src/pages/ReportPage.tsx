@@ -1,4 +1,4 @@
-import { Download, FileSpreadsheet, FileText, Package, Shapes } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, Network, Package, Shapes } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import type { Engagement } from '../api/client'
@@ -43,6 +43,9 @@ export function ReportPage() {
           </Deliverable>
           <Deliverable icon={Shapes} title="Purdue diagram" links={[{ href: reportUrl(eng.id, 'purdue.drawio'), label: 'draw.io (editable)' }, { href: reportUrl(eng.id, 'purdue.svg'), label: 'SVG' }]}>
             Levels, zones and assets with OT connections (writes in red). The draw.io file opens in diagrams.net for final touches.
+          </Deliverable>
+          <Deliverable icon={Network} title="Architecture diagram" links={[{ href: reportUrl(eng.id, 'architecture.drawio'), label: 'draw.io (editable)' }, { href: reportUrl(eng.id, 'architecture.svg'), label: 'SVG' }]}>
+            Zones and conduits with their allowed traffic, and unapproved cross-zone traffic in red, laid out as on the Architecture page.
           </Deliverable>
           <section className="card stack" style={{ gap: 'var(--space-2)' }} aria-label="Engagement bundle">
             <div className="row"><Package size={18} aria-hidden /><h2 style={{ margin: 0 }}>Engagement bundle</h2></div>
