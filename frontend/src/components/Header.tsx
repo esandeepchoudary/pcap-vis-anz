@@ -37,7 +37,7 @@ export function Header({ system, user, eid }: { system: SystemInfo; user: User; 
     <header className="header">
       <div className="brand">
         <img src="/favicon.svg" alt="" />
-        <span>PCAP Visualizer</span>
+        <span className="brand-name">PCAP Visualizer</span>
         <VersionBadge version={system.version} />
       </div>
       <EngagementSwitcher eid={eid} />
@@ -47,7 +47,7 @@ export function Header({ system, user, eid }: { system: SystemInfo; user: User; 
         <input className="input" placeholder="Search assets, IPs, findings…" disabled title="Search arrives with the asset inventory (M3)" />
       </label>
       <div className="header-actions" ref={menuRef}>
-        {system.mode === 'laptop' && <span className="badge">Laptop mode</span>}
+        {system.mode === 'laptop' && <span className="badge hide-phone">Laptop mode</span>}
         <button
           type="button"
           className="btn btn-ghost btn-icon"
@@ -65,7 +65,7 @@ export function Header({ system, user, eid }: { system: SystemInfo; user: User; 
           aria-expanded={menuOpen}
         >
           <span className="avatar" aria-hidden>{initials(user)}</span>
-          <span>{user.display_name || user.username}</span>
+          <span className="user-name">{user.display_name || user.username}</span>
           <ChevronDown size={14} aria-hidden />
         </button>
         {menuOpen && (

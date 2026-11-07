@@ -502,4 +502,5 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] SSO (Entra ID, Okta, LDAP) behind the existing auth interface (D3)
 - [ ] Optional live capture from a local interface (G13)
 - [x] VLAN graph layout (VLAN boxes, trunks, untagged; cross-VLAN connections; VLAN matrix) back from v1 (v1.2.0)
-- [ ] Responsive layout for phones and tablets (inspector as a drawer, rail as a bottom bar)
+- [x] Responsive layout for phones and tablets (inspector as a drawer, rail as a bottom bar), with a responsive e2e check (v1.3.0)
+- [ ] Header search box is a disabled placeholder; make it search assets, IPs and findings across the engagement

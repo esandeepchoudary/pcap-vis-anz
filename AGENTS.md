@@ -70,7 +70,14 @@ git push
 | Frontend | `cd frontend && npm test` (vitest), `npm run typecheck`, `npm run lint` | Component tests stub `fetch` via `src/test/utils.tsx` |
 | API types | `cd frontend && npm run gen:api` | Regenerate after any backend schema change and commit `src/api/schema.d.ts`; CI fails if stale |
 | End-to-end | `cd frontend && npm run build && npm run e2e` | Playwright against the production build served by the real backend (server mode, tshark required) |
+| Responsive | `cd frontend && npm run build && npx playwright test e2e/responsive.spec.ts` | Part of e2e. Every page at phone (390 px) and tablet (820 px): no sideways page scroll, nav reachable, inspector drawer opens and closes |
 | Docs site | `cd site && npm ci && npm run build` | Fails on broken links |
+
+**Responsive is part of done for any UI change.** Breakpoints: `≤1100px` the inspector is a drawer over the page
+(`NARROW` in `lib/useMediaQuery.ts`); `≤720px` the stage rail is a bottom bar and the inspector a bottom sheet
+(rules at the end of `components/AppShell.css`). Wide content (tables, tab bars, graphs) scrolls inside its own box,
+never the page; give grid columns `minmax(0, 1fr)` so a wide child can't stretch them. Add new pages to `PAGES` in
+`e2e/responsive.spec.ts`, and look at the page at 390 px yourself before opening the PR.
 
 CI (`.github/workflows/ci.yml`) runs all of these plus a container build/health check on every push and PR.
 

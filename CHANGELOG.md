@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.3.0 -- 2026-11-06
+
+- Responsive layout: inspector as a drawer on tablets and a bottom sheet on phones, stage rail as a bottom bar, compact header, tables and tab bars scroll inside their box; responsive e2e check at 390 px and 820 px
+
 ## v1.2.0 -- 2026-11-06
 
 - Network graph: By VLAN layout (VLAN boxes, trunks, untagged, cross-VLAN connections, VLAN matrix) and a timeline with range brush, replay and speed; asset list carries VLANs; graph re-fits on layout change; footer placeholder removed; credits easter egg
