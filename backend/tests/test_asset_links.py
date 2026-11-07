@@ -250,3 +250,21 @@ def test_migration_0004_queues_existing_captures_for_remerge(tmp_path):
     with engine.connect() as conn:
         assert conn.execute(text("SELECT assets_merged_at FROM captures")).scalar() is None
     engine.dispose()
+
+
+def test_refused_connections_are_grouped_as_closed_ports(ac):
+    """A scan's refused connections are attempts: one "Closed port" entry with the ports tried, not Telnet/SMB/RDP."""
+    app, c = ac
+    eid = engagement(c)
+    scan = [
+        flow(10 + i, HMI, PLC, protocol=p, port=port, server_answered=False)
+        for i, (p, port) in enumerate([("Telnet", 23), ("SMB", 445), ("RDP", 3389)])
+    ]
+    ingest(app, eid, res([flow(1, HMI, PLC), *scan]), "a.pcap")
+    (link,) = c.get(f"/api/engagements/{eid}/links").json()
+    protos = {p["protocol"]: p for p in link["protocols"]}
+    assert set(protos) == {"Modbus", "Closed port"}
+    assert (
+        protos["Closed port"]["ports"] == ["tcp/23", "tcp/3389", "tcp/445"]
+        and protos["Closed port"]["flows"] == 3
+    )

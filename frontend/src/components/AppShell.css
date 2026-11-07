@@ -247,3 +247,6 @@
 .search-overlay .header-search .search-close { display: inline-flex; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
 .header { position: relative; }
 @media (max-width: 720px) { .header-actions .show-phone { display: inline-flex; } }
+/* A card's content can't push it over its grid neighbour. */
+.grid-2 > * { min-width: 0; }
+.card code { overflow-wrap: anywhere; }

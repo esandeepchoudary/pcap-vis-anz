@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.7.0 -- 2026-11-07
+
+- Conduit rules by port and direction (e.g. 'Modbus tcp/502 A→B'); architecture diagram export (draw.io, SVG); refused connections grouped as 'Closed port' instead of being reported as the scanned protocols
+
 ## v1.6.0 -- 2026-11-07
 
 - Asset inventory: merge assets that are one device and split addresses that belong to another (remembered across re-analysis and bundles); import edits from a filled-in CSV/XLSX register with a preview before applying

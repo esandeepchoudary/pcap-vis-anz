@@ -242,6 +242,7 @@ def remove_capture(db: Session, cap: Capture) -> None:
 
 
 MAX_PORTS = 20
+CLOSED_PORT = "Closed port"  # link protocol for connections the server refused
 
 
 def build_findings(db: Session, cap: Capture, result: AnalysisResult) -> None:
@@ -285,7 +286,9 @@ def build_links(db: Session, cap: Capture, result: AnalysisResult) -> None:
         src, dst = owner.get(f.client), owner.get(f.server)
         if src is None or dst is None or src == dst:
             continue
-        k = (src, dst, f.protocol[:64])
+        # A connection the server only refused (reset) is an attempt, not that protocol in use: group them.
+        proto = f.protocol if f.server_answered else CLOSED_PORT
+        k = (src, dst, proto[:64])
         link = links.get(k)
         if link is None:
             link = links[k] = {

@@ -36,8 +36,9 @@ test('triage a finding, then download the report and exports', async ({ page }, 
   await expect(page.getByRole('table', { name: 'Findings' }).getByRole('row', { name: /PLC program download/ })).toContainText('Confirmed')
 
   await page.goto(`/e/${eid}/report`)
-  const save = async (name: RegExp, file: string) => {
-    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name }).click()])
+  const save = async (name: RegExp, file: string, card?: string) => {
+    const scope = card ? page.getByRole('region', { name: card }) : page
+    const [dl] = await Promise.all([page.waitForEvent('download'), scope.getByRole('link', { name }).click()])
     const out = testInfo.outputPath(file)
     await dl.saveAs(out)
     return out
@@ -48,6 +49,7 @@ test('triage a finding, then download the report and exports', async ({ page }, 
   expect(html).toContain('<h1>Executive summary</h1>')
   expect(fs.statSync(await save(/Word/, 'report.docx')).size).toBeGreaterThan(5000)
   expect(fs.statSync(await save(/Excel/, 'assets.xlsx')).size).toBeGreaterThan(3000)
-  expect(fs.readFileSync(await save(/draw.io/, 'purdue.drawio'), 'utf-8')).toContain('<mxfile')
+  expect(fs.readFileSync(await save(/draw.io/, 'purdue.drawio', 'Purdue diagram'), 'utf-8')).toContain('<mxfile')
+  expect(fs.readFileSync(await save(/SVG/, 'architecture.svg', 'Architecture diagram'), 'utf-8')).toContain('<svg')
   expect(errors).toEqual([])
 })

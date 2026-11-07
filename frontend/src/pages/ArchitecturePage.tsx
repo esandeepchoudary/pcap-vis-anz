@@ -188,10 +188,10 @@ function ZonesTab({ eng, zones, conduits, canEdit }: { eng: Engagement; zones: Z
       <section className="card stack" aria-label="Zones">
         <h2 style={{ margin: 0 }}>Zones</h2>
         <p className="muted" style={{ margin: 0 }}>Assets join a zone through their Zone field (inventory, Purdue map, or bulk edit). Zones used on assets but not defined yet are listed so you can define them.</p>
-        <table className="table">
+        <div className="table-wrap"><table className="table">
           <thead><tr><th>Name</th><th>Level</th><th>SL-T</th><th className="num">Assets</th><th /></tr></thead>
           <tbody>{zones.map((z) => <ZoneRow key={`${z.id}-${z.name}`} eng={eng} z={z} canEdit={canEdit} />)}</tbody>
-        </table>
+        </table></div>
         {canEdit && (
           <form className="row" onSubmit={(e) => { e.preventDefault(); if (name.trim()) create.mutate({ name, description: '' }, { onSuccess: () => setName('') }) }}>
             <input className="input" aria-label="New zone name" placeholder="New zone" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
@@ -207,10 +207,10 @@ function ZonesTab({ eng, zones, conduits, canEdit }: { eng: Engagement; zones: Z
           a protocol (<code>Modbus</code>), optionally a server port (<code>Modbus tcp/502</code>, <code>* tcp/443</code>) and a direction
           (<code>A→B</code>: zone A opens the connections; type <code>A-&gt;B</code>).
         </p>
-        <table className="table">
+        <div className="table-wrap"><table className="table">
           <thead><tr><th>Between</th><th>Allowed</th><th /></tr></thead>
           <tbody>{conduits.map((c) => <ConduitRow key={c.id} eng={eng} c={c} nameOf={nameOf} canEdit={canEdit} />)}</tbody>
-        </table>
+        </table></div>
         {canEdit && defined.length >= 2 && (
           <form className="row" onSubmit={(e) => {
             e.preventDefault()
@@ -271,7 +271,7 @@ function ViolationsTab({ eng, byId, zones, canEdit }: { eng: Engagement; byId: M
                 <button type="button" className="btn btn-sm" title="Add these protocols to the conduit"
                   onClick={() => {
                     const c = conduits.data?.find((y) => y.id === x.conduit_id)
-                    if (c) update.mutate({ id: c.id, allowed: [...c.allowed, ...x.protocols] })
+                    if (c) update.mutate({ id: c.id, allowed: [...c.allowed, ...x.protocols.map((t) => t.replace(/\s*\((A→B|B→A)\)$/, ' $1'))] })
                   }}>
                   Allow {x.protocols.join(', ')}
                 </button>

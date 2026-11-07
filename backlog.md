@@ -475,7 +475,7 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 ### v2 rebuild: M6 zones, conduits, architecture (2026-11-06, feature/m6-zones)
 
 - [x] Zones and conduits with allowed protocols; violations from observed traffic; architecture diagram; networks
-- [ ] Conduit rules by port and direction, not only protocol name
+- [x] Conduit rules by port and direction, not only protocol name (v1.7.0)
 - [ ] Subnets are inferred as /24; let consultants define real subnets and route them through gateways
 - [ ] SL-T is recorded but not compared with anything yet (SL-A/SL-C assessment)
 
@@ -491,7 +491,7 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [x] Findings workspace with triage and manual findings; DOCX/HTML report; XLSX register; draw.io/SVG diagram
 - [ ] Server-side PDF (needs a renderer in the image; today: print the HTML report)
 - [ ] Report templates and branding (logo, cover page, custom sections)
-- [ ] Diagram export of the architecture (zones/conduits) view, not only the Purdue map
+- [x] Diagram export of the architecture (zones/conduits) view, not only the Purdue map (v1.7.0)
 
 ### v2 rebuild: M9 release (2026-11-06, feature/m9-release)
 
@@ -506,3 +506,4 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [x] Logic soundness pass against a synthetic plant with ground truth (fixtures/plant, v1.4.0): fixed VLAN attribution of routed traffic, beaconing on internal polling, DMZ bypass hidden by the L4→L3 move, phantom assets from DNS answers, closed (scanned) ports counted as services
 - [ ] Classification quality (soundness check soft items): HMIs land at L3 not L2; MQTT publishers and NVRs stay "Linux Host" (unclassified level); DMZ servers at L4 (no segment-level hint); network gear at L4
 - [x] Header search: assets (name, IP, MAC, vendor, model, tags, VLAN, protocol), findings (title, rule, ATT&CK) and zones of the open engagement, engagements otherwise; "/" to focus, keyboard navigation, phone overlay (v1.5.0)
+- [ ] Conduit rule editor: suggest the traffic seen between the two zones as ready-made rules (protocol labels like EtherNet/IP vs CIP are easy to get wrong)
