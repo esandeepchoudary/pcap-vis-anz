@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Boxes, Download, Pencil, Plus, X } from 'lucide-rea
 import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import type { Asset, AssetFields, EditableField, Engagement, FieldValue } from '../api/client'
-import { assetExportUrl, useAssetFields, useAssets, useBulkEdit, useCreateAsset } from '../api/assets'
+import { assetExportUrl, useAssetFields, useAssets, useBulkEdit, useCreateAsset, useMergeAssets } from '../api/assets'
 import { DeviceIcon } from '../components/DeviceIcon'
 import { ErrorNote } from '../components/ui'
 import { useInspector } from '../inspector/context'
@@ -28,6 +28,36 @@ function Edited({ a, field }: { a: Asset; field: EditableField }) {
   return a.overridden.includes(field)
     ? <Pencil size={11} className="edited-mark" aria-label="set manually"><title>Set manually</title></Pencil>
     : null
+}
+
+/** Several selected assets are one device: fold them into the one picked as the survivor. */
+function MergeBar({ eid, selected, onDone }: { eid: number; selected: Asset[]; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [target, setTarget] = useState<number | null>(null)
+  const [reason, setReason] = useState('')
+  const merge = useMergeAssets(eid)
+  const survivor = selected.find((a) => a.id === target) ?? selected[0]
+  if (!open) {
+    return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>Merge {selected.length} into one…</button>
+  }
+  return (
+    <div className="bulk-bar" role="region" aria-label="Merge assets">
+      <strong>Merge into</strong>
+      <select className="select" aria-label="Asset to keep" value={survivor.id} onChange={(e) => setTarget(Number(e.target.value))}>
+        {selected.map((a) => <option key={a.id} value={a.id}>{assetLabel(a)}{a.name && a.ips[0] ? ` (${a.ips[0]})` : ''}</option>)}
+      </select>
+      <span className="muted">Its manual values win; addresses, traffic, findings and history of the others move to it.</span>
+      <input className="input" aria-label="Merge reason" placeholder="Reason (optional)" value={reason} maxLength={1000}
+        onChange={(e) => setReason(e.target.value)} style={{ minWidth: 200 }} />
+      <button type="button" className="btn btn-primary btn-sm" disabled={merge.isPending}
+        onClick={() => merge.mutate(
+          { target: survivor.id, version: survivor.version, source_ids: selected.filter((a) => a.id !== survivor.id).map((a) => a.id), reason },
+          { onSuccess: () => { setOpen(false); setReason(''); onDone() } },
+        )}>Merge</button>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+      {merge.isError && <ErrorNote>{merge.error.message}</ErrorNote>}
+    </div>
+  )
 }
 
 function BulkBar({ eid, ids, fields, onDone }: { eid: number; ids: number[]; fields: AssetFields; onDone: () => void }) {
@@ -222,6 +252,9 @@ export function AssetsPage() {
           </div>
           {canEdit && ids.length > 0 && fields.data && (
             <BulkBar eid={eng.id} ids={ids} fields={fields.data} onDone={() => setChecked(new Set())} />
+          )}
+          {canEdit && ids.length > 1 && (
+            <MergeBar key={ids.join()} eid={eng.id} selected={(assets.data ?? []).filter((a) => checked.has(a.id))} onDone={() => setChecked(new Set())} />
           )}
           <div className="table-wrap">
             <table className="table asset-table" aria-label="Assets">

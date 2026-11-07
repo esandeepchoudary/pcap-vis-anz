@@ -107,7 +107,7 @@ class _OverrideMeta(BaseModel):
 class _ChangeMeta(BaseModel):
     at: datetime
     actor: str = Field(default="", max_length=255)
-    kind: Literal["created", "override", "reset", "auto", "import"]
+    kind: Literal["created", "override", "reset", "auto", "import", "merge", "split"]
     field: str | None = Field(default=None, max_length=32)
     old: Any = None
     new: Any = None
@@ -127,6 +127,7 @@ class _AssetMeta(BaseModel):
     macs: list[str] = Field(default_factory=list, max_length=1000)
     declared_ips: list[str] = Field(default_factory=list, max_length=32)
     declared_macs: list[str] = Field(default_factory=list, max_length=32)
+    pinned_ips: list[str] = Field(default_factory=list, max_length=32)  # tied here by a merge or split
     auto: dict[str, Any] = Field(default_factory=dict)
     overrides: dict[str, _OverrideMeta] = Field(default_factory=dict)
     sightings: list[_SightingMeta] = Field(default_factory=list, max_length=100_000)
@@ -298,6 +299,7 @@ def _asset_meta(a: Asset, with_result: set[int]) -> _AssetMeta:
         macs=a.macs or [],
         declared_ips=declared.get("ips", []),
         declared_macs=declared.get("macs", []),
+        pinned_ips=declared.get("pinned_ips", []),
         auto={k: v for k, v in (a.auto or {}).items() if k in F.FIELDS},
         overrides={k: _OverrideMeta(**v) for k, v in (a.overrides or {}).items()},
         sightings=[
@@ -613,6 +615,7 @@ def _import_assets(
         try:
             ips, macs = parse_identifiers(m.ips, m.macs, limit=2000)
             d_ips, d_macs = parse_identifiers(m.declared_ips, m.declared_macs)
+            pinned, _ = parse_identifiers(m.pinned_ips, [])
         except F.FieldError as exc:
             raise BundleError(f"Invalid asset address: {exc}") from exc
         overrides = _clean_values({k: o.value for k, o in m.overrides.items()}, "value")
@@ -621,7 +624,9 @@ def _import_assets(
             origin=m.origin,
             ips=ips,
             macs=macs,
-            declared={"ips": d_ips, "macs": d_macs} if d_ips or d_macs else {},
+            declared={"ips": d_ips, "macs": d_macs, **({"pinned_ips": pinned} if pinned else {})}
+            if d_ips or d_macs or pinned
+            else {},
             auto=_clean_values(m.auto, "automatic value"),
             observed={"captures": 0},
             overrides={

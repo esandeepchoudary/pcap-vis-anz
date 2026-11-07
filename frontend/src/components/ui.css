@@ -93,3 +93,6 @@
 .dev-security { color: var(--dev-security); }
 .dev-external { color: var(--dev-external); }
 .dev-unknown { color: var(--dev-unknown); }
+.split-box { display: grid; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--border);
+  border-radius: var(--radius-md); }
+.split-box legend { font-size: var(--text-xs); font-weight: 700; color: var(--text-2); padding: 0 4px; }

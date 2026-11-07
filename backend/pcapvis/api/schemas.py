@@ -298,6 +298,27 @@ class AssetBulkResult(BaseModel):
     changes: int
 
 
+class AssetMerge(BaseModel):
+    """Fold other assets into this one (the matcher kept one device apart)."""
+
+    version: int = Field(ge=1, description="The version of this asset you saw; a mismatch returns 409")
+    source_ids: list[int] = Field(min_length=1, max_length=50)
+    reason: str = Field(default="", max_length=1000)
+
+
+class AssetSplit(BaseModel):
+    """Move some of this asset's IP addresses to a new asset (the matcher joined two devices)."""
+
+    version: int = Field(ge=1)
+    ips: list[str] = Field(min_length=1, max_length=32)
+    reason: str = Field(default="", max_length=1000)
+
+
+class AssetSplitResult(BaseModel):
+    original: "AssetDetail"
+    created: "AssetDetail"
+
+
 class AssetCreate(BaseModel):
     ips: list[str] = Field(default_factory=list, max_length=32)
     macs: list[str] = Field(default_factory=list, max_length=32)
@@ -311,7 +332,7 @@ class AssetChangeOut(BaseModel):
     id: int
     at: datetime
     actor: str
-    kind: Literal["created", "override", "reset", "auto", "import"]
+    kind: Literal["created", "override", "reset", "auto", "import", "merge", "split"]
     field: EditableField | None
     old: FieldValue
     new: FieldValue

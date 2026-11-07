@@ -124,10 +124,13 @@ class _Index:
     def __init__(self, assets: list[Asset]):
         self.by_mac: dict[str, Asset] = {}
         self.by_ip: dict[str, list[Asset]] = defaultdict(list)
-        for a in assets:
+        self.pinned: dict[str, Asset] = {}  # IP → asset a consultant tied it to (merge/split): beats the MAC
+        for a in sorted(assets, key=lambda a: a.id or 0):  # oldest asset owns a shared MAC
             self.add(a)
 
     def add(self, a: Asset) -> None:
+        for ip in (a.declared or {}).get("pinned_ips", []):
+            self.pinned.setdefault(ip, a)
         for m in a.macs or []:
             self.by_mac.setdefault(m, a)
         for ip in a.ips or []:
@@ -135,6 +138,8 @@ class _Index:
                 self.by_ip[ip].append(a)
 
     def find(self, ip: str, mac: str | None) -> Asset | None:
+        if ip in self.pinned:
+            return self.pinned[ip]
         if mac and mac in self.by_mac:
             return self.by_mac[mac]
         candidates = self.by_ip.get(ip, [])
@@ -358,7 +363,8 @@ def prune(db: Session, eid: int) -> int:
     )
     n = 0
     for a in orphans:
-        if not a.overrides and not (a.declared or {}).get("ips") and not (a.declared or {}).get("macs"):
+        d = a.declared or {}
+        if not a.overrides and not d.get("ips") and not d.get("macs") and not d.get("pinned_ips"):
             db.delete(a)
             n += 1
     if n:
@@ -525,7 +531,7 @@ def recompute(db: Session, assets: list[Asset], *, actor: str, quiet: set[int] =
         a.auto = auto
         a.observed = observed
         a.macs = sorted({*declared.get("macs", []), *(m for _h, m, _c in rows if m)})
-        a.ips = sorted({*declared.get("ips", []), *(h.ip for h in hosts)})
+        a.ips = sorted({*declared.get("ips", []), *declared.get("pinned_ips", []), *(h.ip for h in hosts)})
     db.flush()
 
 

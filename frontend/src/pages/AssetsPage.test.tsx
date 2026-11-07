@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
-import type { Asset, AssetChange, AssetDetail, AssetFields, Engagement } from '../api/client'
+import type { Asset, AssetChange, AssetDetail, AssetFields, Engagement, FieldValue } from '../api/client'
 import { Inspector } from '../components/Inspector'
 import { InspectorContext, type Selection } from '../inspector/context'
 import { describeChange, formatValue, parseList, parseTags } from '../lib/assets'
@@ -177,6 +177,13 @@ describe('Asset inventory', () => {
     expect(list).toHaveTextContent('First seen in a.pcap')
   })
 
+  it('describes merges and splits in history', () => {
+    const c = (kind: AssetChange['kind'], old: FieldValue, nw: FieldValue): AssetChange => ({ id: 1, at: '', actor: 'a', kind, field: null, old, new: nw, reason: '' })
+    expect(describeChange(c('merge', ['plc (10.0.0.51)'], ['10.0.0.51']), fields)).toBe('Merged in plc (10.0.0.51)')
+    expect(describeChange(c('split', ['10.0.0.52'], null), fields)).toBe('Addresses moved to a new asset: 10.0.0.52')
+    expect(describeChange(c('split', null, ['10.0.0.52']), fields)).toBe('Split off from another asset: 10.0.0.52')
+  })
+
   it('bulk-edits the selected assets', async () => {
     const api = setup({ 'POST /api/engagements/7/assets/bulk': { assets: 2, changes: 2 } })
     await screen.findByText('eng-ws-01')
@@ -191,6 +198,40 @@ describe('Asset inventory', () => {
       asset_ids: [1, 2], set: { zone: 'Cell 9' }, reset: [], reason: 'Same cabinet',
     }))
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Bulk edit' })).not.toBeInTheDocument())
+  })
+
+  it('merges selected assets into the one picked to keep', async () => {
+    const api = setup({ 'POST /api/engagements/7/assets/2/merge': { ...detail, id: 2 } })
+    await screen.findByText('eng-ws-01')
+    await userEvent.click(screen.getByLabelText('Select all shown'))
+    await userEvent.click(screen.getByRole('button', { name: 'Merge 2 into one…' }))
+    const bar = screen.getByRole('region', { name: 'Merge assets' })
+    await userEvent.selectOptions(within(bar).getByLabelText('Asset to keep'), '2')
+    await userEvent.type(within(bar).getByLabelText('Merge reason'), 'Same box, two NICs')
+    await userEvent.click(within(bar).getByRole('button', { name: 'Merge' }))
+    await waitFor(() => expect(api.calls.find((c) => c.path.endsWith('/merge'))?.body).toEqual({
+      version: 1, source_ids: [1], reason: 'Same box, two NICs',
+    }))
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Merge assets' })).not.toBeInTheDocument())
+  })
+
+  it('splits addresses off into a new asset and opens it', async () => {
+    const twoIps = { ...detail, ips: ['10.0.2.51', '10.0.2.52'] }
+    const created = { ...detail, id: 9, ips: ['10.0.2.52'], name: null }
+    const api = setup({
+      'GET /api/engagements/7/assets/1': twoIps,
+      'POST /api/engagements/7/assets/1/split': { original: detail, created },
+      'GET /api/engagements/7/assets/9': created,
+    })
+    await userEvent.click(await screen.findByText('10.0.2.51'))
+    await userEvent.click(await screen.findByRole('tab', { name: 'Evidence' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Split addresses…' }))
+    const split = screen.getByRole('button', { name: 'Split' })
+    expect(split).toBeDisabled()
+    await userEvent.click(screen.getByRole('checkbox', { name: '10.0.2.52' }))
+    await userEvent.click(split)
+    await waitFor(() => expect(api.calls.find((c) => c.path.endsWith('/split'))?.body).toEqual({ version: 1, ips: ['10.0.2.52'], reason: '' }))
+    await waitFor(() => expect(api.calls.some((c) => c.path === '/api/engagements/7/assets/9')).toBe(true)) // the new asset opens
   })
 
   it('viewers can read but not edit', async () => {

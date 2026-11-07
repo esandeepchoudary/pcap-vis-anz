@@ -266,6 +266,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/assets/{asset_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Assets
+         * @description Fold other assets into this one: they were one device. Later captures of their addresses land here too.
+         */
+        post: operations["merge_assets_api_engagements__engagement_id__assets__asset_id__merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/assets/{asset_id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split Asset
+         * @description Move some IP addresses to a new asset: they belong to another device. Their traffic moves with them.
+         */
+        post: operations["split_asset_api_engagements__engagement_id__assets__asset_id__split_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/audit": {
         parameters: {
             query?: never;
@@ -1112,7 +1152,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "created" | "override" | "reset" | "auto" | "import";
+            kind: "created" | "override" | "reset" | "auto" | "import" | "merge" | "split";
             /** New */
             new: string | number | string[] | null;
             /** Old */
@@ -1305,6 +1345,24 @@ export interface components {
             };
         };
         /**
+         * AssetMerge
+         * @description Fold other assets into this one (the matcher kept one device apart).
+         */
+        AssetMerge: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Source Ids */
+            source_ids: number[];
+            /**
+             * Version
+             * @description The version of this asset you saw; a mismatch returns 409
+             */
+            version: number;
+        };
+        /**
          * AssetOrigin
          * @enum {string}
          */
@@ -1386,6 +1444,26 @@ export interface components {
             vlans: number[];
             /** Zone */
             zone: string | null;
+        };
+        /**
+         * AssetSplit
+         * @description Move some of this asset's IP addresses to a new asset (the matcher joined two devices).
+         */
+        AssetSplit: {
+            /** Ips */
+            ips: string[];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Version */
+            version: number;
+        };
+        /** AssetSplitResult */
+        AssetSplitResult: {
+            created: components["schemas"]["AssetDetail"];
+            original: components["schemas"]["AssetDetail"];
         };
         /** AuditEventOut */
         AuditEventOut: {
@@ -3363,6 +3441,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_assets_api_engagements__engagement_id__assets__asset_id__merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetMerge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    split_asset_api_engagements__engagement_id__assets__asset_id__split_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetSplit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetSplitResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

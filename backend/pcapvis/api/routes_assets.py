@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pcapvis.api.deps import current_user
-from pcapvis.api.routes_engagements import as_editor, as_viewer
+from pcapvis.api.routes_engagements import as_editor, as_viewer, storage
 from pcapvis.api.schemas import (
     AssetBulkEdit,
     AssetBulkResult,
@@ -20,15 +20,19 @@ from pcapvis.api.schemas import (
     AssetEdit,
     AssetFieldOut,
     AssetFieldsOut,
+    AssetMerge,
     AssetOut,
+    AssetSplit,
+    AssetSplitResult,
     ErrorOut,
     SightingOut,
 )
 from pcapvis.assets import fields as F
-from pcapvis.assets import service
+from pcapvis.assets import identity, service
 from pcapvis.assets.fields import FieldError
 from pcapvis.db.models import Asset, AssetChange, AssetSighting, Capture, Engagement
 from pcapvis.engagements import audit
+from pcapvis.engagements.storage import Storage
 from pcapvis.engine import knowledge as K
 
 router = APIRouter(prefix="/api", tags=["assets"])
@@ -324,6 +328,75 @@ def edit_asset(body: AssetEdit, asset_id: int = Path(ge=1), ctx=Depends(as_edito
         )
     db.commit()
     return asset_detail(db, a)
+
+
+@router.post(
+    "/engagements/{engagement_id}/assets/{asset_id}/merge",
+    response_model=AssetDetail,
+    responses={404: {"model": ErrorOut}, 409: {"model": ErrorOut}, 422: {"model": ErrorOut}},
+)
+def merge_assets(body: AssetMerge, asset_id: int = Path(ge=1), ctx=Depends(as_editor)) -> AssetDetail:
+    """Fold other assets into this one: they were one device. Later captures of their addresses land here too."""
+    eng, _role, user, db = ctx
+    target = _asset(eng, db, asset_id)
+    ids = set(body.source_ids) - {target.id}
+    sources = list(db.scalars(select(Asset).where(Asset.engagement_id == eng.id, Asset.id.in_(ids))))
+    if len(sources) != len(ids):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Some of those assets don't exist in this engagement.")
+    names = [service.label(a) for a in sources]
+    try:
+        identity.merge_assets(db, target, sources, user, reason=body.reason, expected_version=body.version)
+    except FieldError as exc:
+        db.rollback()
+        raise _bad(exc) from exc
+    except service.EditConflict as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, CONFLICT) from exc
+    eng.touch()
+    audit.record(
+        db,
+        user,
+        "asset.merge",
+        engagement_id=eng.id,
+        target=service.label(target),
+        details={"merged": names[:50]},
+    )
+    db.commit()
+    return asset_detail(db, target)
+
+
+@router.post(
+    "/engagements/{engagement_id}/assets/{asset_id}/split",
+    response_model=AssetSplitResult,
+    responses={404: {"model": ErrorOut}, 409: {"model": ErrorOut}, 422: {"model": ErrorOut}},
+)
+def split_asset(
+    body: AssetSplit, asset_id: int = Path(ge=1), ctx=Depends(as_editor), store: Storage = Depends(storage)
+) -> AssetSplitResult:
+    """Move some IP addresses to a new asset: they belong to another device. Their traffic moves with them."""
+    eng, _role, user, db = ctx
+    a = _asset(eng, db, asset_id)
+    try:
+        new = identity.split_asset(
+            db, store, a, body.ips, user, reason=body.reason, expected_version=body.version
+        )
+    except FieldError as exc:
+        db.rollback()
+        raise _bad(exc) from exc
+    except service.EditConflict as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, CONFLICT) from exc
+    eng.touch()
+    audit.record(
+        db,
+        user,
+        "asset.split",
+        engagement_id=eng.id,
+        target=service.label(a),
+        details={"moved": sorted(body.ips)},
+    )
+    db.commit()
+    return AssetSplitResult(original=asset_detail(db, a), created=asset_detail(db, new))
 
 
 @router.delete(

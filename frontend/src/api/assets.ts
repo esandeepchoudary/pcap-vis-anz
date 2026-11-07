@@ -91,3 +91,22 @@ export function useDeleteAsset(eid: number) {
 export function assetExportUrl(eid: number) {
   return `/api/engagements/${eid}/assets/export`
 }
+
+/** Merge and split move traffic and findings too: refresh everything about the engagement. */
+export function useMergeAssets(eid: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ target, ...body }: { target: number; version: number; source_ids: number[]; reason: string }) =>
+      unwrap(await api.POST('/api/engagements/{engagement_id}/assets/{asset_id}/merge', { ...pa(eid, target), body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['engagement', eid] }),
+  })
+}
+
+export function useSplitAsset(eid: number, id: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: { version: number; ips: string[]; reason: string }) =>
+      unwrap(await api.POST('/api/engagements/{engagement_id}/assets/{asset_id}/split', { ...pa(eid, id), body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['engagement', eid] }),
+  })
+}
