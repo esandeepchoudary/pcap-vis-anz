@@ -153,3 +153,74 @@
 @keyframes credits-pop { from { opacity: 0; transform: scale(0.94) translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .credits-backdrop, .credits { animation: none; } }
 .credits a { color: var(--accent); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────────
+   Tablet: the inspector leaves the grid and slides in over the page when something is selected.
+   Phone: the stage rail becomes a bottom bar and the inspector a bottom sheet. */
+.inspector-backdrop { display: none; }
+@media (max-width: 1100px) {
+  .shell { grid-template-columns: var(--rail-w) minmax(0, 1fr); grid-template-areas: "header header" "rail main"; }
+  .inspector.drawer {
+    position: fixed; z-index: 40; top: var(--header-h); right: 0; bottom: 0; width: min(420px, 100vw);
+    box-shadow: var(--shadow-md); transition: transform 200ms var(--ease);
+  }
+  .inspector.drawer.collapsed { width: min(420px, 100vw); transform: translateX(105%); visibility: hidden;
+    transition: transform 200ms var(--ease), visibility 0s 200ms; }
+  .inspector.drawer .inspector-body { flex: 1; }
+  .inspector-backdrop { display: block; position: fixed; inset: var(--header-h) 0 0 0; z-index: 39;
+    background: color-mix(in srgb, #000 25%, transparent); }
+  .header-search { max-width: 280px; }
+}
+@media (max-width: 720px) {
+  :root { --rail-h: 58px; }
+  .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--header-h) minmax(0, 1fr) var(--rail-h);
+    grid-template-areas: "header" "main" "rail"; }
+  .rail { flex-direction: row; gap: 0; padding: 0 var(--space-1); overflow-x: auto; overflow-y: hidden;
+    border-right: 0; border-top: 1px solid var(--border); scrollbar-width: none; }
+  .rail::-webkit-scrollbar { display: none; }
+  .rail-link { flex: 0 0 auto; min-width: 62px; justify-content: center; padding: 6px 2px; }
+  .rail-link.active::before { left: 12px; right: 12px; top: -1px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
+  .rail-spacer { display: none; }
+  .header { gap: var(--space-2); padding: 0 var(--space-2); }
+  .brand-name, .user-name, .hide-phone, .header-search { display: none; }
+  .switcher { margin-left: 0; min-width: 0; flex: 1; }
+  .engagement-switch { max-width: 100%; }
+  .header-actions { margin-left: 0; }
+  .menu-left { min-width: min(280px, 92vw); }
+  .inspector.drawer, .inspector.drawer.collapsed { top: auto; left: 0; right: 0; bottom: var(--rail-h); width: auto;
+    max-height: 78dvh; border-left: 0; border-top: 1px solid var(--border); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  .inspector.drawer.collapsed { transform: translateY(105%); }
+  .inspector-backdrop { inset: var(--header-h) 0 var(--rail-h) 0; }
+  .page { padding: var(--space-3); }
+  .page-head { flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+  .page-head h1 { font-size: var(--text-xl); }
+  .kv { grid-template-columns: 110px minmax(0, 1fr); }
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .credits { padding: var(--space-5) var(--space-3) var(--space-4); }
+}
+@media (max-width: 720px) {
+  /* Wide tables scroll sideways inside their card instead of widening the page. */
+  .table { display: block; max-width: 100%; overflow-x: auto; }
+}
+@media (max-width: 720px) {
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .eng-grid { grid-template-columns: minmax(0, 1fr); }
+  .dropzone { padding: var(--space-4) var(--space-3); text-align: center; overflow-wrap: anywhere; }
+  .card { min-width: 0; }
+  /* Tab bars scroll sideways rather than clipping their last tabs. */
+  [role='tablist'] { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+  [role='tablist']::-webkit-scrollbar { display: none; }
+  [role='tablist'] > * { flex: 0 0 auto; }
+}
+@media (max-width: 720px) {
+  .input, .select { min-width: 0; max-width: 100%; }
+  .graph-timeline { flex-wrap: wrap; row-gap: 4px; }
+  .graph-timeline .tl-range { flex-basis: 100%; order: 5; }
+}
+/* The header must never be wider than the screen: items shrink, the search box first. */
+.header > * { min-width: 0; }
+.brand { flex: none; }
+.switcher { flex: 0 1 auto; }
+.header-search { min-width: 0; flex: 1 1 140px; }
+.header-actions { flex: none; }
+@media (max-width: 900px) { .brand-name { display: none; } }

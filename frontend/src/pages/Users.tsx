@@ -26,7 +26,7 @@ function CreateUserForm() {
   }
 
   return (
-    <form className="card" onSubmit={submit} aria-label="Create user" style={{ display: 'grid', gap: 'var(--space-3)' }}>
+    <form className="card" onSubmit={submit} aria-label="Create user" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--space-3)' }}>
       <h2 style={{ marginBottom: 0 }}>Add user</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-3)' }}>
         <label className="field"><span>Username</span>
