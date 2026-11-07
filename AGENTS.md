@@ -71,6 +71,7 @@ git push
 | API types | `cd frontend && npm run gen:api` | Regenerate after any backend schema change and commit `src/api/schema.d.ts`; CI fails if stale |
 | End-to-end | `cd frontend && npm run build && npm run e2e` | Playwright against the production build served by the real backend (server mode, tshark required) |
 | Responsive | `cd frontend && npm run build && npx playwright test e2e/responsive.spec.ts` | Part of e2e. Every page at phone (390 px) and tablet (820 px): no sideways page scroll, nav reachable, inspector drawer opens and closes |
+| Soundness | `cd backend && uv run python ../fixtures/plant/build_plant.py --out /tmp/plant` then `uv run python ../fixtures/plant/check_soundness.py --dir /tmp/plant --url http://127.0.0.1:8000 --user … --password …` | A synthetic water plant (4 captures, ~540k packets, VLANs, routing, fingerprints, planted problems) with a ground-truth file; the checker loads it through the API and compares inventory, VLANs, links, OT writes, findings, credentials, DMZ bypass, diff and timeline. Run it after any engine, merge or rule change. `--scale 0.2` for a quick run |
 | Docs site | `cd site && npm ci && npm run build` | Fails on broken links |
 
 **Responsive is part of done for any UI change.** Breakpoints: `≤1100px` the inspector is a drawer over the page

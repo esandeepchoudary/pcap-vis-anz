@@ -340,15 +340,28 @@ def exfiltration(ctx: Ctx):
             yield g.build()
 
 
+# Protocols that poll on a fixed period by design (OT scans, telemetry, monitoring, time sync).
+PERIODIC_PROTOCOLS = K.OT_PROTOCOLS | {"MQTT", "CoAP", "AMQP", "SNMP", "NTP", "Syslog", "OPC-UA", "LLDP"}
+
+
+def _periodic_by_design(ctx: Ctx, f) -> bool:
+    return f.protocol in PERIODIC_PROTOCOLS and ctx.private(f.client) and ctx.private(f.server)
+
+
 @rule("beaconing", "network", "medium", "Regular beaconing", ["T1071", "T0869"])
 def beaconing(ctx: Ctx):
-    """Very regular timing, either of packets within a flow or of repeated connections."""
+    """Very regular timing, either of packets within a flow or of repeated connections.
+
+    Polling between internal devices over OT, telemetry and monitoring protocols is regular by design
+    (SCADA scans, MQTT telemetry, SNMP polls), so it isn't beaconing; the same protocols to the internet are.
+    """
     series: dict[tuple, tuple[list[float], set[int]]] = {}
-    for f in ctx.r.flows:
+    flows = [f for f in ctx.r.flows if not _periodic_by_design(ctx, f)]
+    for f in flows:
         if len(f.c2s_times) > BEACON_MIN_INTERVALS:
             series[(f.client, f.server, f.server_port, f.id)] = (f.c2s_times, {f.id})
     conn_starts = defaultdict(lambda: ([], set()))
-    for f in ctx.r.flows:
+    for f in flows:
         if f.transport == "tcp":
             entry = conn_starts[(f.client, f.server, f.server_port, None)]
             entry[0].append(f.first_seen)

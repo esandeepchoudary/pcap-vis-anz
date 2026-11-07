@@ -1985,6 +1985,11 @@ export interface components {
             resets: number;
             /** Server */
             server: string;
+            /**
+             * Server Answered
+             * @default true
+             */
+            server_answered: boolean;
             /** Server Port */
             server_port: number;
             /**

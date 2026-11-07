@@ -195,6 +195,22 @@ def test_beaconing_across_repeated_connections():
     assert len(a) == 1 and a[0].count == 22 and len(a[0].flow_ids) == 22
 
 
+@pytest.mark.parametrize(
+    "server,protocol,expect",
+    [
+        ("10.50.0.10", "S7comm", 0),  # a SCADA scan between internal devices is periodic by design
+        ("10.60.0.10", "MQTT", 0),  # sensor telemetry to the plant broker
+        ("10.0.0.20", "SNMP", 0),  # monitoring polls
+        ("203.0.113.66", "Modbus", 1),  # the same polling to the internet is not normal
+        ("10.0.0.20", "HTTP", 1),  # regular internal web requests still count (internal C2, proxies)
+    ],
+)
+def test_beaconing_ignores_internal_polling_protocols(server, protocol, expect):
+    times = [T0 + i * 1.0 for i in range(60)]
+    f = flow("10.30.0.10", server, 102, c2s_times=times, protocol=protocol)
+    assert len(hits(result(flows=[f]), "beaconing")) == expect
+
+
 def test_suspicious_port_uses_server_port_only():
     ok = flow("10.0.0.5", "203.0.113.66", 4444)
     client_side = flow("10.0.0.5", "203.0.113.66", 443, cport=4444)  # ephemeral client port, not suspicious

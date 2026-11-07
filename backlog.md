@@ -504,3 +504,5 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [x] VLAN graph layout (VLAN boxes, trunks, untagged; cross-VLAN connections; VLAN matrix) back from v1 (v1.2.0)
 - [x] Responsive layout for phones and tablets (inspector as a drawer, rail as a bottom bar), with a responsive e2e check (v1.3.0)
 - [ ] Header search box is a disabled placeholder; make it search assets, IPs and findings across the engagement
+- [x] Logic soundness pass against a synthetic plant with ground truth (fixtures/plant, v1.4.0): fixed VLAN attribution of routed traffic, beaconing on internal polling, DMZ bypass hidden by the L4→L3 move, phantom assets from DNS answers, closed (scanned) ports counted as services
+- [ ] Classification quality (soundness check soft items): HMIs land at L3 not L2; MQTT publishers and NVRs stay "Linux Host" (unclassified level); DMZ servers at L4 (no segment-level hint); network gear at L4
