@@ -4,13 +4,13 @@ import csv
 import io
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pcapvis.api.deps import current_user
-from pcapvis.api.routes_engagements import as_editor, as_viewer
+from pcapvis.api.routes_engagements import as_editor, as_viewer, storage
 from pcapvis.api.schemas import (
     AssetBulkEdit,
     AssetBulkResult,
@@ -20,15 +20,21 @@ from pcapvis.api.schemas import (
     AssetEdit,
     AssetFieldOut,
     AssetFieldsOut,
+    AssetImportChange,
+    AssetImportOut,
+    AssetMerge,
     AssetOut,
+    AssetSplit,
+    AssetSplitResult,
     ErrorOut,
     SightingOut,
 )
 from pcapvis.assets import fields as F
-from pcapvis.assets import service
+from pcapvis.assets import identity, importer, service
 from pcapvis.assets.fields import FieldError
 from pcapvis.db.models import Asset, AssetChange, AssetSighting, Capture, Engagement
 from pcapvis.engagements import audit
+from pcapvis.engagements.storage import Storage
 from pcapvis.engine import knowledge as K
 
 router = APIRouter(prefix="/api", tags=["assets"])
@@ -161,6 +167,52 @@ def create_asset(body: AssetCreate, ctx=Depends(as_editor)) -> AssetDetail:
     audit.record(db, user, "asset.create", engagement_id=eng.id, target=service.label(a))
     db.commit()
     return asset_detail(db, a)
+
+
+@router.post(
+    "/engagements/{engagement_id}/assets/import",
+    response_model=AssetImportOut,
+    responses={400: {"model": ErrorOut}, 413: {"model": ErrorOut}},
+)
+def import_assets(
+    file: UploadFile = File(...),
+    apply: bool = Form(default=False),
+    reason: str = Form(default="", max_length=1000),
+    ctx=Depends(as_editor),
+) -> AssetImportOut:
+    """Read edits from a filled-in asset register (CSV or XLSX). Preview by default; ``apply`` saves them."""
+    eng, _role, user, db = ctx
+    data = file.file.read(importer.MAX_BYTES + 1)
+    if len(data) > importer.MAX_BYTES:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "The file is larger than 10 MB.")
+    try:
+        rows = importer.read_rows(file.filename or "", data)
+        reason = F.validate_reason(reason or f"Imported from {file.filename or 'a spreadsheet'}")
+    except (importer.ImportError_, FieldError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    plan = importer.plan(db, eng.id, rows)
+    changed = 0
+    if apply and plan.changes:
+        changed = importer.apply(db, eng.id, plan, user, reason)
+        eng.touch()
+        audit.record(
+            db,
+            user,
+            "asset.import",
+            engagement_id=eng.id,
+            target=(file.filename or "spreadsheet")[:200],
+            details={"assets": changed, "changes": len(plan.changes)},
+        )
+        db.commit()
+    return AssetImportOut(
+        applied=bool(apply and plan.changes),
+        rows=plan.rows,
+        matched=plan.matched,
+        unmatched=plan.unmatched[:200],
+        errors=plan.errors[:200],
+        changes=[AssetImportChange(**c.__dict__) for c in plan.changes[:5000]],
+        assets_changed=changed,
+    )
 
 
 @router.get("/engagements/{engagement_id}/assets/export")
@@ -324,6 +376,75 @@ def edit_asset(body: AssetEdit, asset_id: int = Path(ge=1), ctx=Depends(as_edito
         )
     db.commit()
     return asset_detail(db, a)
+
+
+@router.post(
+    "/engagements/{engagement_id}/assets/{asset_id}/merge",
+    response_model=AssetDetail,
+    responses={404: {"model": ErrorOut}, 409: {"model": ErrorOut}, 422: {"model": ErrorOut}},
+)
+def merge_assets(body: AssetMerge, asset_id: int = Path(ge=1), ctx=Depends(as_editor)) -> AssetDetail:
+    """Fold other assets into this one: they were one device. Later captures of their addresses land here too."""
+    eng, _role, user, db = ctx
+    target = _asset(eng, db, asset_id)
+    ids = set(body.source_ids) - {target.id}
+    sources = list(db.scalars(select(Asset).where(Asset.engagement_id == eng.id, Asset.id.in_(ids))))
+    if len(sources) != len(ids):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Some of those assets don't exist in this engagement.")
+    names = [service.label(a) for a in sources]
+    try:
+        identity.merge_assets(db, target, sources, user, reason=body.reason, expected_version=body.version)
+    except FieldError as exc:
+        db.rollback()
+        raise _bad(exc) from exc
+    except service.EditConflict as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, CONFLICT) from exc
+    eng.touch()
+    audit.record(
+        db,
+        user,
+        "asset.merge",
+        engagement_id=eng.id,
+        target=service.label(target),
+        details={"merged": names[:50]},
+    )
+    db.commit()
+    return asset_detail(db, target)
+
+
+@router.post(
+    "/engagements/{engagement_id}/assets/{asset_id}/split",
+    response_model=AssetSplitResult,
+    responses={404: {"model": ErrorOut}, 409: {"model": ErrorOut}, 422: {"model": ErrorOut}},
+)
+def split_asset(
+    body: AssetSplit, asset_id: int = Path(ge=1), ctx=Depends(as_editor), store: Storage = Depends(storage)
+) -> AssetSplitResult:
+    """Move some IP addresses to a new asset: they belong to another device. Their traffic moves with them."""
+    eng, _role, user, db = ctx
+    a = _asset(eng, db, asset_id)
+    try:
+        new = identity.split_asset(
+            db, store, a, body.ips, user, reason=body.reason, expected_version=body.version
+        )
+    except FieldError as exc:
+        db.rollback()
+        raise _bad(exc) from exc
+    except service.EditConflict as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, CONFLICT) from exc
+    eng.touch()
+    audit.record(
+        db,
+        user,
+        "asset.split",
+        engagement_id=eng.id,
+        target=service.label(a),
+        details={"moved": sorted(body.ips)},
+    )
+    db.commit()
+    return AssetSplitResult(original=asset_detail(db, a), created=asset_detail(db, new))
 
 
 @router.delete(

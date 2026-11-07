@@ -2,8 +2,9 @@ import { History, Pencil, RotateCcw, X } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, type AssetDetail, type AssetField, type AssetFields, type EditableField, type FieldValue } from '../api/client'
-import { useAsset, useAssetFields, useAssetHistory, useDeleteAsset, useEditAsset } from '../api/assets'
+import { useAsset, useAssetFields, useAssetHistory, useDeleteAsset, useEditAsset, useSplitAsset } from '../api/assets'
 import { useEngagement } from '../api/engagements'
+import { useInspector } from '../inspector/context'
 import { assetLabel, describeChange, formatValue, identityGroups, levelName, parseTags } from '../lib/assets'
 import { formatBytes, formatDateTime, formatNumber, relativeTime } from '../lib/format'
 import { DeviceIcon } from './DeviceIcon'
@@ -157,7 +158,35 @@ function Details({ d, fields, canEdit, eid }: { d: AssetDetail; fields: AssetFie
   )
 }
 
-function Evidence({ d, eid }: { d: AssetDetail; eid: number }) {
+/** The matcher joined two devices: move some addresses (and their traffic) to a new asset. */
+function SplitAddresses({ d, eid }: { d: AssetDetail; eid: number }) {
+  const [open, setOpen] = useState(false)
+  const [moving, setMoving] = useState<Set<string>>(new Set())
+  const [reason, setReason] = useState('')
+  const split = useSplitAsset(eid, d.id)
+  const { select } = useInspector()
+  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>Split addresses…</button>
+  const toggle = (ip: string) => setMoving((m) => { const n = new Set(m); if (n.has(ip)) n.delete(ip); else n.add(ip); return n })
+  return (
+    <fieldset className="split-box">
+      <legend>Move to a new asset</legend>
+      {d.ips.map((ip) => (
+        <label key={ip} className="row mono"><input type="checkbox" checked={moving.has(ip)} onChange={() => toggle(ip)} /> {ip}</label>
+      ))}
+      <input className="input" aria-label="Split reason" placeholder="Reason (optional)" value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)} />
+      <div className="row">
+        <button type="button" className="btn btn-primary btn-sm" disabled={!moving.size || moving.size >= d.ips.length || split.isPending}
+          onClick={() => split.mutate({ version: d.version, ips: [...moving], reason },
+            { onSuccess: (r) => { setOpen(false); select({ kind: 'asset', eid, id: r.created.id }) } })}>Split</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+      {moving.size >= d.ips.length && <span className="muted">Leave at least one address here.</span>}
+      {split.isError && <ErrorNote>{split.error.message}</ErrorNote>}
+    </fieldset>
+  )
+}
+
+function Evidence({ d, eid, canEdit }: { d: AssetDetail; eid: number; canEdit: boolean }) {
   const identity = identityGroups(d.identity)
   return (
     <div>
@@ -185,6 +214,7 @@ function Evidence({ d, eid }: { d: AssetDetail; eid: number }) {
           {d.dnp3_addresses.length > 0 && <><dt>DNP3 addresses</dt><dd>{d.dnp3_addresses.join(', ')}</dd></>}
           {d.hostnames.length > 0 && <><dt>Names</dt><dd>{d.hostnames.map((n) => `${n.name} (${n.source})`).join(', ')}</dd></>}
         </dl>
+        {canEdit && d.ips.length > 1 && <SplitAddresses key={d.id} d={d} eid={eid} />}
       </div>
       {identity.map(([source, entries]) => (
         <div className="inspector-section" key={source}>
@@ -275,7 +305,7 @@ export function AssetInspector({ eid, id, onClose }: { eid: number; id: number; 
             { id: 'details', label: 'Details' }, { id: 'evidence', label: 'Evidence' }, { id: 'history', label: 'History' },
           ]} />
           {tab === 'details' && <Details key={d.id} d={d} fields={fields.data} canEdit={canEdit} eid={eid} />}
-          {tab === 'evidence' && <Evidence d={d} eid={eid} />}
+          {tab === 'evidence' && <Evidence d={d} eid={eid} canEdit={canEdit} />}
           {tab === 'history' && <HistoryList eid={eid} id={d.id} fields={fields.data} />}
           {canEdit && d.capture_count === 0 && (
             <div className="inspector-section" style={{ marginTop: 'var(--space-4)' }}>

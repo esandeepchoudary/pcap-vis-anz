@@ -227,6 +227,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/assets/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Assets
+         * @description Read edits from a filled-in asset register (CSV or XLSX). Preview by default; ``apply`` saves them.
+         */
+        post: operations["import_assets_api_engagements__engagement_id__assets_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/assets/{asset_id}": {
         parameters: {
             query?: never;
@@ -260,6 +280,46 @@ export interface paths {
         get: operations["asset_history_api_engagements__engagement_id__assets__asset_id__history_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/assets/{asset_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Assets
+         * @description Fold other assets into this one: they were one device. Later captures of their addresses land here too.
+         */
+        post: operations["merge_assets_api_engagements__engagement_id__assets__asset_id__merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engagements/{engagement_id}/assets/{asset_id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split Asset
+         * @description Move some IP addresses to a new asset: they belong to another device. Their traffic moves with them.
+         */
+        post: operations["split_asset_api_engagements__engagement_id__assets__asset_id__split_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1112,7 +1172,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "created" | "override" | "reset" | "auto" | "import";
+            kind: "created" | "override" | "reset" | "auto" | "import" | "merge" | "split";
             /** New */
             new: string | number | string[] | null;
             /** Old */
@@ -1304,6 +1364,63 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** AssetImportChange */
+        AssetImportChange: {
+            /** Asset Id */
+            asset_id: number;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "name" | "asset_type" | "purdue_level" | "zone" | "criticality" | "vendor" | "model" | "firmware" | "serial" | "location" | "owner" | "tags" | "notes";
+            /** Label */
+            label: string;
+            /** New */
+            new: unknown;
+            /** Old */
+            old: unknown;
+        };
+        /**
+         * AssetImportOut
+         * @description What an imported register changes (a preview unless ``applied``).
+         */
+        AssetImportOut: {
+            /** Applied */
+            applied: boolean;
+            /**
+             * Assets Changed
+             * @default 0
+             */
+            assets_changed: number;
+            /** Changes */
+            changes: components["schemas"]["AssetImportChange"][];
+            /** Errors */
+            errors: string[];
+            /** Matched */
+            matched: number;
+            /** Rows */
+            rows: number;
+            /** Unmatched */
+            unmatched: string[];
+        };
+        /**
+         * AssetMerge
+         * @description Fold other assets into this one (the matcher kept one device apart).
+         */
+        AssetMerge: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Source Ids */
+            source_ids: number[];
+            /**
+             * Version
+             * @description The version of this asset you saw; a mismatch returns 409
+             */
+            version: number;
+        };
         /**
          * AssetOrigin
          * @enum {string}
@@ -1387,6 +1504,26 @@ export interface components {
             /** Zone */
             zone: string | null;
         };
+        /**
+         * AssetSplit
+         * @description Move some of this asset's IP addresses to a new asset (the matcher joined two devices).
+         */
+        AssetSplit: {
+            /** Ips */
+            ips: string[];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Version */
+            version: number;
+        };
+        /** AssetSplitResult */
+        AssetSplitResult: {
+            created: components["schemas"]["AssetDetail"];
+            original: components["schemas"]["AssetDetail"];
+        };
         /** AuditEventOut */
         AuditEventOut: {
             /** Action */
@@ -1406,6 +1543,21 @@ export interface components {
             target: string;
             /** User */
             user: string | null;
+        };
+        /** Body_import_assets_api_engagements__engagement_id__assets_import_post */
+        Body_import_assets_api_engagements__engagement_id__assets_import_post: {
+            /**
+             * Apply
+             * @default false
+             */
+            apply: boolean;
+            /** File */
+            file: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** Body_import_engagement_api_engagements_import_post */
         Body_import_engagement_api_engagements_import_post: {
@@ -3217,6 +3369,59 @@ export interface operations {
             };
         };
     };
+    import_assets_api_engagements__engagement_id__assets_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_assets_api_engagements__engagement_id__assets_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetImportOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Content too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_asset_api_engagements__engagement_id__assets__asset_id__get: {
         parameters: {
             query?: never;
@@ -3363,6 +3568,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_assets_api_engagements__engagement_id__assets__asset_id__merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetMerge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    split_asset_api_engagements__engagement_id__assets__asset_id__split_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: number;
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetSplit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetSplitResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

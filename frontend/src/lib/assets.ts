@@ -42,6 +42,8 @@ export function describeChange(c: AssetChange, fields: AssetFields | undefined):
     case 'override': return `${label}: ${v(c.old)} → ${v(c.new)}`
     case 'reset': return `${label} reset to detected value ${v(c.new)} (was ${v(c.old)})`
     case 'auto': return `${label} detected: ${v(c.old)} → ${v(c.new)}`
+    case 'merge': return `Merged in ${(c.old as string[] | null)?.join(', ') ?? 'other assets'}`
+    case 'split': return c.new ? `Split off from another asset: ${(c.new as string[]).join(', ')}` : `Addresses moved to a new asset: ${((c.old as string[] | null) ?? []).join(', ')}`
     default: return `${label}: ${v(c.new)}`
   }
 }
