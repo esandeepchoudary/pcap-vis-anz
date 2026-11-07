@@ -244,7 +244,7 @@ describe('Asset inventory', () => {
     const panel = screen.getByRole('region', { name: 'Import asset edits' })
     await userEvent.upload(within(panel).getByLabelText('Register file'), new File(['asset_id,zone\n1,Cell 2\n'], 'register.csv'))
     expect(await within(panel).findByRole('status', { name: 'Import summary' })).toHaveTextContent('1 change2 of 3 rows matched')
-    expect((FakeXhr.last?.body as FormData).get('apply')).toBe('false')
+    expect((FakeXhr.last!.body as FormData).get('apply')).toBe('false')
     const table = within(panel).getByRole('table', { name: 'Changes to apply' })
     expect(table).toHaveTextContent('10.0.2.51Zone—Cell 2')
     expect(within(panel).getByText('1 row skipped or with problems')).toBeInTheDocument()
