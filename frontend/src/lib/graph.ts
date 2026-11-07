@@ -30,11 +30,25 @@ export function subnetOf(a: Asset): string {
  * first). Deterministic and overlap-free by construction, unlike a free-form layout.
  */
 export function subnetLayout(assets: Asset[], degree: Map<number, number>, vlansOf: (key: string) => number[] = () => []): GraphLayout {
+  return groupLayout(assets, degree, subnetOf, (k) => (k === 'External' ? 2 : k.includes('/24') ? 0 : 1),
+    (key, n) => { const vlans = vlansOf(key); return `${key}${vlans.length ? ` · VLAN ${vlans.join(', ')}` : ''} · ${n}` })
+}
+
+/** Boxes of assets grouped by VLAN tag: one per VLAN, then hosts on several VLANs (trunks, routers), then untagged. */
+export function vlanLayout(assets: Asset[], degree: Map<number, number>): GraphLayout {
+  return groupLayout(assets, degree, vlanOf, (k) => (k === MULTI_VLAN ? 1 : k === UNTAGGED ? 2 : 0), (key, n) => `${key} · ${n}`)
+}
+
+/** Grid of group boxes; ``rank`` puts special groups last, then busiest first. Overlap-free by construction. */
+function groupLayout(
+  assets: Asset[], degree: Map<number, number>, keyOf: (a: Asset) => string, rank: (key: string) => number,
+  label: (key: string, n: number) => string,
+): GraphLayout {
   const groups = new Map<string, Asset[]>()
-  for (const a of assets) groups.set(subnetOf(a), [...(groups.get(subnetOf(a)) ?? []), a])
+  for (const a of assets) groups.set(keyOf(a), [...(groups.get(keyOf(a)) ?? []), a])
   const weight = (list: Asset[]) => list.reduce((n, a) => n + (degree.get(a.id) ?? 0), 0)
   const ordered = [...groups.entries()].sort((x, y) => {
-    const special = (k: string) => (k === 'External' ? 2 : k.includes('/24') ? 0 : 1)
+    const special = rank
     return special(x[0]) - special(y[0]) || weight(y[1]) - weight(x[1]) || x[0].localeCompare(y[0], undefined, { numeric: true })
   })
   const out: Group[] = []
@@ -49,8 +63,7 @@ export function subnetLayout(assets: Asset[], degree: Map<number, number>, vlans
     const w = PAD * 2 + cols * G_NODE_W + (cols - 1) * GAP_X
     const h = HEAD + PAD + rows * G_NODE_H + (rows - 1) * GAP_Y
     if (x > 0 && x + w > ROW_WIDTH) { x = 0; y += rowH + BOX_GAP; rowH = 0 }
-    const vlans = vlansOf(key)
-    out.push({ key, label: `${key}${vlans.length ? ` · VLAN ${vlans.join(', ')}` : ''} · ${list.length}`, x, y, w, h })
+    out.push({ key, label: label(key, list.length), x, y, w, h })
     list.forEach((a, i) => positions.set(a.id, { x: x + PAD + (i % cols) * (G_NODE_W + GAP_X), y: y + HEAD + Math.floor(i / cols) * (G_NODE_H + GAP_Y) }))
     x += w + BOX_GAP
     rowH = Math.max(rowH, h)
@@ -111,3 +124,67 @@ export function suspiciousPairs(findings: Finding[]): Set<string> {
 }
 
 export const linkKey = (l: Pick<Link, 'src' | 'dst'>) => `${l.src}-${l.dst}`
+
+// ── VLANs ────────────────────────────────────────────────────────────────────
+
+export const UNTAGGED = 'Untagged'
+export const MULTI_VLAN = 'Several VLANs'
+
+export function vlanOf(a: Pick<Asset, 'vlans'>): string {
+  if (!a.vlans.length) return UNTAGGED
+  return a.vlans.length === 1 ? `VLAN ${a.vlans[0]}` : MULTI_VLAN
+}
+
+/** Both ends tagged and sharing no VLAN: the traffic was routed between segments. */
+export function isCrossVlan(a: Pick<Asset, 'vlans'>, b: Pick<Asset, 'vlans'>): boolean {
+  return a.vlans.length > 0 && b.vlans.length > 0 && !a.vlans.some((v) => b.vlans.includes(v))
+}
+
+export type VlanStats = {
+  vlans: number[]
+  crossLinks: number
+  untagged: number
+  multi: number
+  /** connections between single-VLAN assets, keyed "low-high" VLAN pair (same VLAN: "v-v") */
+  matrix: Map<string, number>
+}
+
+export function vlanStats(assets: Asset[], links: Pick<Link, 'src' | 'dst'>[]): VlanStats {
+  const byId = new Map(assets.map((a) => [a.id, a]))
+  const vlans = [...new Set(assets.flatMap((a) => a.vlans))].sort((x, y) => x - y)
+  const matrix = new Map<string, number>()
+  let crossLinks = 0
+  for (const l of links) {
+    const a = byId.get(l.src)
+    const b = byId.get(l.dst)
+    if (!a || !b) continue
+    if (isCrossVlan(a, b)) crossLinks++
+    if (a.vlans.length === 1 && b.vlans.length === 1) {
+      const [x, y] = [a.vlans[0], b.vlans[0]].sort((p, q) => p - q)
+      matrix.set(`${x}-${y}`, (matrix.get(`${x}-${y}`) ?? 0) + 1)
+    }
+  }
+  return {
+    vlans, crossLinks, matrix,
+    untagged: assets.filter((a) => !a.vlans.length).length,
+    multi: assets.filter((a) => a.vlans.length > 1).length,
+  }
+}
+
+// ── Timeline ─────────────────────────────────────────────────────────────────
+
+/** Earliest first-seen and latest last-seen over the links, or null when there's no usable span. */
+export function timeBounds(links: Pick<Link, 'first_seen' | 'last_seen'>[]): [number, number] | null {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const l of links) {
+    if (l.first_seen != null) lo = Math.min(lo, l.first_seen)
+    if (l.last_seen != null) hi = Math.max(hi, l.last_seen)
+  }
+  return Number.isFinite(lo) && Number.isFinite(hi) && hi > lo ? [lo, hi] : null
+}
+
+/** The connection was active at some point in [from, to]. Links without times always count. */
+export function activeIn(l: Pick<Link, 'first_seen' | 'last_seen'>, from: number, to: number): boolean {
+  return (l.first_seen == null || l.first_seen <= to) && (l.last_seen == null || l.last_seen >= from)
+}

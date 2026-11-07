@@ -1,21 +1,25 @@
 import {
-  Background, BackgroundVariant, Controls, Handle, MiniMap, Position, ReactFlow, applyNodeChanges,
+  Background, BackgroundVariant, Controls, Handle, MiniMap, Position, ReactFlow, applyNodeChanges, useNodesInitialized, useReactFlow,
   type Edge, type Node, type NodeChange, type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { KeyRound } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Asset, Engagement, Finding, Link } from '../api/client'
 import { useFindings } from '../api/findings'
 import { useInspector } from '../inspector/context'
 import { assetLabel } from '../lib/assets'
 import { CATEGORY_LABELS, deviceSpec, type DeviceCategory } from '../lib/devices'
-import { G_NODE_H, G_NODE_W, forceLayout, linkKey, nodeRadius, subnetLayout, subnetOf, suspiciousPairs } from '../lib/graph'
+import {
+  G_NODE_H, G_NODE_W, activeIn, forceLayout, isCrossVlan, linkKey, nodeRadius, subnetLayout, subnetOf, suspiciousPairs, timeBounds,
+  vlanLayout, vlanStats, type VlanStats,
+} from '../lib/graph'
 import { purdueLabel } from '../lib/format'
 import { SEVERITIES } from '../lib/severity'
 import { DeviceIcon } from './DeviceIcon'
+import { GraphTimeline, type Window } from './GraphTimeline'
 
-type Layout = 'force' | 'subnet'
+type Layout = 'force' | 'subnet' | 'vlan'
 const LABEL_W = 132
 type AssetData = { asset: Asset; r: number; dim: boolean; risk: Finding['severity'] | null; findings: number; credentials: boolean; writeTarget: boolean; compact: boolean }
 
@@ -56,6 +60,14 @@ function SubnetNode({ data }: NodeProps<Node<{ label: string }>>) {
 }
 const nodeTypes = { asset: ForceNode, card: CardNode, subnet: SubnetNode }
 
+/** Re-fit the view when the layout changes (fitView on ReactFlow only applies to the first render). */
+function FitOnLayout({ layout }: { layout: Layout }) {
+  const { fitView } = useReactFlow()
+  const ready = useNodesInitialized()
+  useEffect(() => { if (ready) void fitView({ padding: 0.12 }) }, [layout, ready, fitView])
+  return null
+}
+
 export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: Asset[]; links: Link[] }) {
   const { selection, select } = useInspector()
   const findings = useFindings(eng.id)
@@ -67,6 +79,12 @@ export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: 
   const [hover, setHover] = useState<number | null>(null)
   const [legendOpen, setLegendOpen] = useState(() => localStorage.getItem('pcapvis.graph.legend') === 'open')
   const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets])
+  const hasVlans = useMemo(() => assets.some((a) => a.vlans.length > 0), [assets])
+  // Timeline window; a new time span (new captures) starts with the whole span again.
+  const bounds = useMemo(() => timeBounds(links), [links])
+  const [win, setWin] = useState<Window>(bounds ?? [0, 0])
+  const [winFor, setWinFor] = useState(bounds)
+  if (winFor !== bounds) { setWinFor(bounds); setWin(bounds ?? [0, 0]) }
 
   const allProtocols = useMemo(() => [...new Set(links.flatMap((l) => l.protocols.map((p) => p.protocol)))].sort(), [links])
   const shown = useMemo(() => {
@@ -126,7 +144,7 @@ export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: 
     } else {
       const degree = new Map<number, number>()
       for (const l of shown) for (const id of [l.src, l.dst]) degree.set(id, (degree.get(id) ?? 0) + 1)
-      const g = subnetLayout(members, degree)
+      const g = layout === 'vlan' ? vlanLayout(members, degree) : subnetLayout(members, degree)
       for (const box of g.groups) {
         nodes.push({ id: `g-${box.key}`, type: 'subnet', position: { x: box.x, y: box.y }, data: { label: box.label },
           draggable: false, selectable: false, focusable: false, zIndex: 0, style: { width: box.w, height: box.h } })
@@ -143,16 +161,32 @@ export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: 
   const [nodes, setNodes] = useState<Node[]>(built)
   const [source, setSource] = useState(built)
   if (source !== built) { setSource(built); setNodes(built) }
+
+  // Outside the timeline window: connections and the assets left without one are hidden (positions stay put).
+  const timed = bounds != null && (win[0] > bounds[0] || win[1] < bounds[1])
+  const active = useMemo(() => {
+    if (!timed) return null
+    const keys = new Set<string>()
+    const ids = new Set<number>()
+    for (const l of shown) if (activeIn(l, win[0], win[1])) { keys.add(linkKey(l)); ids.add(l.src); ids.add(l.dst) }
+    return { keys, ids }
+  }, [shown, timed, win])
+
   const viewNodes = useMemo(() => nodes.map((n) => n.type === 'subnet' ? n
-    : { ...n, data: { ...(n.data as AssetData), dim: focus != null && !neighbours.has(Number(n.id)) } }), [nodes, focus, neighbours])
+    : { ...n, hidden: active != null && !active.ids.has(Number(n.id)),
+        data: { ...(n.data as AssetData), dim: focus != null && !neighbours.has(Number(n.id)) } }), [nodes, focus, neighbours, active])
 
   const edges: Edge[] = useMemo(() => shown.map((l) => {
     const on = focus == null || l.src === focus || l.dst === focus
     const sus = suspicious.has(linkKey(l))
+    const a = byId.get(l.src)
+    const b = byId.get(l.dst)
+    const cross = layout === 'vlan' && !!a && !!b && isCrossVlan(a, b)
     const protos = l.protocols.map((p) => p.protocol).filter((p) => !hidden.has(p))
     return {
       id: linkKey(l), source: String(l.src), target: String(l.dst), type: 'straight', data: { link: l },
-      className: `pm-edge pm-edge-${l.ot_writes ? 'write' : l.is_ot ? 'ot' : 'it'}${sus ? ' pm-edge-suspicious' : ''}${on ? '' : ' faded'}`,
+      className: `pm-edge pm-edge-${l.ot_writes ? 'write' : l.is_ot ? 'ot' : 'it'}${sus ? ' pm-edge-suspicious' : ''}${cross ? ' pm-edge-crossvlan' : ''}${on ? '' : ' faded'}`,
+      hidden: active != null && !active.keys.has(linkKey(l)),
       style: { strokeWidth: Math.min(5, 1 + Math.log10(Math.max(1, l.packets)) * 1.2) },
       label: focus != null && on ? protos.slice(0, 3).join(', ') : undefined,
       labelStyle: { fontSize: 11, fontWeight: 600 },
@@ -161,7 +195,10 @@ export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: 
       labelBgBorderRadius: 4,
       zIndex: on && focus != null ? 3 : 1,
     }
-  }), [shown, focus, suspicious, hidden])
+  }), [shown, focus, suspicious, hidden, byId, layout, active])
+
+  const vstats = useMemo(() => layout === 'vlan'
+    ? vlanStats(built.filter((n) => n.type !== 'subnet').map((n) => (n.data as AssetData).asset), shown) : null, [layout, built, shown])
 
   const categories = useMemo(() => {
     const seen = new Map<DeviceCategory, string>()
@@ -182,6 +219,7 @@ export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: 
         <div className="seg" role="group" aria-label="Graph layout">
           <button type="button" className={layout === 'force' ? 'active' : ''} aria-pressed={layout === 'force'} onClick={() => setLayout('force')}>Topology</button>
           <button type="button" className={layout === 'subnet' ? 'active' : ''} aria-pressed={layout === 'subnet'} onClick={() => setLayout('subnet')}>By subnet</button>
+          {hasVlans && <button type="button" className={layout === 'vlan' ? 'active' : ''} aria-pressed={layout === 'vlan'} onClick={() => setLayout('vlan')}>By VLAN</button>}
         </div>
         <label className="row"><input type="checkbox" checked={otOnly} onChange={(e) => setOtOnly(e.target.checked)} /> OT traffic only</label>
         <label className="row"><input type="checkbox" checked={showExternal} onChange={(e) => setShowExternal(e.target.checked)} /> External hosts</label>
@@ -195,6 +233,7 @@ export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: 
           {hidden.size > 0 && <button type="button" className="chip" onClick={() => setHidden(new Set())}>Show all</button>}
         </div>
       )}
+      {vstats && <VlanSummary stats={vstats} />}
       {isolated && (
         <div className="alert alert-ok" role="status">Showing {assetLabel(isolated)} and who it talks to.
           <button type="button" className="link-btn" style={{ marginLeft: 8 }} onClick={() => setIsolate(null)}>Show everything</button></div>
@@ -208,6 +247,7 @@ export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: 
           onNodeClick={(_e, n) => { if (n.type !== 'subnet') select({ kind: 'asset', eid: eng.id, id: Number(n.id) }) }}
           onNodeDoubleClick={(_e, n) => { if (n.type !== 'subnet') setIsolate((cur) => (cur === Number(n.id) ? null : Number(n.id))) }}
           onEdgeClick={(_e, e) => { const l = (e.data as { link: Link }).link; select({ kind: 'link', eid: eng.id, src: l.src, dst: l.dst }) }}>
+          <FitOnLayout layout={layout} />
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
           <Controls showInteractive={false} />
           <MiniMap pannable zoomable style={{ width: 150, height: 100 }} nodeClassName={(n) => (n.type === 'subnet' ? 'pm-mini-bg' : 'pm-mini-asset')} />
@@ -221,10 +261,47 @@ export function NetworkGraph({ eng, assets, links }: { eng: Engagement; assets: 
           <div><i className="pm-key pm-key-ot" /> OT</div>
           <div><i className="pm-key pm-key-write" /> OT writes</div>
           <div><i className="pm-key pm-key-suspicious" /> named in a finding</div>
+          {layout === 'vlan' && <div><i className="pm-key pm-key-crossvlan" /> between VLANs</div>}
           <div><i className="pm-key pm-key-it" /> other</div>
           <div className="muted">Size = traffic · badge = open findings · key = credentials</div>
         </details>
       </div>
+      {bounds && (
+        <GraphTimeline bounds={bounds} value={win} onChange={setWin} total={edges.length}
+          visible={active ? active.keys.size : edges.length} />
+      )}
+      {vstats && vstats.vlans.length > 1 && <VlanMatrix stats={vstats} />}
     </div>
+  )
+}
+
+function VlanSummary({ stats }: { stats: VlanStats }) {
+  return (
+    <div className="vlan-stats" role="status" aria-label="VLAN summary">
+      <span><strong>{stats.vlans.length}</strong> VLANs</span>
+      <span><strong>{stats.crossLinks}</strong> connections between VLANs</span>
+      <span><strong>{stats.multi}</strong> assets on several VLANs</span>
+      <span><strong>{stats.untagged}</strong> untagged assets</span>
+    </div>
+  )
+}
+
+/** Connections between assets on one VLAN each: diagonal is traffic within a VLAN, the rest crosses VLANs. */
+function VlanMatrix({ stats }: { stats: VlanStats }) {
+  const v = stats.vlans
+  return (
+    <details className="card" style={{ padding: 'var(--space-3)' }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 650 }}>VLAN matrix</summary>
+      <table className="table vlan-matrix" aria-label="VLAN matrix">
+        <thead><tr><th />{v.map((x) => <th key={x} scope="col">{x}</th>)}</tr></thead>
+        <tbody>{v.map((y) => (
+          <tr key={y}><th scope="row">{y}</th>{v.map((x) => {
+            const [lo, hi] = x < y ? [x, y] : [y, x]
+            const n = stats.matrix.get(`${lo}-${hi}`) ?? 0
+            return <td key={x} className={n && x !== y ? 'cross' : ''}>{n || ''}</td>
+          })}</tr>
+        ))}</tbody>
+      </table>
+    </details>
   )
 }

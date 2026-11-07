@@ -72,3 +72,22 @@
 .graph-legend summary { cursor: pointer; font-weight: 700; color: var(--text); list-style: revert; }
 .graph-legend:not([open]) { padding: 4px 10px; }
 .graph-canvas .react-flow__controls { bottom: 12px; left: 12px; top: auto; }
+.pm-edge-crossvlan:not(.pm-edge-write) .react-flow__edge-path { stroke: var(--dev-security); }
+.pm-key-crossvlan { border-color: var(--dev-security); }
+.vlan-stats { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--text-sm); color: var(--text-2); }
+.vlan-stats strong { color: var(--text); }
+.vlan-matrix td, .vlan-matrix th { text-align: center; min-width: 54px; }
+.vlan-matrix td.cross { background: color-mix(in srgb, var(--dev-security) 14%, var(--surface)); font-weight: 650; }
+.graph-timeline { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.tl-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.tl-count { white-space: nowrap; }
+.tl-range { position: relative; flex: 1; min-width: 160px; height: 22px; }
+.tl-range::before { content: ''; position: absolute; left: 0; right: 0; top: 9px; height: 4px; border-radius: 2px; background: var(--border); }
+.tl-fill { position: absolute; top: 9px; height: 4px; border-radius: 2px; background: var(--accent); pointer-events: none; }
+.tl-range input[type='range'] { position: absolute; inset: 0; width: 100%; margin: 0; background: none; pointer-events: none;
+  appearance: none; -webkit-appearance: none; z-index: 1; }
+.tl-range input[type='range']::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); cursor: pointer; }
+.tl-range input[type='range']::-moz-range-thumb { pointer-events: auto; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--accent); cursor: pointer; }
+.tl-range input[type='range']::-moz-range-track { background: none; }

@@ -1240,7 +1240,10 @@ export interface components {
             vendor: string | null;
             /** Version */
             version: number;
-            /** Vlans */
+            /**
+             * Vlans
+             * @description 802.1Q VLAN IDs the asset was seen on (empty: untagged)
+             */
             vlans: number[];
             /** Zone */
             zone: string | null;
@@ -1376,6 +1379,11 @@ export interface components {
             vendor: string | null;
             /** Version */
             version: number;
+            /**
+             * Vlans
+             * @description 802.1Q VLAN IDs the asset was seen on (empty: untagged)
+             */
+            vlans: number[];
             /** Zone */
             zone: string | null;
         };

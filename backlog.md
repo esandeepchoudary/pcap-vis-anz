@@ -461,7 +461,7 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [x] Editable Purdue map (drag to level/zone, multi-select, new zones), level matrix (DMZ bypass), OT matrix, OT command log, connection inspector
 - [ ] Map positions are auto-laid out; remember manual arrangement within a lane
 - [ ] Multicast/broadcast OT traffic (GOOSE, ENIP implicit I/O) isn't drawn because the destination isn't an asset; show it as a bus per VLAN
-- [ ] Zones are free text on assets; M6 turns them into first-class zones and conduits
+- [x] Zones are free text on assets; M6 turns them into first-class zones and conduits (M6)
 - [ ] Undo for a drag on the map (history shows the previous value; reset goes back to detected, not previous)
 
 ### v2 rebuild: M5 passive fingerprinting (2026-11-06, feature/m5-fingerprint)
@@ -482,9 +482,9 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 ### v2 rebuild: M7 flows and forensics (2026-11-06, feature/m7-flows)
 
 - [x] Graph, flows, DNS, VLANs, capture diff, packet inspector, overview dashboard
-- [ ] Interactive timeline (footer placeholder) across captures
+- [x] Interactive timeline across captures: range brush, play and speed on the network graph (v1.2.0)
 - [ ] Packet inspector re-reads the capture from the start for each decode; index frame offsets for big files
-- [ ] Graph layout is rings by degree; switch to a force layout (d3-force) if large graphs get cluttered
+- [x] Graph layout is rings by degree; switch to a force layout (d3-force) if large graphs get cluttered (v1.1.0)
 
 ### v2 rebuild: M8 findings and reports (2026-11-06, feature/m8-reports)
 
@@ -501,4 +501,5 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Re-record DocSolace tours against v2 for screenshots in the docs
 - [ ] SSO (Entra ID, Okta, LDAP) behind the existing auth interface (D3)
 - [ ] Optional live capture from a local interface (G13)
-
+- [x] VLAN graph layout (VLAN boxes, trunks, untagged; cross-VLAN connections; VLAN matrix) back from v1 (v1.2.0)
+- [ ] Responsive layout for phones and tablets (inspector as a drawer, rail as a bottom bar)
