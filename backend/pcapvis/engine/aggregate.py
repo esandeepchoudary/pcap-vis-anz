@@ -19,6 +19,7 @@ from pcapvis.engine.tshark_env import TsharkEnv
 BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
 MAX_DNS_QUERIES_PER_HOST = 500
 MAX_SET_ITEMS = 200
+MAX_DNS_IPS = 50_000  # answers remembered per capture (names for hosts that do show up in traffic)
 MAX_NAMES = 20
 # A MAC that is the L2 source for this many distinct IPs is a router/gateway, not the hosts' NIC.
 GATEWAY_MAC_MIN_IPS = 3
@@ -78,6 +79,8 @@ class FlowAcc:
         "detected",
         "syn_seen",
         "resets",
+        "ok_c2s",
+        "ok_s2c",
         "ot_reads",
         "ot_writes",
         "ot_errors",
@@ -98,6 +101,7 @@ class FlowAcc:
         self.detected: Counter[str] = Counter()
         self.syn_seen = False
         self.resets = 0
+        self.ok_c2s = self.ok_s2c = 0  # packets that weren't resets, each way: did the server accept?
         self.ot_reads = self.ot_writes = self.ot_errors = 0
         self.fc_counts: Counter[str] = Counter()
         self.times: list[float] = []  # first client→server packet times, for beacon detection
@@ -109,6 +113,7 @@ class FlowAcc:
         self.client_port, self.server_port = self.server_port, self.client_port
         self.pkts_c2s, self.pkts_s2c = self.pkts_s2c, self.pkts_c2s
         self.bytes_c2s, self.bytes_s2c = self.bytes_s2c, self.bytes_c2s
+        self.ok_c2s, self.ok_s2c = self.ok_s2c, self.ok_c2s
         self.basis = basis
 
     def protocol_label(self) -> str:
@@ -151,6 +156,7 @@ class HostAcc:
         "last",
         "vlans",
         "vlan_outer",
+        "recv_vlans",
         "pcps",
         "untagged",
         "qinq",
@@ -178,6 +184,9 @@ class HostAcc:
         self.first = self.last = None
         self.vlans: set[int] = set()
         self.vlan_outer: set[int] = set()
+        # (inner VLAN, outer VLAN, destination MAC) of tagged frames sent *to* this IP. Only frames delivered to
+        # the host's own MAC prove it sits on that VLAN: routed traffic arrives tagged with the sender's VLAN.
+        self.recv_vlans: set[tuple[int, int, str]] = set()  # outer -1: none
         self.pcps: set[int] = set()
         self.untagged = False
         self.qinq = False
@@ -219,6 +228,7 @@ class HostAcc:
         for mine, theirs, cap in (
             (self.vlans, o.vlans, MAX_SET_ITEMS),
             (self.vlan_outer, o.vlan_outer, MAX_SET_ITEMS),
+            (self.recv_vlans, o.recv_vlans, MAX_SET_ITEMS * 2),
             (self.tls_sni, o.tls_sni, MAX_SET_ITEMS),
             (self.tls_ja3, o.tls_ja3, MAX_SET_ITEMS),
             (self.tls_ja4, o.tls_ja4, MAX_SET_ITEMS),
@@ -262,6 +272,9 @@ class Aggregator:
         self.mac_dst_ips: dict[str, set[str]] = defaultdict(set)
         self.arp_ip_for_mac: dict[str, set[str]] = defaultdict(set)
         self.mac_names: dict[str, dict[str, tuple[float, str]]] = defaultdict(dict)  # mac → name → (ts, src)
+        # Names from DNS answers, by IP. Kept apart from hosts: an address only named in an answer, never
+        # seen in traffic, is not a device on the network. Applied in finish() to hosts that exist.
+        self.dns_names: dict[str, dict[str, tuple[float, str]]] = defaultdict(dict)
         self.mac_identity: dict[str, dict[str, tuple[float, str]]] = defaultdict(dict)
         self.mac_vendor: dict[str, str] = {}
         self.packets = 0
@@ -378,11 +391,15 @@ class Aggregator:
                 outer, inner = p.vlan_ids[0], p.vlan_ids[-1]
             else:
                 outer, inner = None, p.vlan_ids[0]
-            for h in (sh, dh):
-                _add_capped(h.vlans, inner)
-                if outer is not None:
-                    _add_capped(h.vlan_outer, outer)
-                    h.qinq = True
+            # The sender is on this VLAN; the receiver only if the frame is delivered to it (decided in finish).
+            _add_capped(sh.vlans, inner)
+            if outer is not None:
+                _add_capped(sh.vlan_outer, outer)
+                sh.qinq = True
+            if p.dst_mac and not _is_group_mac(p.dst_mac) and inner is not None:
+                _add_capped(
+                    dh.recv_vlans, (inner, -1 if outer is None else outer, p.dst_mac), MAX_SET_ITEMS * 2
+                )
             if p.pcp is not None:
                 sh.pcps.add(p.pcp)
         else:
@@ -408,6 +425,10 @@ class Aggregator:
                 f.syn_seen = True
             if p.rst:
                 f.resets += 1
+            elif c2s:
+                f.ok_c2s += 1
+            else:
+                f.ok_s2c += 1
         protos = set(p.protocols)
         for proto in protos:
             mapped = K.TSHARK_PROTOCOLS.get(proto)
@@ -594,7 +615,13 @@ class Aggregator:
                     sh.dns_queries.add(qname)
             else:
                 for ip in layers.get("dns_a", []) + layers.get("dns_aaaa", []):
-                    self.host(ip).add_name(qname, "dns", p.ts)
+                    names = (
+                        self.dns_names[ip]
+                        if (ip in self.dns_names or len(self.dns_names) < MAX_DNS_IPS)
+                        else None
+                    )
+                    if names is not None and (len(names) < MAX_NAMES or qname in names):
+                        _first(names, qname, p.ts, "dns")
         if "tls_handshake_extensions_server_name" in layers:
             _add_capped(sh.tls_sni, layers["tls_handshake_extensions_server_name"][0])
             # The server's name is what the client asked for.
@@ -631,7 +658,11 @@ class Aggregator:
                 dst[mac] |= ips
         for key, macs in o.arp_claims.items():
             self.arp_claims[key] |= macs
-        for src, dst in ((o.mac_names, self.mac_names), (o.mac_identity, self.mac_identity)):
+        for src, dst in (
+            (o.mac_names, self.mac_names),
+            (o.mac_identity, self.mac_identity),
+            (o.dns_names, self.dns_names),
+        ):
             for mac, entries in src.items():
                 _merge_first(dst[mac], entries)
         for ip, h in o.hosts.items():
@@ -662,6 +693,11 @@ class Aggregator:
 
     # ── finish ─────────────────────────────────────────────────────────────
     def finish(self) -> tuple[list[Host], list[Flow]]:
+        for ip, names in self.dns_names.items():
+            h = self.hosts.get(ip)
+            if h is not None:
+                for n, (ts, src) in sorted(names.items(), key=lambda kv: kv[1][0]):
+                    h.add_name(n, src, ts)
         gateway_macs = {
             mac
             for table in (self.mac_src_ips, self.mac_dst_ips)
@@ -689,7 +725,8 @@ class Aggregator:
         for f in flows:
             for ip in (f.client, f.server):
                 self.hosts[ip].protocols.add(f.protocol)
-            if f.transport in ("tcp", "udp"):
+            # A port that only answered with resets is closed (a scan probe), not a service the host runs.
+            if f.transport in ("tcp", "udp") and f.server_answered:
                 # UDP protocols where both peers use the well-known port (CoAP, BACnet, NTP…): both speak it.
                 speakers = [(f.server, f.client)]
                 if (
@@ -709,6 +746,7 @@ class Aggregator:
                     svc["detected"].update(f.detected_protocols)
 
         hosts = [self._host_out(h, served.get(h.ip, {}), gateway_macs) for h in self.hosts.values()]
+        _keep_business_hosts_at_level_4(hosts)
         hosts.sort(key=lambda h: (h.ip_version, _ip_sort_key(h.ip)))
         return hosts, flows
 
@@ -732,6 +770,9 @@ class Aggregator:
             vlans=sorted(f.vlans),
             syn_seen=f.syn_seen,
             resets=f.resets,
+            # Open if the server sent anything but resets. On a one-way tap (no server packets at all) a client
+            # that keeps talking implies an open port; a lone SYN (a probe) doesn't.
+            server_answered=f.transport != "tcp" or f.ok_s2c > 0 or (f.pkts_s2c == 0 and f.ok_c2s > 1),
             ot_reads=f.ot_reads,
             ot_writes=f.ot_writes,
             ot_errors=f.ot_errors,
@@ -754,6 +795,17 @@ class Aggregator:
         own_dst = [m for m in sorted(h.dst_macs, key=lambda m: (-h.dst_macs[m], m)) if m not in gateway_macs]
         mac = arp_macs[0] if arp_macs else (own[0] if own else (own_dst[0] if own_dst else None))
         mac_is_gateway = mac is None and bool(candidates or h.dst_macs)
+
+        # VLANs of frames delivered to this host's own MAC (a silent host: to any non-gateway MAC).
+        mine = set(own) | set(arp_macs) | ({mac} if mac else set())
+        silent = not own and not arp_macs
+        vlans, vlan_outer, qinq = set(h.vlans), set(h.vlan_outer), h.qinq
+        for inner, outer, dmac in sorted(h.recv_vlans):
+            if dmac in mine or (silent and dmac not in gateway_macs):
+                _add_capped(vlans, inner)
+                if outer >= 0:
+                    _add_capped(vlan_outer, outer)
+                    qinq = True
 
         name_entries = dict(h.hostnames)
         if mac:
@@ -802,11 +854,11 @@ class Aggregator:
             services=services,
             os_hint=os_hint,
             ttl=ttl,
-            vlans=sorted(h.vlans),
-            vlan_outer=sorted(h.vlan_outer),
+            vlans=sorted(vlans),
+            vlan_outer=sorted(vlan_outer),
             vlan_pcps=sorted(h.pcps),
             vlan_untagged=h.untagged,
-            vlan_qinq=h.qinq,
+            vlan_qinq=qinq,
             packets_sent=h.pkts_sent,
             packets_recv=h.pkts_recv,
             bytes_sent=h.bytes_sent,
@@ -975,6 +1027,51 @@ class Aggregator:
             )
         host.purdue_level = level
         host.purdue_evidence = ev
+
+
+BUSINESS_PEERS_MIN = 3
+
+
+def _segment(host: Host) -> str | None:
+    """The L2/L3 segment a host sits on: its VLAN, else its private IPv4 /24."""
+    if len(host.vlans) == 1:
+        return f"vlan {host.vlans[0]}"
+    if host.ip_version == 4 and host.is_private and not host.is_multicast:
+        return "net " + ".".join(host.ip.split(".")[:3])
+    return None
+
+
+def _keep_business_hosts_at_level_4(hosts: list[Host]) -> None:
+    """Undo the L4 → L3 move for a host that sits among business hosts.
+
+    A business host that speaks OT protocols is usually an engineering or operator station (Level 3). But one on
+    an office segment (most peers are ordinary Level 4 hosts) is a business PC reaching the plant directly: placing
+    it at Level 3 would hide exactly the DMZ bypass the assessment is looking for."""
+    moved = [h for h in hosts if any(e.kind == "ot_protocols" for e in h.purdue_evidence)]
+    if not moved:
+        return
+    per_segment: dict[str, list[Host]] = defaultdict(list)
+    for h in hosts:
+        seg = _segment(h)
+        if seg:
+            per_segment[seg].append(h)
+    moved_ids = {id(h) for h in moved}
+    for h in moved:
+        seg = _segment(h)
+        if seg is None:
+            continue
+        peers = [p for p in per_segment[seg] if id(p) not in moved_ids]
+        business = sum(1 for p in peers if p.purdue_level == 4)
+        plant = sum(1 for p in peers if 0 <= p.purdue_level <= 3.5)
+        if business >= BUSINESS_PEERS_MIN and business > 2 * plant:
+            h.purdue_level = 4
+            h.purdue_evidence = [e for e in h.purdue_evidence if e.kind != "ot_protocols"] + [
+                Evidence(
+                    kind="segment",
+                    detail=f"Talks OT protocols but sits on a business segment ({seg}, {business} Level 4 hosts): "
+                    "kept at Level 4, so its plant traffic shows as crossing the DMZ",
+                )
+            ]
 
 
 def _ip_sort_key(ip: str):
