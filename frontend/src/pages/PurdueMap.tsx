@@ -8,6 +8,7 @@ import { Pencil } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { Asset, AssetFields, Engagement, Link } from '../api/client'
 import { akeys, useBulkEdit } from '../api/assets'
+import { DeviceIcon } from '../components/DeviceIcon'
 import { ErrorNote } from '../components/ui'
 import { useInspector } from '../inspector/context'
 import { assetLabel, levelName } from '../lib/assets'
@@ -32,7 +33,7 @@ function AssetNode({ data, selected }: NodeProps<Node<AssetData>>) {
     <div className={`pm-asset${selected ? ' selected' : ''}${data.dim ? ' dim' : ''}${a.criticality ? ` crit-${a.criticality}` : ''}`}
       title={`${assetLabel(a)} · ${a.ips.join(', ')}`}>
       <Handle type="target" position={Position.Top} className="pm-handle" isConnectable={false} />
-      <div className="pm-asset-name">{assetLabel(a)}{a.overridden.includes('purdue_level') && <Pencil size={10} aria-label="level set manually" />}</div>
+      <div className="pm-asset-name"><DeviceIcon type={a.asset_type} isPrivate={a.is_private} size={13} label={false} />{assetLabel(a)}{a.overridden.includes('purdue_level') && <Pencil size={10} aria-label="level set manually" />}</div>
       <div className="pm-asset-sub">{a.asset_type ?? 'Unknown'}{a.name && a.ips[0] ? ` · ${a.ips[0]}` : ''}</div>
       <Handle type="source" position={Position.Bottom} className="pm-handle" isConnectable={false} />
     </div>

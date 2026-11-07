@@ -6,6 +6,7 @@ import { useAsset, useAssetFields, useAssetHistory, useDeleteAsset, useEditAsset
 import { useEngagement } from '../api/engagements'
 import { assetLabel, describeChange, formatValue, identityGroups, levelName, parseTags } from '../lib/assets'
 import { formatBytes, formatDateTime, formatNumber, relativeTime } from '../lib/format'
+import { DeviceIcon } from './DeviceIcon'
 import { ConfirmButton, ErrorNote, Tabs } from './ui'
 
 type Tab = 'details' | 'evidence' | 'history'
@@ -259,7 +260,8 @@ export function AssetInspector({ eid, id, onClose }: { eid: number; id: number; 
     <div aria-label="Asset details">
       <div className="row" style={{ marginBottom: 'var(--space-3)', flexWrap: 'nowrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{d ? assetLabel(d) : 'Asset'}</div>
+          <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {d && <DeviceIcon type={d.asset_type} isPrivate={d.is_private} size={18} />}{d ? assetLabel(d) : 'Asset'}</div>
           {d && <div className="muted mono" style={{ fontSize: 'var(--text-xs)' }}>{[...d.ips, ...d.macs].slice(0, 3).join(' · ')}</div>}
         </div>
         {d?.origin === 'manual' && <span className="badge">added by hand</span>}

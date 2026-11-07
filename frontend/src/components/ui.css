@@ -81,3 +81,15 @@
 .bar-track { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
 .bar-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
+
+/* Device icons */
+.dev-icon { flex: none; vertical-align: -2px; }
+.dev-control { color: var(--dev-control); }
+.dev-supervisory { color: var(--dev-supervisory); }
+.dev-server { color: var(--dev-server); }
+.dev-network { color: var(--dev-network); }
+.dev-endpoint { color: var(--dev-endpoint); }
+.dev-iot { color: var(--dev-iot); }
+.dev-security { color: var(--dev-security); }
+.dev-external { color: var(--dev-external); }
+.dev-unknown { color: var(--dev-unknown); }

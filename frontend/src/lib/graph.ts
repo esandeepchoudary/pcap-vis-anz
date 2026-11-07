@@ -1,4 +1,5 @@
-import type { Asset } from '../api/client'
+import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type SimulationNodeDatum } from 'd3-force'
+import type { Asset, Finding, Link } from '../api/client'
 import { assetLabel } from './assets'
 
 export const G_NODE_W = 150
@@ -56,3 +57,57 @@ export function subnetLayout(assets: Asset[], degree: Map<number, number>, vlans
   }
   return { groups: out, positions }
 }
+
+// ── Force layout (default graph view) ────────────────────────────────────────
+
+
+export type ForceItem = { id: number; group: string; radius: number }
+type SimNode = SimulationNodeDatum & ForceItem
+
+/** Circle radius from traffic volume: busy devices stand out (14–30 px), like the v1 graph. */
+export function nodeRadius(packets: number, maxPackets: number): number {
+  return Math.round(14 + 16 * (Math.log1p(packets) / Math.log1p(Math.max(1, maxPackets))))
+}
+
+/**
+ * Force-directed layout that still keeps each subnet together: links pull talkers together, nodes repel and never
+ * overlap, and a gentle pull draws each subnet towards its own anchor (external hosts on the outside).
+ * Deterministic: d3 seeds its initial placement and randomness, and we run a fixed number of ticks.
+ */
+export function forceLayout(items: ForceItem[], links: { src: number; dst: number; weight: number }[]): Map<number, { x: number; y: number }> {
+  const nodes: SimNode[] = [...items].sort((a, b) => a.id - b.id).map((n) => ({ ...n }))
+  const groups = [...new Set(nodes.map((n) => n.group))].sort((a, b) => (a === 'External') === (b === 'External') ? a.localeCompare(b, undefined, { numeric: true }) : a === 'External' ? 1 : -1)
+  const internal = groups.filter((g) => g !== 'External')
+  const spread = 180 + 60 * Math.sqrt(nodes.length)
+  const anchor = new Map<string, { x: number; y: number }>()
+  internal.forEach((g, i) => {
+    const a = internal.length === 1 ? 0 : (2 * Math.PI * i) / internal.length
+    const r = internal.length === 1 ? 0 : spread * 0.55
+    anchor.set(g, { x: Math.cos(a) * r, y: Math.sin(a) * r })
+  })
+  anchor.set('External', { x: spread * 1.4, y: 0 })
+  const ids = new Set(nodes.map((n) => n.id))
+  const simLinks = links.filter((l) => ids.has(l.src) && ids.has(l.dst) && l.src !== l.dst)
+    .map((l) => ({ source: l.src, target: l.dst, weight: l.weight }))
+  const sim = forceSimulation(nodes)
+    .force('link', forceLink<SimNode, (typeof simLinks)[number]>(simLinks).id((d) => d.id).distance(110).strength(0.25))
+    .force('charge', forceManyBody().strength(-260).distanceMax(600))
+    .force('collide', forceCollide<SimNode>().radius((d) => d.radius + 34).iterations(2))
+    .force('x', forceX<SimNode>((d) => anchor.get(d.group)!.x).strength(0.08))
+    .force('y', forceY<SimNode>((d) => anchor.get(d.group)!.y).strength(0.08))
+    .stop()
+  for (let i = 0; i < 400; i++) sim.tick()
+  return new Map(nodes.map((n) => [n.id, { x: Math.round(n.x ?? 0), y: Math.round(n.y ?? 0) }]))
+}
+
+/** Asset pairs named together by an open finding: their connection is drawn as suspicious. */
+export function suspiciousPairs(findings: Finding[]): Set<string> {
+  const out = new Set<string>()
+  for (const f of findings) {
+    if (f.status === 'false_positive' || f.status === 'resolved' || f.asset_ids.length < 2) continue
+    for (const a of f.asset_ids) for (const b of f.asset_ids) if (a !== b) out.add(`${a}-${b}`)
+  }
+  return out
+}
+
+export const linkKey = (l: Pick<Link, 'src' | 'dst'>) => `${l.src}-${l.dst}`

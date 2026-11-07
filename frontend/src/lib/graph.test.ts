@@ -1,6 +1,6 @@
-import { expect, it } from 'vitest'
-import type { Asset } from '../api/client'
-import { G_NODE_H, G_NODE_W, subnetLayout, subnetOf } from './graph'
+import { describe, expect, it } from 'vitest'
+import type { Asset, Finding } from '../api/client'
+import { G_NODE_H, G_NODE_W, forceLayout, nodeRadius, subnetLayout, subnetOf, suspiciousPairs } from './graph'
 
 const asset = (id: number, ip: string, extra: Partial<Asset> = {}): Asset => ({
   id, origin: 'observed', version: 1, ips: ip ? [ip] : [], macs: [], name: null, asset_type: null, purdue_level: 1, zone: null,
@@ -34,4 +34,45 @@ it('places every asset inside its subnet box without overlaps, busiest subnet fi
     const [p, q] = [rects[i], rects[j]]
     expect(p.x < q.x + G_NODE_W && q.x < p.x + G_NODE_W && p.y < q.y + G_NODE_H && q.y < p.y + G_NODE_H).toBe(false)
   }
+})
+
+describe('forceLayout', () => {
+  const items = [
+    ...Array.from({ length: 8 }, (_, i) => ({ id: i + 1, group: '10.0.1.0/24', radius: 16 })),
+    ...Array.from({ length: 6 }, (_, i) => ({ id: i + 20, group: '10.0.2.0/24', radius: 20 })),
+    { id: 99, group: 'External', radius: 14 },
+  ]
+  const links = [
+    ...Array.from({ length: 7 }, (_, i) => ({ src: 1, dst: i + 2, weight: 1 })),
+    ...Array.from({ length: 5 }, (_, i) => ({ src: 20, dst: i + 21, weight: 1 })),
+    { src: 1, dst: 20, weight: 1 }, { src: 5, dst: 99, weight: 1 },
+  ]
+  const pos = forceLayout(items, links)
+  const d = (a: number, b: number) => Math.hypot(pos.get(a)!.x - pos.get(b)!.x, pos.get(a)!.y - pos.get(b)!.y)
+
+  it('is deterministic and finite', () => {
+    expect(forceLayout([...items].reverse(), links)).toEqual(pos)
+    for (const p of pos.values()) expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true)
+  })
+  it('keeps nodes apart', () => {
+    for (const a of items) for (const b of items) if (a.id < b.id) expect(d(a.id, b.id)).toBeGreaterThan(a.radius + b.radius)
+  })
+  it('keeps subnets together', () => {
+    const avg = (pairs: [number, number][]) => pairs.reduce((n, [a, b]) => n + d(a, b), 0) / pairs.length
+    const within = avg([[2, 3], [4, 6], [21, 22], [23, 24]])
+    const across = avg([[2, 21], [3, 22], [6, 24], [7, 25]])
+    expect(within).toBeLessThan(across)
+  })
+})
+
+it('nodeRadius grows with traffic within bounds', () => {
+  expect(nodeRadius(0, 1000)).toBe(14)
+  expect(nodeRadius(1000, 1000)).toBe(30)
+  expect(nodeRadius(30, 1000)).toBeGreaterThan(14)
+})
+
+it('suspiciousPairs links assets named by open findings only', () => {
+  const f = (asset_ids: number[], status: Finding['status'] = 'open') => ({ asset_ids, status }) as Finding
+  const s = suspiciousPairs([f([1, 2]), f([3, 4], 'false_positive'), f([5])])
+  expect([...s].sort()).toEqual(['1-2', '2-1'])
 })

@@ -10,7 +10,7 @@
 .fg-subnet { width: 100%; height: 100%; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-2) 60%, transparent); padding: 5px 10px; }
 .fg-subnet span { font-size: 12px; font-weight: 700; color: var(--text-2); font-family: var(--font-mono); }
-.pm-edge.faded .react-flow__edge-path { opacity: 0.12; }
+.pm-edge.faded .react-flow__edge-path { opacity: 0.08; stroke: var(--border-strong); }
 .packets { display: grid; gap: var(--space-3); }
 .packets-split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-3); align-items: start; }
 .packets-list { max-height: calc(100vh - 360px); overflow: auto; }
@@ -19,3 +19,56 @@
   background: var(--surface); padding: var(--space-3); }
 .packets-detail pre { margin: 0; font-family: var(--font-mono); font-size: 12px; white-space: pre; }
 @media (max-width: 1100px) { .packets-split { grid-template-columns: 1fr; } }
+
+/* Topology graph (force layout) */
+.graph-canvas { position: relative; height: calc(100vh - 300px); min-height: 520px; }
+.fgx { display: grid; justify-items: center; gap: 2px; cursor: pointer; transition: opacity 120ms; }
+.fgx.dim { opacity: 0.18; }
+.fgx-circle { position: relative; display: grid; place-items: center; border-radius: 50%; background: var(--surface);
+  border: 2px solid currentColor; box-shadow: var(--shadow-sm); }
+.fgx-circle .dev-icon { color: inherit; }
+.fgx.selected .fgx-circle { box-shadow: 0 0 0 4px var(--focus); }
+.fgx-circle.write-target { outline: 2px dashed var(--danger); outline-offset: 3px; }
+.fgx-circle.cat-control { color: var(--dev-control); background: color-mix(in srgb, var(--dev-control) 12%, var(--surface)); }
+.fgx-circle.cat-supervisory { color: var(--dev-supervisory); background: color-mix(in srgb, var(--dev-supervisory) 12%, var(--surface)); }
+.fgx-circle.cat-server { color: var(--dev-server); background: color-mix(in srgb, var(--dev-server) 12%, var(--surface)); }
+.fgx-circle.cat-network { color: var(--dev-network); background: color-mix(in srgb, var(--dev-network) 12%, var(--surface)); }
+.fgx-circle.cat-endpoint { color: var(--dev-endpoint); background: color-mix(in srgb, var(--dev-endpoint) 12%, var(--surface)); }
+.fgx-circle.cat-iot { color: var(--dev-iot); background: color-mix(in srgb, var(--dev-iot) 12%, var(--surface)); }
+.fgx-circle.cat-security { color: var(--dev-security); background: color-mix(in srgb, var(--dev-security) 12%, var(--surface)); }
+.fgx-circle.cat-external { color: var(--dev-external); background: color-mix(in srgb, var(--dev-external) 10%, var(--surface)); border-style: dashed; }
+.fgx-circle.cat-unknown { color: var(--dev-unknown); background: var(--surface); }
+.fgx-badge { position: absolute; top: -6px; right: -8px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; line-height: 18px; text-align: center; color: #fff; border: 2px solid var(--surface); }
+.fgx-key { position: absolute; bottom: -4px; right: -6px; width: 16px; height: 16px; display: grid; place-items: center;
+  border-radius: 50%; background: var(--warn); color: #fff; border: 2px solid var(--surface); }
+.fgx-inline { margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: 10px; color: #fff; }
+.sev-bg-critical { background: var(--sev-critical); }
+.sev-bg-high { background: var(--sev-high); }
+.sev-bg-medium { background: var(--sev-medium); }
+.sev-bg-low { background: var(--sev-low); }
+.sev-bg-info { background: var(--sev-info); }
+.fgx-label { max-width: 100%; font-size: 11px; font-weight: 650; color: var(--text); text-align: center; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; background: color-mix(in srgb, var(--bg) 80%, transparent); padding: 0 3px; border-radius: 3px; }
+.fgx-sub { font-size: 10px; color: var(--text-3); font-family: var(--font-mono); }
+.fgx-handle { opacity: 0; width: 1px; height: 1px; min-width: 0; min-height: 0; border: 0; left: 50%; }
+.pm-edge-suspicious .react-flow__edge-path { stroke-dasharray: 7 4; }
+.pm-edge-suspicious:not(.pm-edge-write) .react-flow__edge-path { stroke: var(--sev-high); }
+.pm-key-suspicious { border-color: var(--sev-high); border-top-style: dashed; }
+.graph-legend { position: absolute; left: 12px; top: 12px; z-index: 5; display: grid; gap: 3px; padding: 8px 10px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-size: 11px; color: var(--text-2); box-shadow: var(--shadow-sm); max-width: 260px; }
+.graph-legend hr { border: 0; border-top: 1px solid var(--border); margin: 3px 0; width: 100%; }
+.graph-legend > div { display: flex; align-items: center; gap: 6px; }
+.graph-legend .react-flow__controls { left: auto; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 4px 10px; font-size: var(--text-sm); cursor: pointer; color: var(--text-2); }
+.seg button + button { border-left: 1px solid var(--border-strong); }
+.seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.chip { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 999px; padding: 1px 9px; font-size: 11px;
+  cursor: pointer; color: var(--text-2); }
+.chip.off { opacity: 0.45; text-decoration: line-through; }
+.proto-chips { max-height: 54px; overflow: auto; }
+.graph-legend summary { cursor: pointer; font-weight: 700; color: var(--text); list-style: revert; }
+.graph-legend:not([open]) { padding: 4px 10px; }
+.graph-canvas .react-flow__controls { bottom: 12px; left: 12px; top: auto; }
