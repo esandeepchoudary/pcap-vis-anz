@@ -94,6 +94,13 @@ def test_positions_saved(ac):
     z = zone(c, eid, "Control")
     r = c.patch(f"/api/engagements/{eid}/zones/{z['id']}", json={"x": 120.5, "y": 40}, headers=H)
     assert (r.json()["x"], r.json()["y"]) == (120.5, 40)
+    for bad in ('{"x": 1e308, "y": 0}', '{"x": NaN, "y": 0}', '{"x": 0, "y": -Infinity}'):
+        r = c.patch(
+            f"/api/engagements/{eid}/zones/{z['id']}",
+            content=bad,
+            headers={**H, "content-type": "application/json"},
+        )
+        assert r.status_code == 422, bad
 
 
 def test_violations_without_and_with_conduits(ac):

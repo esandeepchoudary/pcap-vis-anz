@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.1.1 -- 2026-11-06
+
+- Security and performance sweep: gzip-bomb guard on bundle import, sign-in throttle hardened (atomic, anti-spraying, bounded, covers password change), diagrams safe with control characters, clean errors for NaN and invalid Unicode input, API docs off on team servers, streamed hashing of carved files; links, dashboard, zone checks and reports 2-7x faster at scale; graph pages load on demand
+
 ## v1.1.0 -- 2026-11-06
 
 - Network graph brought to (and past) v1 parity: force topology layout with subnet grouping, nodes sized by traffic, device icons by family, finding and credential badges, protocol filters, isolate, legend, minimap; device icons across the inventory, Purdue map and inspector

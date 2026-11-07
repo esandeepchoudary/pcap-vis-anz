@@ -166,3 +166,33 @@ def test_throttle_window_expires_and_reset():
     th.record_failure("a", "c")
     th.reset("a", "c")
     assert not th.is_blocked("a", "c")
+
+
+def test_throttle_begin_counts_up_front_so_parallel_guesses_cannot_race():
+    th = svc.LoginThrottle(max_failures=3, window_seconds=60, clock=FakeClock())
+    # Ten guesses arrive together: begin() is checked and counted atomically, so only three get through.
+    assert [th.begin("alice", "c") for _ in range(10)].count(True) == 3
+    th.reset("alice", "c")  # one of them succeeded
+    assert th.begin("alice", "c")
+
+
+def test_throttle_limits_password_spraying_from_one_client():
+    th = svc.LoginThrottle(max_failures=5, max_client_failures=4, window_seconds=60, clock=FakeClock())
+    assert all(th.begin(f"user{i}", "1.2.3.4") for i in range(4))
+    assert not th.begin("user99", "1.2.3.4")  # every username now blocked from this client
+    assert th.begin("user99", "5.6.7.8")
+
+
+def test_throttle_success_uncounts_the_attempt_for_the_client():
+    th = svc.LoginThrottle(max_failures=5, max_client_failures=3, window_seconds=60, clock=FakeClock())
+    for _ in range(10):  # a busy shared client signing in successfully never gets blocked
+        assert th.begin("alice", "proxy")
+        th.reset("alice", "proxy")
+
+
+def test_throttle_memory_is_bounded():
+    clock = FakeClock()
+    th = svc.LoginThrottle(max_keys=50, window_seconds=60, clock=clock)
+    for i in range(1000):
+        th.record_failure(f"u{i}", f"c{i}")
+    assert len(th._failures) <= 50

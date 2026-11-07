@@ -12,7 +12,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt, RGBColor
 
-from pcapvis.reports import ReportData, done_captures, level_name, ts
+from pcapvis.reports import ReportData, done_captures, level_name, ts, xml_safe
 
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 SEV_COLOURS = {"critical": "B42318", "high": "C4320A", "medium": "B54708", "low": "175CD3", "info": "475467"}
@@ -224,7 +224,9 @@ th{background:#1f3a68;color:#fff;text-align:left}th,td{border:1px solid #d0d5dd;
 
 
 def to_html(d: ReportData) -> str:
-    e = html.escape
+    def e(v: str) -> str:
+        return html.escape(xml_safe(v))
+
     out = [
         f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>{e(title(d))}</title><style>{CSS}</style></head><body>',
         f'<p class="title">{e(title(d))}</p>',
@@ -270,8 +272,8 @@ def to_html(d: ReportData) -> str:
 
 
 def _clean(s: str) -> str:
-    # XML 1.0 can't hold most control characters; python-docx would raise on them.
-    return "".join(ch for ch in s if ch in "\t\n\r" or ord(ch) >= 0x20)
+    # python-docx raises on characters XML 1.0 can't hold.
+    return xml_safe(s)
 
 
 def to_docx(d: ReportData) -> bytes:

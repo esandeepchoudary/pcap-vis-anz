@@ -4,7 +4,7 @@ with '=' can never become formulas, and characters Excel can't store are removed
 import io
 
 from openpyxl import Workbook
-from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE, Cell
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -27,16 +27,23 @@ def _value(v):
     return ILLEGAL_CHARACTERS_RE.sub("", str(v))[:32_000]
 
 
+def _text_cell(ws, v):
+    """Strings become Cells pinned to text (never a formula). Built here because looking a row up after
+    ws.append() rescans the whole sheet, which made big registers quadratic."""
+    if not isinstance(v, str):
+        return v
+    cell = Cell(ws, value=v)
+    cell.data_type = "s"
+    return cell
+
+
 def _sheet(wb: Workbook, title: str, header: list[str], rows: list[list]) -> None:
     ws = wb.create_sheet(title)
     ws.append(header)
     for c in ws[1]:
         c.fill, c.font, c.alignment = HEADER_FILL, HEADER_FONT, Alignment(vertical="top")
     for row in rows:
-        ws.append([_value(v) for v in row])
-        for cell in ws[ws.max_row]:
-            if isinstance(cell.value, str):
-                cell.data_type = "s"  # never a formula
+        ws.append([_text_cell(ws, _value(v)) for v in row])
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
     for i, h in enumerate(header, start=1):

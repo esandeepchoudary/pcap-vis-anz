@@ -1,15 +1,12 @@
 import { AlertCircle, Loader2 } from 'lucide-react'
+import { lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ApiError } from './api/client'
 import { useMe, useSystem } from './api/hooks'
 import { AppShell } from './components/AppShell'
 import { Account } from './pages/Account'
-import { ArchitecturePage } from './pages/ArchitecturePage'
 import { AssetsPage } from './pages/AssetsPage'
 import { FindingsPage } from './pages/FindingsPage'
-import { FlowsPage } from './pages/FlowsPage'
-import { PurduePage } from './pages/PurduePage'
-import { CaptureReport } from './pages/CaptureReport'
 import { CapturesPage } from './pages/CapturesPage'
 import { EngagementLayout } from './pages/EngagementLayout'
 import { EngagementOverview } from './pages/EngagementOverview'
@@ -20,6 +17,14 @@ import { ReportPage } from './pages/ReportPage'
 import { StagePage } from './pages/StagePage'
 import { Users } from './pages/Users'
 import { STAGES } from './stages'
+
+// The graph-heavy pages (React Flow, d3) load on first visit, keeping the initial bundle small.
+const lazyPage = <K extends string>(load: () => Promise<Record<K, React.ComponentType>>, name: K) =>
+  lazy(() => load().then((m) => ({ default: m[name] })))
+const ArchitecturePage = lazyPage(() => import('./pages/ArchitecturePage'), 'ArchitecturePage')
+const CaptureReport = lazyPage(() => import('./pages/CaptureReport'), 'CaptureReport')
+const FlowsPage = lazyPage(() => import('./pages/FlowsPage'), 'FlowsPage')
+const PurduePage = lazyPage(() => import('./pages/PurduePage'), 'PurduePage')
 
 function FullPage({ children }: { children: React.ReactNode }) {
   return <div className="auth-page"><div style={{ display: 'grid', justifyItems: 'center', gap: 12 }}>{children}</div></div>

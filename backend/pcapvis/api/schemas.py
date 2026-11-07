@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from pcapvis.db.models import Role
 
+COORD_MAX = 1e6  # diagram coordinates (zones on the architecture view)
+
 
 class TsharkInfo(BaseModel):
     ok: bool
@@ -397,8 +399,8 @@ class ZoneUpdate(BaseModel):
     purdue_level: float | None = None
     security_level: SecurityLevel | None = None
     description: str | None = Field(default=None, max_length=5000)
-    x: float | None = None
-    y: float | None = None
+    x: float | None = Field(default=None, ge=-COORD_MAX, le=COORD_MAX)
+    y: float | None = Field(default=None, ge=-COORD_MAX, le=COORD_MAX)
 
 
 class ZoneOut(BaseModel):

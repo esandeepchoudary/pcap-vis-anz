@@ -72,3 +72,25 @@ def test_export_all_backs_up_every_engagement(make_settings, monkeypatch, tmp_pa
     with zipfile.ZipFile(out / files[0]) as z:
         assert "manifest.json" in z.namelist()
     assert "Exported 3 engagement(s)" in capsys.readouterr().out
+
+
+def test_unstorable_text_is_a_clean_400(make_settings):
+    app = create_app(make_settings(mode="laptop", run_jobs_in_app=False))
+    with TestClient(app) as c:
+        r = c.post(
+            "/api/engagements",
+            content='{"name": "Plant \\ud800"}',  # a lone surrogate: valid JSON, unstorable
+            headers={**H, "content-type": "application/json"},
+        )
+        assert r.status_code == 400 and "invalid Unicode" in r.json()["detail"]
+        assert c.get("/api/engagements").json() == []
+
+
+def test_api_docs_only_on_laptops(make_settings):
+    laptop = create_app(make_settings(mode="laptop", run_jobs_in_app=False))
+    server = create_app(make_settings(mode="server", admin_username="admin", admin_password="x" * 12))
+    with TestClient(laptop) as c:
+        assert c.get("/api/openapi.json").status_code == 200
+    with TestClient(server) as c:
+        assert c.get("/api/openapi.json").status_code == 404
+        assert c.get("/api/docs").status_code == 404

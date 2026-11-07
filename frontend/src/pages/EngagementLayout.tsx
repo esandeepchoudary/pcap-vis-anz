@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { Outlet, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { useEngagement, useEngagementEvents } from '../api/engagements'
@@ -17,5 +18,9 @@ export function EngagementLayout() {
       </div>
     )
   }
-  return <Outlet context={eng.data} />
+  return (
+    <Suspense fallback={<div className="page muted">Loading…</div>}>
+      <Outlet context={eng.data} />
+    </Suspense>
+  )
 }

@@ -196,14 +196,35 @@ def purge_expired_sessions(db: Session) -> int:
 
 
 class LoginThrottle:
-    """Blocks a (username, client) pair after too many failures within a window. In-memory."""
+    """Limits failed sign-ins, in memory, within a sliding window:
 
-    def __init__(self, max_failures: int = 5, window_seconds: int = 900, clock=time.monotonic):
+    - per (username, client): ``max_failures`` (guessing one account);
+    - per client: ``max_client_failures`` across all usernames (password spraying).
+
+    ``begin()`` checks and counts an attempt in one step, so parallel guesses can't all slip past the check
+    while the slow password hash runs; ``reset()`` un-counts it when the sign-in succeeds. Memory is bounded
+    by ``max_keys``.
+    """
+
+    def __init__(
+        self,
+        max_failures: int = 5,
+        window_seconds: int = 900,
+        clock=time.monotonic,
+        max_client_failures: int = 30,
+        max_keys: int = 10_000,
+    ):
         self.max_failures = max_failures
+        self.max_client_failures = max_client_failures
         self.window = window_seconds
+        self.max_keys = max_keys
         self._clock = clock
         self._failures: dict[tuple[str, str], list[float]] = {}
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _keys(username: str, client: str) -> tuple[tuple[str, str], tuple[str, str]]:
+        return (normalize_username(username), client), ("\x00client", client)
 
     def _recent(self, key: tuple[str, str]) -> list[float]:
         cutoff = self._clock() - self.window
@@ -214,16 +235,46 @@ class LoginThrottle:
             self._failures.pop(key, None)
         return recent
 
+    def _blocked(self, user_key, client_key) -> bool:
+        return (
+            len(self._recent(user_key)) >= self.max_failures
+            or len(self._recent(client_key)) >= self.max_client_failures
+        )
+
+    def _add(self, *keys) -> None:
+        now = self._clock()
+        for key in keys:
+            self._failures.setdefault(key, []).append(now)
+        if len(self._failures) > self.max_keys:
+            for key in list(self._failures):
+                self._recent(key)  # drop expired entries
+            while len(self._failures) > self.max_keys:  # still full: forget the oldest keys
+                del self._failures[next(iter(self._failures))]
+
     def is_blocked(self, username: str, client: str) -> bool:
         with self._lock:
-            return len(self._recent((normalize_username(username), client))) >= self.max_failures
+            return self._blocked(*self._keys(username, client))
+
+    def begin(self, username: str, client: str) -> bool:
+        """Count a sign-in attempt as a failure up front. False (and nothing counted) when blocked."""
+        with self._lock:
+            keys = self._keys(username, client)
+            if self._blocked(*keys):
+                return False
+            self._add(*keys)
+            return True
 
     def record_failure(self, username: str, client: str) -> None:
         with self._lock:
-            key = (normalize_username(username), client)
-            self._recent(key)
-            self._failures.setdefault(key, []).append(self._clock())
+            self._add(*self._keys(username, client))
 
     def reset(self, username: str, client: str) -> None:
+        """A successful sign-in: clear the account's failures and un-count this attempt for the client."""
         with self._lock:
-            self._failures.pop((normalize_username(username), client), None)
+            user_key, client_key = self._keys(username, client)
+            self._failures.pop(user_key, None)
+            attempts = self._failures.get(client_key)
+            if attempts:
+                attempts.pop()
+                if not attempts:
+                    del self._failures[client_key]

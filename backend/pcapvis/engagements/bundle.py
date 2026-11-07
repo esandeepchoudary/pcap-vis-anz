@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
 from pcapvis import __version__
+from pcapvis.api.schemas import COORD_MAX
 from pcapvis.assets import fields as F
 from pcapvis.assets import merge as asset_merge
 from pcapvis.assets.service import MAC_RE, parse_identifiers
@@ -138,8 +139,8 @@ class _ZoneMeta(BaseModel):
     purdue_level: float | None = None
     security_level: Literal[1, 2, 3, 4] | None = None
     description: str = Field(default="", max_length=5000)
-    x: float | None = None
-    y: float | None = None
+    x: float | None = Field(default=None, ge=-COORD_MAX, le=COORD_MAX)
+    y: float | None = Field(default=None, ge=-COORD_MAX, le=COORD_MAX)
 
 
 class _ConduitMeta(BaseModel):
@@ -542,12 +543,23 @@ def _import_capture(db, z, members, storage: Storage, eng, user, cm: _CaptureMet
         dest = storage.result_path(eng.id, cap.id)
         _extract(z, info, dest)
         try:
-            with gzip.open(dest, "rb") as fh:
-                data = fh.read(4 * 1024**3)
+            data = _read_gzip(dest, limit=MAX_RATIO * max(info.file_size, 1 << 20))
             AnalysisResult.model_validate_json(data)
         except (OSError, EOFError, ValidationError, ValueError, json.JSONDecodeError) as exc:
             raise BundleError(f"Invalid analysis result for {cm.file_name!r}.") from exc
     return cap
+
+
+def _read_gzip(path: Path, limit: int) -> bytes:
+    """Decompress a stored result, refusing to inflate past ``limit`` (results are stored, not deflated,
+    inside the zip, so the archive's ratio check never sees a gzip bomb)."""
+    buf = bytearray()
+    with gzip.open(path, "rb") as fh:
+        while chunk := fh.read(CHUNK * 8):
+            buf += chunk
+            if len(buf) > limit:
+                raise BundleError("Bundle analysis result is suspiciously compressed (possible gzip bomb).")
+    return bytes(buf)
 
 
 def _load_result(storage: Storage, cap: Capture) -> AnalysisResult:

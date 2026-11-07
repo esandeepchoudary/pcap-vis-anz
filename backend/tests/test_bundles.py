@@ -1,5 +1,6 @@
 """Engagement export/import (.pcapvis): round trip, and rejection of unsafe or corrupt bundles."""
 
+import gzip
 import io
 import json
 import shutil
@@ -421,3 +422,21 @@ def test_imported_history_values_are_trimmed(ac):
         if x["field"] == "notes"
     ][0]
     assert h["old"] == "{'x': 1}" and len(h["new"]) == 10_000
+
+
+def test_rejects_gzip_bomb_in_stored_result(ac):
+    # Results are stored (not deflated) in the zip, so only the gzip layer can be a bomb.
+    bomb = gzip.compress(b" " * 300_000_000, compresslevel=9)  # ~300 KB that inflates 1000x
+    cap = {
+        "key": 1,
+        "file_name": "a.pcap",
+        "size": 1,
+        "sha256": "0" * 64,
+        "status": "done",
+        "has_file": False,
+        "has_result": True,
+    }
+    data = make_bundle(
+        {"manifest.json": json.dumps(manifest(captures=[cap])).encode(), "results/1.json.gz": bomb}
+    )
+    _assert_rejected(ac[1], data, "gzip bomb")

@@ -4,6 +4,7 @@ Every generator takes a ``ReportData`` snapshot. All text in it may come from un
 (hostnames, identity strings, HTTP data): each format escapes it its own way (see the generators).
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -19,6 +20,13 @@ from pcapvis.assets.links import aggregate_links
 from pcapvis.db.models import Asset, AssetOtOp, Capture, CaptureStatus, Conduit, Engagement
 
 LEVEL_NAMES = F.PURDUE_NAMES
+# Characters XML 1.0 can't hold (most control characters, lone surrogates, U+FFFE/FFFF). Hostnames and
+# identity strings come from traffic and may contain them; left in, the .drawio/.svg won't open.
+_NOT_XML = re.compile("[^\t\n\r\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]")
+
+
+def xml_safe(s: str) -> str:
+    return _NOT_XML.sub("", s)
 
 
 @dataclass
@@ -96,6 +104,7 @@ def gather(db: Session, eng: Engagement) -> ReportData:
             )
         )
     rows.sort(key=lambda r: (r.level < 0, -r.level if r.level >= 0 else 0, r.label))
+    links = aggregate_links(db, eng.id)
     return ReportData(
         engagement=eng,
         generated_at=datetime.now(UTC),
@@ -106,9 +115,9 @@ def gather(db: Session, eng: Engagement) -> ReportData:
         conduits=list(
             db.scalars(select(Conduit).where(Conduit.engagement_id == eng.id).order_by(Conduit.id))
         ),
-        violations=Z.violations(db, eng.id),
+        violations=Z.violations(db, eng.id, links),
         findings=FN.list_findings(db, eng.id),
-        links=aggregate_links(db, eng.id),
+        links=links,
         networks=Z.networks(db, eng.id),
         ot_ops=list(
             db.scalars(select(AssetOtOp).where(AssetOtOp.engagement_id == eng.id).order_by(AssetOtOp.id))
