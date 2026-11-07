@@ -1,32 +1,29 @@
 ---
-sidebar_position: 5
+sidebar_position: 23
 sidebar_label: "Troubleshooting"
 title: "Troubleshooting"
-description: "Make sure dependencies were installed inside the correct Python environment (or virtualenv) that the app is being run from."
+description: "Common problems and fixes."
 ---
 
 # Troubleshooting
 
-## scapy import error
+**The app won't start: "tshark not found / too old".** Install Wireshark 4.0+ (`sudo apt install tshark`) or use
+the container image. `pcapvis check` shows what it found.
 
-Make sure dependencies were installed inside the correct Python environment (or virtualenv) that the app is being run from.
+**A capture stays "Queued".** On a team server, check the worker is running (`docker compose ps`,
+`docker compose logs worker`). On a laptop, analysis runs in the app itself; restart it.
 
-## Permission denied reading pcap
+**"Not a pcap, pcapng or gzipped capture".** The file isn't a capture (for example a `.cap` from another tool in a
+different format). Convert it with `editcap -F pcapng in.cap out.pcapng`.
 
-Some systems require root to read certain capture files. Try running with `sudo python app.py`.
+**Analysis is slow.** tshark decodes roughly 10k packets per second per core. Large captures are split and
+analysed in parallel; give the worker more CPU, or set `PCAPVIS_ANALYSIS_WORKERS`.
 
-## Graph is empty after upload
+**Live updates don't appear behind a proxy.** The proxy is buffering server-sent events; disable buffering for
+`/api/engagements/*/events` (see the Caddy example in [Team server](deployment.md#https)).
 
-The uploaded file may contain only non-IP traffic (for example pure Bluetooth or USB captures). The tool supports IPv4, IPv6, and ARP packets.
+**"Someone else changed this asset".** Another user saved the asset while you were editing. Choose
+"discard mine" to see their change, or "keep mine" and save again.
 
-## Very large files are slow
-
-Only the first 1,000,000 packets are processed. For faster results, pre-filter the capture with `tcpdump` before uploading:
-
-```bash
-tcpdump -r big.pcap -w filtered.pcap 'tcp or udp'
-```
-
-<!-- docsolace:keep -->
-<!-- Notes added here are preserved across regeneration. -->
-<!-- /docsolace:keep -->
+**Merge reported conflicts.** Both the server and the bundle changed the same field; the server's value was kept.
+Open the asset and set the value you want.

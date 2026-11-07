@@ -172,7 +172,7 @@ Manual edits live on the asset, never on a capture, so new captures merge in wit
 | M6 ✅ | Zones, conduits, and architecture diagram: violation detection, editable layered diagram with manual devices |
 | M7 ✅ | Network and forensic parity: graph, flows table, DNS, VLAN views and matrices, diff/baseline, packet inspector, credentials, file carving, dashboard |
 | M8 ✅ | Findings and reports: findings workspace, asset register XLSX, SVG/draw.io, DOCX/PDF report, engagement bundle |
-| M9 | Server mode hardening, laptop→server import with merge, docs rewrite, legacy retirement |
+| M9 ✅ | Server mode hardening, laptop→server import with merge, docs rewrite, legacy retirement |
 
 ### 4.4 Milestone log
 
@@ -345,3 +345,21 @@ Findings while building M1 (decisions taken, details in `backlog.md`):
 - Reviewed: bundle import validation, cross-engagement ID checks on every ID-taking route, untrusted text in
   every export format (CSV, XLSX, draw.io, SVG, HTML, DOCX), no raw-HTML sinks in the frontend, no secrets in
   finding evidence or reports.
+
+
+**M9, release: done (v1.0.0, 2026-11-06).**
+- Merge a `.pcapvis` into an existing engagement (laptop → team server): imported through the normal validated
+  path into a temporary engagement, then folded in. Captures deduplicated by SHA-256; laptop edits applied where
+  the server has none; fields changed on both sides keep the server's value and are reported; zones, conduits,
+  hand-added assets and findings triage added when missing; idempotent; temporary data always removed.
+- Team server: `/api/health` checks the database (503 when it can't), deployment warnings at startup and in
+  `pcapvis check` (cookies without HTTPS, SQLite for a team, short first-admin password), `pcapvis export-all`
+  backups.
+- Flows page rework after user feedback ("Flow is a mess"): the network graph groups assets into subnet boxes
+  (overlap-free), hides external hosts by default and highlights an asset's connections on hover; the flow table
+  shows asset names and opens connections in the inspector.
+- Legacy retired: `legacy/`, the parity harness and its CI jobs, and the GeoIP data only v1 used were removed
+  (0 unexplained differences at retirement; preserved at tag `legacy-v1-final`).
+- Docs rewritten for v2 (overview, getting started, concepts, one page per workflow stage, configuration,
+  team server, security, troubleshooting); v1 pages kept under "Archive". README rewritten.
+- Tests: backend 476, frontend 126, e2e 17; docs site builds.

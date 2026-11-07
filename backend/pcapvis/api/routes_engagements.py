@@ -24,6 +24,7 @@ from pcapvis.api.schemas import (
     ErrorOut,
     MemberOut,
     MemberSet,
+    MergeReportOut,
 )
 from pcapvis.config import Settings
 from pcapvis.db.models import (
@@ -39,6 +40,7 @@ from pcapvis.db.models import (
 )
 from pcapvis.engagements import access, audit
 from pcapvis.engagements.bundle import BundleError, export_bundle, import_bundle
+from pcapvis.engagements.merge_bundle import merge_bundle
 from pcapvis.engagements.storage import Storage, safe_filename
 
 router = APIRouter(prefix="/api", tags=["engagements"])
@@ -430,6 +432,27 @@ def export_engagement(
     )
 
 
+def receive_bundle(file: UploadFile, settings: Settings) -> Path_:
+    """Stream an uploaded bundle to a temp file under the data folder, enforcing the upload limit."""
+    tmp_dir = Path_(settings.data_dir) / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="import-", suffix=".pcapvis", dir=tmp_dir)
+    try:
+        size = 0
+        with os.fdopen(fd, "wb") as out:
+            while chunk := file.file.read(1 << 20):
+                size += len(chunk)
+                if size > settings.max_upload_bytes:
+                    raise HTTPException(
+                        status.HTTP_413_CONTENT_TOO_LARGE, "Bundle is larger than the upload limit."
+                    )
+                out.write(chunk)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+    return Path_(tmp)
+
+
 @router.post(
     "/engagements/import",
     response_model=EngagementOut,
@@ -446,26 +469,50 @@ def import_engagement(
     if not access.can_create_engagement(user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only leads and admins can import engagements.")
     settings = request.app.state.settings
-    tmp_dir = Path_(settings.data_dir) / "tmp"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix="import-", suffix=".pcapvis", dir=tmp_dir)
+    tmp = receive_bundle(file, settings)
     try:
-        size = 0
-        with os.fdopen(fd, "wb") as out:
-            while chunk := file.file.read(1 << 20):
-                size += len(chunk)
-                if size > settings.max_upload_bytes:
-                    raise HTTPException(
-                        status.HTTP_413_CONTENT_TOO_LARGE, "Bundle is larger than the upload limit."
-                    )
-                out.write(chunk)
         try:
-            eng = import_bundle(db, store, user, Path_(tmp), max_total=settings.max_upload_bytes * 4)
+            eng = import_bundle(db, store, user, tmp, max_total=settings.max_upload_bytes * 4)
         except BundleError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     finally:
-        os.unlink(tmp)
+        tmp.unlink(missing_ok=True)
     runner = getattr(request.app.state, "job_runner", None)
     if runner is not None:
         runner.wake.set()  # captures imported without results get analysed
     return engagement_out(db, eng, MemberRole.lead)
+
+
+@router.post(
+    "/engagements/{engagement_id}/merge",
+    response_model=MergeReportOut,
+    responses={400: {"model": ErrorOut}, 413: {"model": ErrorOut, "description": "Too large"}},
+)
+def merge_into_engagement(
+    request: Request,
+    file: UploadFile = File(...),
+    ctx=Depends(as_lead),
+    store: Storage = Depends(storage),
+) -> MergeReportOut:
+    """Merge a .pcapvis bundle (e.g. from a consultant's laptop) into this engagement."""
+    eng, _role, user, db = ctx
+    settings = request.app.state.settings
+    tmp = receive_bundle(file, settings)
+    try:
+        report = merge_bundle(
+            db,
+            store,
+            user,
+            eng,
+            tmp,
+            max_total=settings.max_upload_bytes * 4,
+            source_name=safe_filename(file.filename or "bundle.pcapvis"),
+        )
+    except BundleError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+    runner = getattr(request.app.state, "job_runner", None)
+    if runner is not None:
+        runner.wake.set()  # queued captures from the bundle
+    return report

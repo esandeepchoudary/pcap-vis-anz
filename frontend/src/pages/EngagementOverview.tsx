@@ -6,6 +6,7 @@ import {
   exportUrl, useAudit, useDeleteEngagement, useDirectory, useMembers, useSetMember, useUpdateEngagement,
 } from '../api/engagements'
 import { useDashboard } from '../api/forensics'
+import { MergeBundle } from '../components/MergeBundle'
 import { ConfirmButton, ErrorNote, SeverityBadge, Tile } from '../components/ui'
 import { SEVERITIES } from '../lib/severity'
 import { formatNumber, purdueLabel, relativeTime } from '../lib/format'
@@ -173,6 +174,7 @@ export function EngagementOverview({ system }: { system: SystemInfo }) {
           </div>
         </section>
 
+        {eng.my_role === 'lead' && !eng.is_quicklook && <MergeBundle eid={eng.id} />}
         {system.auth_required && !eng.is_quicklook && <Members eng={eng} system={system} />}
         {eng.my_role === 'lead' && <Settings key={eng.revision} eng={eng} />}
 

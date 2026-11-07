@@ -14,7 +14,7 @@ import { ErrorNote, Tabs } from '../components/ui'
 import { useInspector } from '../inspector/context'
 import { assetLabel } from '../lib/assets'
 import { formatBytes, formatDateTime, formatDuration, formatNumber, purdueLabel } from '../lib/format'
-import { ringLayout } from '../lib/graph'
+import { G_NODE_H, G_NODE_W, subnetLayout } from '../lib/graph'
 import './purdue.css'
 import './flows.css'
 
@@ -29,10 +29,13 @@ function CapturePicker({ captures, value, onChange, label = 'Capture' }: { captu
   )
 }
 
-function GraphNode({ data, selected }: NodeProps<Node<{ asset: Asset }>>) {
+type GraphData = { asset: Asset; dim: boolean }
+
+function GraphNode({ data, selected }: NodeProps<Node<GraphData>>) {
   const a = data.asset
   return (
-    <div className={`fg-node${selected ? ' selected' : ''}`} title={a.ips.join(', ')}>
+    <div className={`fg-node level-edge-${String(a.purdue_level).replace('.', '_').replace('-', 'm')}${selected ? ' selected' : ''}${data.dim ? ' dim' : ''}`}
+      title={`${assetLabel(a)} · ${a.ips.join(', ')} · ${a.asset_type ?? 'Unknown'}`}>
       <Handle type="target" position={Position.Top} className="pm-handle" isConnectable={false} />
       <div className="pm-asset-name">{assetLabel(a)}</div>
       <div className="pm-asset-sub">{a.asset_type ?? 'Unknown'} · {purdueLabel(a.purdue_level)}</div>
@@ -40,36 +43,66 @@ function GraphNode({ data, selected }: NodeProps<Node<{ asset: Asset }>>) {
     </div>
   )
 }
-const nodeTypes = { asset: GraphNode }
+
+function SubnetNode({ data }: NodeProps<Node<{ label: string }>>) {
+  return <div className="fg-subnet"><span>{data.label}</span></div>
+}
+const nodeTypes = { asset: GraphNode, subnet: SubnetNode }
 
 function Graph({ eng, assets, links }: { eng: Engagement; assets: Asset[]; links: Link[] }) {
-  const { select } = useInspector()
+  const { selection, select } = useInspector()
   const [otOnly, setOtOnly] = useState(false)
-  const shown = links.filter((l) => !otOnly || l.is_ot)
+  const [showExternal, setShowExternal] = useState(false)
+  const [hover, setHover] = useState<number | null>(null)
+  const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets])
+  const visible = (id: number) => { const a = byId.get(id); return !!a && (showExternal || a.is_private || a.origin === 'manual') }
+  const shown = links.filter((l) => (!otOnly || l.is_ot) && visible(l.src) && visible(l.dst))
+  const focus = hover ?? (selection?.kind === 'asset' && selection.eid === eng.id ? selection.id : null)
+  const neighbours = useMemo(() => {
+    const n = new Set<number>()
+    if (focus != null) for (const l of shown) if (l.src === focus || l.dst === focus) { n.add(l.src); n.add(l.dst) }
+    return n
+  }, [shown, focus])
   const { nodes, edges } = useMemo(() => {
     const ids = new Set(shown.flatMap((l) => [l.src, l.dst]))
     const degree = new Map<number, number>()
     for (const l of shown) for (const id of [l.src, l.dst]) degree.set(id, (degree.get(id) ?? 0) + 1)
-    const byId = new Map(assets.map((a) => [a.id, a]))
-    const pos = ringLayout([...ids].filter((id) => byId.has(id)), degree)
-    const nodes: Node[] = [...pos].map(([id, p]) => ({ id: String(id), type: 'asset', position: p, data: { asset: byId.get(id)! }, style: { width: 170, height: 46 } }))
-    const edges: Edge[] = shown.filter((l) => pos.has(l.src) && pos.has(l.dst)).map((l) => ({
-      id: `${l.src}-${l.dst}`, source: String(l.src), target: String(l.dst), data: { link: l },
-      className: `pm-edge pm-edge-${l.ot_writes ? 'write' : l.is_ot ? 'ot' : 'it'}`, markerEnd: { type: MarkerType.ArrowClosed },
-      style: { strokeWidth: Math.min(4, 1 + Math.log10(Math.max(1, l.packets)) / 2) },
-    }))
+    const members = [...ids].map((id) => byId.get(id)!).filter(Boolean)
+    const layout = subnetLayout(members, degree)
+    const nodes: Node[] = [
+      ...layout.groups.map((g): Node => ({ id: `g-${g.key}`, type: 'subnet', position: { x: g.x, y: g.y }, data: { label: g.label },
+        draggable: false, selectable: false, focusable: false, zIndex: 0, style: { width: g.w, height: g.h } })),
+      ...members.map((a): Node => ({ id: String(a.id), type: 'asset', position: layout.positions.get(a.id)!, zIndex: 2,
+        data: { asset: a, dim: focus != null && !neighbours.has(a.id) }, style: { width: G_NODE_W, height: G_NODE_H } })),
+    ]
+    const edges: Edge[] = shown.map((l) => {
+      const on = focus == null || l.src === focus || l.dst === focus
+      return {
+        id: `${l.src}-${l.dst}`, source: String(l.src), target: String(l.dst), data: { link: l }, zIndex: on && focus != null ? 3 : 1,
+        className: `pm-edge pm-edge-${l.ot_writes ? 'write' : l.is_ot ? 'ot' : 'it'}${on ? '' : ' faded'}`,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+        style: { strokeWidth: Math.min(3, 1 + Math.log10(Math.max(1, l.packets)) / 2) },
+      }
+    })
     return { nodes, edges }
-  }, [shown, assets])
+  }, [shown, byId, focus, neighbours])
   if (!links.length) return <p className="muted">No traffic between assets yet.</p>
+  const external = assets.filter((a) => !a.is_private && a.origin === 'observed').length
   return (
     <div className="stack" style={{ gap: 'var(--space-3)' }}>
       <div className="row">
         <label className="row"><input type="checkbox" checked={otOnly} onChange={(e) => setOtOnly(e.target.checked)} /> OT traffic only</label>
-        <span className="muted">{nodes.length} assets · {edges.length} connections · busiest in the middle</span>
+        {external > 0 && <label className="row"><input type="checkbox" checked={showExternal} onChange={(e) => setShowExternal(e.target.checked)} /> Show {external} external</label>}
+        <span className="muted">{nodes.filter((n) => n.type === 'asset').length} assets · {edges.length} connections, grouped by subnet. Hover an asset to see who it talks to.</span>
+        <span className="spacer" />
+        <span className="pm-legend"><i className="pm-key pm-key-ot" /> OT <i className="pm-key pm-key-write" /> writes <i className="pm-key pm-key-it" /> other</span>
       </div>
       <div className="purdue-canvas" aria-label="Network graph">
-        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView minZoom={0.05} nodesConnectable={false} proOptions={{ hideAttribution: true }}
-          onNodeClick={(_e, n) => select({ kind: 'asset', eid: eng.id, id: Number(n.id) })}
+        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.08 }} minZoom={0.05}
+          nodesDraggable={false} nodesConnectable={false} proOptions={{ hideAttribution: true }}
+          onNodeMouseEnter={(_e, n) => { if (n.type === 'asset') setHover(Number(n.id)) }}
+          onNodeMouseLeave={() => setHover(null)}
+          onNodeClick={(_e, n) => { if (n.type === 'asset') select({ kind: 'asset', eid: eng.id, id: Number(n.id) }) }}
           onEdgeClick={(_e, e) => { const l = (e.data as { link: Link }).link; select({ kind: 'link', eid: eng.id, src: l.src, dst: l.dst }) }}>
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
           <Controls showInteractive={false} />
@@ -84,33 +117,49 @@ function hostName(r: AnalysisResult) {
   return (ip: string) => m.get(ip) ?? null
 }
 
-function FlowsTable({ r }: { r: AnalysisResult }) {
+function FlowsTable({ r, eid, assets }: { r: AnalysisResult; eid: number; assets: Asset[] }) {
+  const { select } = useInspector()
   const [q, setQ] = useState('')
   const [limit, setLimit] = useState(200)
   const name = hostName(r)
+  const assetOf = useMemo(() => {
+    const m = new Map<string, Asset>()
+    for (const a of assets) for (const ip of a.ips) m.set(ip, a)
+    return m
+  }, [assets])
+  const who = (ip: string) => assetOf.get(ip)?.name ?? name(ip)
   const needle = q.trim().toLowerCase()
-  const rows = r.flows.filter((f) => !needle || [f.client, f.server, f.protocol, String(f.server_port), name(f.client), name(f.server)]
+  const rows = r.flows.filter((f) => !needle || [f.client, f.server, f.protocol, String(f.server_port), who(f.client), who(f.server)]
     .some((v) => v?.toLowerCase().includes(needle))).sort((a, b) => (b.bytes_c2s + b.bytes_s2c) - (a.bytes_c2s + a.bytes_s2c))
+  const open = (client: string, server: string) => {
+    const s = assetOf.get(client)
+    const d = assetOf.get(server)
+    if (s && d && s.id !== d.id) select({ kind: 'link', eid, src: s.id, dst: d.id })
+  }
+  const Who = ({ ip, port }: { ip: string; port?: number }) => (
+    <>{who(ip) ? <><strong>{who(ip)}</strong> <span className="muted mono">{ip}{port != null ? `:${port}` : ''}</span></>
+      : <span className="mono">{ip}{port != null ? `:${port}` : ''}</span>}</>
+  )
   return (
     <div className="stack">
       <div className="row">
         <input className="input" placeholder="Filter by address, name, protocol, port…" aria-label="Filter flows" value={q}
           onChange={(e) => { setQ(e.target.value); setLimit(200) }} style={{ width: 320 }} />
-        <span className="muted">{formatNumber(rows.length)} of {formatNumber(r.flows.length)} flows, largest first</span>
+        <span className="muted">{formatNumber(rows.length)} of {formatNumber(r.flows.length)} flows, largest first. Click a row for the connection's details.</span>
       </div>
       <div className="table-wrap">
         <table className="table" aria-label="Flows">
-          <thead><tr><th>Client</th><th>Server</th><th>Protocol</th><th className="num">Packets</th><th className="num">Bytes</th><th>Duration</th><th className="num">OT r/w</th><th>Direction from</th></tr></thead>
+          <thead><tr><th>Client</th><th>Server</th><th>Protocol</th><th className="num">Packets</th><th className="num">Bytes</th><th>Duration</th><th className="num" title="OT reads / writes">OT r/w</th></tr></thead>
           <tbody>{rows.slice(0, limit).map((f) => (
-            <tr key={f.id}>
-              <td className="mono">{f.client}:{f.client_port}{name(f.client) && <div className="muted">{name(f.client)}</div>}</td>
-              <td className="mono">{f.server}:{f.server_port}{name(f.server) && <div className="muted">{name(f.server)}</div>}</td>
+            <tr key={f.id} className="clickable" tabIndex={0} onClick={() => open(f.client, f.server)}
+              onKeyDown={(e) => { if (e.key === 'Enter') open(f.client, f.server) }}>
+              <td><Who ip={f.client} /></td>
+              <td><Who ip={f.server} port={f.transport === 'tcp' || f.transport === 'udp' ? f.server_port : undefined} /></td>
               <td>{f.protocol}</td>
               <td className="num">{formatNumber(f.packets_c2s + f.packets_s2c)}</td>
               <td className="num">{formatBytes(f.bytes_c2s + f.bytes_s2c)}</td>
               <td>{formatDuration(f.last_seen - f.first_seen)}</td>
-              <td className="num">{f.ot_reads || f.ot_writes ? `${f.ot_reads}/${f.ot_writes}` : '—'}</td>
-              <td className="muted">{f.direction_basis.replace('_', ' ')}</td>
+              <td className="num">{f.ot_reads || f.ot_writes ? <>{f.ot_reads}/<span className={f.ot_writes ? 'crit-critical' : ''}>{f.ot_writes}</span></> : '—'}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -255,7 +304,7 @@ export function FlowsPage() {
           {perCapture && <div className="row" style={{ marginBottom: 'var(--space-3)' }}><CapturePicker captures={done} value={cid} onChange={setPicked} /></div>}
           {tab === 'graph' && assets.data && links.data && <Graph eng={eng} assets={assets.data} links={links.data} />}
           {result.isError && perCapture && <ErrorNote>{result.error.message}</ErrorNote>}
-          {tab === 'flows' && result.data && <FlowsTable r={result.data} />}
+          {tab === 'flows' && result.data && <FlowsTable r={result.data} eid={eng.id} assets={assets.data ?? []} />}
           {tab === 'dns' && result.data && <Dns r={result.data} />}
           {tab === 'vlans' && result.data && <Vlans r={result.data} assets={assets.data ?? []} eid={eng.id} />}
           {tab === 'diff' && <Diff eng={eng} captures={done} byId={byId} />}

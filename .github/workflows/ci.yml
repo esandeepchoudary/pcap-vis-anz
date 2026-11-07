@@ -96,44 +96,6 @@ jobs:
         if: failure()
         with: { name: playwright-traces, path: frontend/test-results, retention-days: 7 }
 
-  parity:
-    name: Parity with legacy engine
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [backend]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install tshark
-        timeout-minutes: 14
-        run: "$GITHUB_WORKSPACE/.github/scripts/install-tshark.sh"
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - name: Legacy engine in its own environment
-        run: |
-          python -m venv /tmp/legacy-venv
-          /tmp/legacy-venv/bin/pip install -q -r legacy/requirements.txt
-      - uses: astral-sh/setup-uv@v6
-        with: { python-version: "3.12" }
-      - name: Every difference from legacy must be explained
-        working-directory: backend
-        env:
-          PCAPVIS_LEGACY_PYTHON: /tmp/legacy-venv/bin/python
-        run: |
-          uv sync --frozen
-          uv run pytest tests/test_legacy_parity.py -v
-
-  legacy:
-    name: Legacy app (reference oracle)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults: { run: { working-directory: legacy } }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -r requirements.txt pytest
-      - run: python -m pytest tests/ -q
-
   docker:
     name: Container image
     runs-on: ubuntu-latest
@@ -155,7 +117,7 @@ jobs:
   # Releases to master stay manual. --match-head-commit merges exactly the commit that was tested.
   auto-merge:
     name: Auto-merge into develop
-    needs: [backend, backend-postgres, frontend, e2e, parity, legacy, docker]
+    needs: [backend, backend-postgres, frontend, e2e, docker]
     if: >-
       github.event_name == 'pull_request'
       && github.base_ref == 'develop'

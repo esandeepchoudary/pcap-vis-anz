@@ -2,39 +2,40 @@
 sidebar_position: 3
 sidebar_label: "Concepts"
 title: "Concepts"
-description: "The backend parses each capture into a hosts dictionary and a connections structure. Each host is classified into one of 38 host types (Router, PLC, IP Camera,…"
+description: "Engagements, captures, assets, detected versus manual values, zones, conduits, findings and bundles."
 ---
 
 # Concepts
 
-## Hosts and connections
+**Engagement.** One assessment (client, site). Everything belongs to an engagement. On a team server it has
+members with roles: *lead* (settings, members, merge), *editor* (upload, edit), *viewer* (read-only). People
+who aren't members can't see it exists.
 
-The backend parses each capture into a `hosts` dictionary and a `connections` structure. Each host is classified into one of 38 host types (Router, PLC, IP Camera, Web Server, DNS Server, Windows Host, and others) using TTL-derived OS hints combined with protocol/port evidence, and both IPv4 and IPv6 addresses are tracked, including correct classification of private ranges for both families.
+**Capture and capture point.** A capture is one uploaded file, identified by its SHA-256 (uploading the same
+file twice does nothing). A capture point records where it was taken. Re-analysing a capture replaces its
+results exactly.
 
-## Protocol detection
+**Asset.** One device, merged across captures. A host is matched to an asset by its **own MAC address** (so a
+DHCP address change doesn't create a new asset), or by IP when the MAC belongs to a router in front of it. Each
+capture's view of a host is kept as a *sighting*, which is how the tool knows which capture point saw what.
 
-Traffic is matched against 80+ protocols by port (HTTP, SSH, DNS, RDP, MySQL, Modbus, MQTT, CoAP, and more), and several protocols get deep inspection beyond port matching: HTTP, Modbus, MQTT, CoAP, DNS, TLS (SNI extraction and JA3 fingerprinting), DNP3, S7comm, EtherNet/IP, IEC 60870-5-104, and BACnet.
+**Detected vs manual values.** Every editable field (name, type, Purdue level, zone, criticality, vendor,
+model, firmware, serial, location, owner, tags, notes) has a *detected* value from traffic and an optional
+*manual* value with a reason. The manual value wins and survives new captures; *reset* goes back to the detected
+value. Every change is in the asset's **history**. If two people edit the same asset at once, the second save
+is refused with a clear message instead of silently overwriting.
 
-## Anomalies and risk score
+**Purdue levels.** 0 process, 1 basic control, 2 supervisory, 3 site operations, 3.5 industrial DMZ, 4 business,
+5 enterprise, plus *external* and *unclassified*. Traffic between level 4+ and level 3 or below **bypasses the
+DMZ** and is flagged.
 
-32 detection rules run automatically after analysis, grouped into general network, OT/ICS, IoT, and VLAN categories — for example port scans, cleartext credentials, password reuse, beaconing, data exfiltration, suspicious ports, known-bad TLS fingerprints, unauthorized Modbus/DNP3/S7/EtherNet/IP/IEC-104/BACnet writes, VLAN hopping, ARP spoofing, and broadcast storms. Each host also gets a 0–100 composite risk score based on anomaly severity, OT write/error counts, internet exposure, and TLS anomalies, shown in the node detail panel and ranked in the audit report.
+**Zones and conduits (IEC 62443).** A zone groups assets (through their Zone field) with a level and a target
+security level (SL-T). A conduit is an approved path between two zones, optionally limited to listed
+protocols. Cross-zone traffic outside the conduits is a **violation**.
 
-## OT/ICS and the Purdue Model
+**Findings.** Rule findings (34 rules, ATT&CK-mapped) are merged across captures. Your triage (status,
+severity, notes, recommendation, include in report) is stored separately, so it survives re-analysis. You can
+also add findings by hand.
 
-For industrial traffic, the tool identifies OT device types (PLC, RTU, IED, HMI, SCADA Server, DCS, Historian, Engineering Workstation, Building Controller, IoT Gateway, Field Device) and OT vendors via MAC OUI fingerprinting. The OT Map view lays devices out by Purdue Reference Model level (L0 Field through L6 Public Internet, including an automatic Public Internet zone for non-RFC1918 addresses), with zone groupings for IT Zone, Industrial DMZ, and OT Zone, and flags devices that bridge OT and IT/Internet zones.
-
-## VLANs
-
-The tool parses 802.1Q single-tag and QinQ double-tag VLAN frames, tracking VLAN membership per host and per connection. The VLAN Graph view shows VLANs as super-node clusters with cross-VLAN traffic highlighted, and includes VLAN-specific security analysis: a segmentation score, ARP spoofing detection, broadcast storm detection, and PCP priority abuse detection.
-
-## Findings workspace
-
-The Findings view automatically derives reviewable findings from anomalies, captured credentials, file transfers, OT write/error command groups, and high-risk hosts, and supports analyst triage actions — status, severity override, notes, report include/exclude, evidence bundling, and false-positive suppression.
-
-## Baseline diff
-
-A capture can be set as a baseline; uploading a second capture and opening the Diff view compares the two, surfacing new/disappeared hosts, new connections, traffic-volume changes, and new anomalies relative to the baseline, entirely client-side with no server round-trip.
-
-<!-- docsolace:keep -->
-<!-- Notes added here are preserved across regeneration. -->
-<!-- /docsolace:keep -->
+**Bundle (`.pcapvis`).** One file with an engagement's captures (optional), results, assets with edits and
+history, zones, conduits and findings triage. Import it as a new engagement, or **merge** it into an existing one.
