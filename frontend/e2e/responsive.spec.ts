@@ -25,12 +25,13 @@ function overflowing(page: Page) {
   return page.evaluate(() => {
     const vw = document.documentElement.clientWidth
     const out: string[] = []
-    for (const el of document.querySelectorAll('.main *')) {
+    for (const el of document.querySelectorAll('.shell *')) {
+      if (el.closest('.inspector.collapsed')) continue // a closed drawer waits off-screen
       const r = el.getBoundingClientRect()
       if (r.width === 0 || r.right <= vw + 1) continue
       let a = el.parentElement
       let contained = false
-      while (a && !a.classList.contains('main')) {
+      while (a && !a.classList.contains('shell')) {
         if (['auto', 'scroll', 'hidden'].includes(getComputedStyle(a).overflowX) || a.classList.contains('react-flow')) { contained = true; break }
         a = a.parentElement
       }

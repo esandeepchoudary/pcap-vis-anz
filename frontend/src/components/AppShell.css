@@ -217,3 +217,10 @@
   .graph-timeline { flex-wrap: wrap; row-gap: 4px; }
   .graph-timeline .tl-range { flex-basis: 100%; order: 5; }
 }
+/* The header must never be wider than the screen: items shrink, the search box first. */
+.header > * { min-width: 0; }
+.brand { flex: none; }
+.switcher { flex: 0 1 auto; }
+.header-search { min-width: 0; flex: 1 1 140px; }
+.header-actions { flex: none; }
+@media (max-width: 900px) { .brand-name { display: none; } }
