@@ -32,7 +32,7 @@ const base: Asset = {
   id: 1, origin: 'observed', version: 1, ips: ['10.0.2.51'], macs: ['00:0c:29:00:00:51'], name: null, asset_type: 'PLC',
   purdue_level: 1, zone: null, criticality: null, vendor: 'Siemens', model: 'S7-1500', firmware: null, serial: null,
   location: null, owner: null, tags: [], notes: null, overridden: [], type_confidence: 'high', mac_vendor: 'Siemens AG',
-  is_private: true, protocols: ['S7comm'], ot_role: 'outstation', os_hint: null, packets: 10, bytes: 1000,
+  is_private: true, protocols: ['S7comm'], vlans: [], ot_role: 'outstation', os_hint: null, packets: 10, bytes: 1000,
   first_seen: 1700000000, last_seen: 1700000050, capture_count: 1, updated_at: '2026-11-06T10:00:00Z',
 }
 const assets: Asset[] = [

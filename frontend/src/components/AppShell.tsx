@@ -21,11 +21,6 @@ export function AppShell({ system, user }: { system: SystemInfo; user: User }) {
           <Outlet />
         </main>
         <Inspector />
-        <footer className="timeline" aria-label="Timeline">
-          <span>Timeline</span>
-          <div className="timeline-track" />
-          <span>Interactive timeline: planned after v1.0</span>
-        </footer>
       </div>
     </InspectorContext.Provider>
   )

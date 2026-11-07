@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.2.0 -- 2026-11-06
+
+- Network graph: By VLAN layout (VLAN boxes, trunks, untagged, cross-VLAN connections, VLAN matrix) and a timeline with range brush, replay and speed; asset list carries VLANs; graph re-fits on layout change; footer placeholder removed; credits easter egg
+
 ## v1.1.1 -- 2026-11-06
 
 - Security and performance sweep: gzip-bomb guard on bundle import, sign-in throttle hardened (atomic, anti-spraying, bounded, covers password change), diagrams safe with control characters, clean errors for NaN and invalid Unicode input, API docs off on team servers, streamed hashing of carved files; links, dashboard, zone checks and reports 2-7x faster at scale; graph pages load on demand

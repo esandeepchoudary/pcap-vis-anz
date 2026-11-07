@@ -232,6 +232,7 @@ class AssetOut(BaseModel):
     mac_vendor: str | None
     is_private: bool
     protocols: list[str]
+    vlans: list[int] = Field(description="802.1Q VLAN IDs the asset was seen on (empty: untagged)")
     ot_role: str
     os_hint: str | None
     packets: int
@@ -267,7 +268,6 @@ class AssetDetail(AssetOut):
     auto_sources: dict[EditableField, str] = Field(description="Where each detected value came from")
     overrides: dict[EditableField, OverrideOut]
     services: list[Service]
-    vlans: list[int]
     identity: dict[str, str]
     hostnames: list[HostName]
     tls_sni: list[str]

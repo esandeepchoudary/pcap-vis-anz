@@ -12,7 +12,7 @@ import { EngagementLayout } from './EngagementLayout'
 const base: Omit<Asset, 'id' | 'ips' | 'asset_type' | 'purdue_level'> = {
   origin: 'observed', version: 1, macs: [], name: null, zone: null, criticality: null, vendor: null, model: null,
   firmware: null, serial: null, location: null, owner: null, tags: [], notes: null, overridden: [], type_confidence: null,
-  mac_vendor: null, is_private: true, protocols: [], ot_role: 'unknown', os_hint: null, packets: 0, bytes: 0,
+  mac_vendor: null, is_private: true, protocols: [], vlans: [], ot_role: 'unknown', os_hint: null, packets: 0, bytes: 0,
   first_seen: null, last_seen: null, capture_count: 1, updated_at: '',
 }
 const assets: Asset[] = [

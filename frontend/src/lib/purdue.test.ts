@@ -5,7 +5,7 @@ import { NODE_H, NODE_W, bypassesDmz, dropTarget, layoutPurdue, levelMatrix } fr
 const base: Asset = {
   id: 0, origin: 'observed', version: 1, ips: [], macs: [], name: null, asset_type: null, purdue_level: -1, zone: null,
   criticality: null, vendor: null, model: null, firmware: null, serial: null, location: null, owner: null, tags: [],
-  notes: null, overridden: [], type_confidence: null, mac_vendor: null, is_private: true, protocols: [], ot_role: 'unknown',
+  notes: null, overridden: [], type_confidence: null, mac_vendor: null, is_private: true, protocols: [], vlans: [], ot_role: 'unknown',
   os_hint: null, packets: 0, bytes: 0, first_seen: null, last_seen: null, capture_count: 1, updated_at: '',
 }
 const asset = (id: number, level: number, zone: string | null = null, name?: string): Asset =>

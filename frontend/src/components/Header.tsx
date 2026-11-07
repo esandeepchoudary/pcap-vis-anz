@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import type { SystemInfo, User } from '../api/client'
 import { useLogout } from '../api/hooks'
 import { useTheme } from '../theme/context'
+import { VersionBadge } from './Credits'
 import { EngagementSwitcher } from './EngagementSwitcher'
 
 function initials(user: User) {
@@ -37,7 +38,7 @@ export function Header({ system, user, eid }: { system: SystemInfo; user: User; 
       <div className="brand">
         <img src="/favicon.svg" alt="" />
         <span>PCAP Visualizer</span>
-        <small>v{system.version}</small>
+        <VersionBadge version={system.version} />
       </div>
       <EngagementSwitcher eid={eid} />
       <label className="header-search">
