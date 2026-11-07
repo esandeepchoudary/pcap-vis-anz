@@ -145,7 +145,10 @@ def test_xlsx_with_entities_is_refused(ac):
         for item in src.infolist():
             data = src.read(item.filename)
             if item.filename == "xl/worksheets/sheet1.xml":
-                data = b'<?xml version="1.0"?><!DOCTYPE worksheet [<!ENTITY e SYSTEM "file:///etc/passwd">]>' + data
+                data = (
+                    b'<?xml version="1.0"?><!DOCTYPE worksheet [<!ENTITY e SYSTEM "file:///etc/passwd">]>'
+                    + data
+                )
             z.writestr(item, data)
     r = upload(c, eid, "evil.xlsx", out.getvalue())
     assert r.status_code == 400 and "Not a readable" in r.json()["detail"] and "root:" not in r.text
