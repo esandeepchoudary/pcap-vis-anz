@@ -46,6 +46,7 @@ def dashboard(ctx=Depends(as_viewer)) -> DashboardOut:
             select(AssetOtOp).where(AssetOtOp.engagement_id == eng.id, AssetOtOp.kind == "write")
         )
     )
+    links = aggregate_links(db, eng.id)
     return DashboardOut(
         captures=len(caps),
         captures_done=len(done),
@@ -54,11 +55,11 @@ def dashboard(ctx=Depends(as_viewer)) -> DashboardOut:
         assets_edited=sum(1 for a in assets if a.overrides),
         assets_by_level=dict(sorted(by_level.items(), key=lambda kv: float(kv[0]))),
         assets_by_type=dict(by_type.most_common(10)),
-        ot_connections=sum(1 for link in aggregate_links(db, eng.id) if link.is_ot),
+        ot_connections=sum(1 for link in links if link.is_ot),
         ot_writes=writes,
         zones=len(list(db.scalars(select(Zone.id).where(Zone.engagement_id == eng.id)))),
         conduits=len(list(db.scalars(select(Conduit.id).where(Conduit.engagement_id == eng.id)))),
-        violations=len(violations(db, eng.id)),
+        violations=len(violations(db, eng.id, links)),
         findings=findings,
         credentials=sum(c.summary.get("credentials", 0) for c in done),
         files=sum(c.summary.get("files", 0) for c in done),

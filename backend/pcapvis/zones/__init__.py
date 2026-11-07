@@ -6,7 +6,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pcapvis.api.schemas import NetworkOut, ViolationOut, ZoneOut
+from pcapvis.api.schemas import LinkOut, NetworkOut, ViolationOut, ZoneOut
 from pcapvis.assets import fields as F
 from pcapvis.assets import service
 from pcapvis.assets.links import aggregate_links
@@ -104,15 +104,17 @@ def clean_protocols(protocols: list[str]) -> list[str]:
     return out[:MAX_PROTOCOLS]
 
 
-def violations(db: Session, eid: int) -> list[ViolationOut]:
-    """Cross-zone traffic not covered by a conduit (or using a protocol the conduit doesn't allow)."""
+def violations(db: Session, eid: int, links: list[LinkOut] | None = None) -> list[ViolationOut]:
+    """Cross-zone traffic not covered by a conduit (or using a protocol the conduit doesn't allow).
+
+    Pass ``links`` when the caller already has them (aggregating is the expensive part)."""
     zone_of = {a.id: asset_zone(a) for a in db.scalars(select(Asset).where(Asset.engagement_id == eid))}
     zid = {z.name: z.id for z in db.scalars(select(Zone).where(Zone.engagement_id == eid))}
     conduits: dict[frozenset, Conduit] = {}
     for c in db.scalars(select(Conduit).where(Conduit.engagement_id == eid).order_by(Conduit.id)):
         conduits.setdefault(frozenset((c.zone_a_id, c.zone_b_id)), c)
     out: list[ViolationOut] = []
-    for link in aggregate_links(db, eid):
+    for link in aggregate_links(db, eid) if links is None else links:
         za, zb = zone_of.get(link.src), zone_of.get(link.dst)
         if not za or not zb or za == zb:
             continue

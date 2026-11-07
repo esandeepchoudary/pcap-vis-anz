@@ -139,3 +139,25 @@ def test_packet_inspector_concurrency_is_bounded(monkeypatch, tmp_path):
     finally:
         for _ in range(inspect.MAX_CONCURRENT):
             inspect._slots.release()
+
+
+def test_viewers_cannot_change_anything(world):
+    app, c, eid = world
+    c.post("/api/auth/login", json={"username": "admin", "password": PW}, headers=H)
+    c.post("/api/users", json={"username": "vic", "password": PW, "role": "viewer"}, headers=H)
+    uid = next(u["id"] for u in c.get("/api/users", headers=H).json() if u["username"] == "vic")
+    assert (
+        c.put(f"/api/engagements/{eid}/members/{uid}", json={"role": "viewer"}, headers=H).status_code == 200
+    )
+    c.post("/api/auth/logout", headers=H)
+    c.post("/api/auth/login", json={"username": "vic", "password": PW}, headers=H)
+    checked = 0
+    for method, path in operations(app):
+        if "{engagement_id}" not in path or method == "GET":
+            continue
+        url = fill(path, eid).replace("/members/1", f"/members/{uid}")
+        r = c.request(method, url, headers=H, json={})
+        assert r.status_code == 403, f"{method} {path} answered {r.status_code} to a viewer"
+        checked += 1
+    assert checked > 20
+    assert c.get(f"/api/engagements/{eid}", headers=H).json()["name"] == "Secret plant"

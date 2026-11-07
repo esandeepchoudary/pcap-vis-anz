@@ -26,13 +26,12 @@ def login(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sign-in is not used in laptop mode.")
     throttle: auth.LoginThrottle = request.app.state.login_throttle
     client = _client(request)
-    if throttle.is_blocked(body.username, client):
+    if not throttle.begin(body.username, client):  # counts this attempt; reset() below if it succeeds
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed sign-in attempts. Try again in 15 minutes."
         )
     user = auth.authenticate(db, body.username, body.password)
     if user is None:
-        throttle.record_failure(body.username, client)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong username or password.")
     throttle.reset(body.username, client)
     token = auth.create_session(db, user, settings.session_ttl_hours, request.headers.get("user-agent", ""))
@@ -59,7 +58,11 @@ def me(user: User = Depends(current_user)) -> User:
     return user
 
 
-@router.post("/password", status_code=status.HTTP_204_NO_CONTENT, responses={400: {"model": ErrorOut}})
+@router.post(
+    "/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={400: {"model": ErrorOut}, 429: {"model": ErrorOut}},
+)
 def change_password(
     body: PasswordChange,
     request: Request,
@@ -68,8 +71,14 @@ def change_password(
 ) -> None:
     if user.password_hash is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This account has no password.")
+    throttle: auth.LoginThrottle = request.app.state.login_throttle
+    if not throttle.begin(user.username, _client(request)):  # a stolen session mustn't guess the password
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "Too many wrong attempts. Try again in 15 minutes."
+        )
     if not auth.verify_password(body.current_password, user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is wrong.")
+    throttle.reset(user.username, _client(request))
     try:
         auth.validate_password(body.new_password)
     except auth.AuthError as exc:

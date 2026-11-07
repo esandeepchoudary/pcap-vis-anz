@@ -6,9 +6,19 @@ attribute/text is XML-escaped.
 """
 
 from dataclasses import dataclass
-from xml.sax.saxutils import escape, quoteattr
+from xml.sax.saxutils import escape as _escape
+from xml.sax.saxutils import quoteattr as _quoteattr
 
-from pcapvis.reports import AssetRow, ReportData, level_name
+from pcapvis.reports import AssetRow, ReportData, level_name, xml_safe
+
+
+def escape(s: str) -> str:
+    return _escape(xml_safe(s))
+
+
+def quoteattr(s: str) -> str:
+    return _quoteattr(xml_safe(s))
+
 
 LANES = (6, 5, 4, 3.5, 3, 2, 1, 0, -1)
 ALWAYS = {5, 4, 3.5, 3, 2, 1, 0}

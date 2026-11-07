@@ -134,6 +134,17 @@ def sniff_mime(head: bytes) -> str:
         return "application/octet-stream"
 
 
+def _hash_file(path: Path) -> tuple[str, bytes]:
+    """SHA-256 and first 64 bytes, streamed: carved files can be as large as the capture."""
+    digest, head = hashlib.sha256(), b""
+    with open(path, "rb") as fh:
+        while chunk := fh.read(1 << 20):
+            if not head:
+                head = chunk[:64]
+            digest.update(chunk)
+    return digest.hexdigest(), head
+
+
 def extract_files(
     path: Path, tshark_path: str = "tshark", store_dir: Path | None = None
 ) -> list[ExtractedFile]:
@@ -152,11 +163,11 @@ def extract_files(
             for f in sorted(d.iterdir()):
                 if len(out) >= MAX_FILES or not f.is_file():
                     continue
-                data = f.read_bytes()
-                if not data:
+                size = f.stat().st_size
+                if not size:
                     continue
-                sha = hashlib.sha256(data).hexdigest()
-                mime = sniff_mime(data[:64])
+                sha, head = _hash_file(f)
+                mime = sniff_mime(head)
                 ext = f.name.rsplit(".", 1)[-1].lower() if "." in f.name else ""
                 stored = None
                 if store_dir is not None:
@@ -169,7 +180,7 @@ def extract_files(
                     ExtractedFile(
                         protocol=proto.upper(),
                         filename=f.name,
-                        size=len(data),
+                        size=size,
                         sha256=sha,
                         mime=mime,
                         interesting=ext in INTERESTING_EXT or mime in INTERESTING_MIME,

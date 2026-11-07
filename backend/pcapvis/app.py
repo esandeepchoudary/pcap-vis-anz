@@ -1,10 +1,13 @@
 """FastAPI application factory."""
 
 import logging
+import math
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -99,6 +102,16 @@ _PHRASE_VARIANTS = {
 }
 
 
+def _finite(v):
+    if isinstance(v, float) and not math.isfinite(v):
+        return str(v)
+    if isinstance(v, list):
+        return [_finite(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _finite(x) for k, x in v.items()}
+    return v
+
+
 def _stable_openapi(app: FastAPI) -> None:
     generate = app.openapi
 
@@ -145,11 +158,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
         title="PCAP Network Visualizer",
         version=__version__,
-        docs_url="/api/docs",
+        # The API description is public by nature, so a team server doesn't hand it to signed-out visitors.
+        docs_url=None if settings.auth_required else "/api/docs",
         redoc_url=None,
-        openapi_url="/api/openapi.json",
+        openapi_url=None if settings.auth_required else "/api/openapi.json",
     )
     _stable_openapi(app)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError):
+        # Same body as FastAPI's default, but NaN/Infinity inputs (which Python's JSON parser accepts) are
+        # echoed back as text: the default handler crashed trying to serialise them.
+        return JSONResponse({"detail": _finite(jsonable_encoder(exc.errors()))}, status_code=422)
+
+    @app.exception_handler(UnicodeEncodeError)
+    async def unstorable_text(request: Request, exc: UnicodeEncodeError):
+        # JSON allows lone surrogates ("\ud800"); no database can store them.
+        log.info("rejected unstorable text on %s %s", request.method, request.url.path)
+        return JSONResponse({"detail": "Text contains invalid Unicode characters."}, status_code=400)
+
     from pcapvis.config import deployment_warnings
 
     for warning in deployment_warnings(settings):

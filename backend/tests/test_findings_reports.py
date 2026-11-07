@@ -316,3 +316,23 @@ def test_report_downloads_are_audited(ac):
     eid = engagement(c)
     get(c, eid, "report.docx")
     assert any(e["action"] == "report.download" for e in c.get(f"/api/engagements/{eid}/audit").json())
+
+
+def test_diagrams_and_documents_survive_control_characters(ac):
+    # Names from traffic (DHCP, NetBIOS, identity strings) can carry bytes XML 1.0 can't hold.
+    app, c = ac
+    eid = engagement(c, "Plant")
+    ingest(app, eid, res([flow(1, HMI, PLC)], [cmd(HMI, PLC, detail="x\x01y")]), "a.pcap")
+    a = ids(c, eid)
+    r = c.patch(
+        f"/api/engagements/{eid}/assets/{a[PLC]}",
+        json={"version": 1, "set": {"name": "P\x07LC", "zone": "Cell\x02"}},
+        headers=H,
+    )
+    assert r.status_code == 200
+    for name in ("purdue.drawio", "purdue.svg"):
+        text = get(c, eid, name).text
+        ET.fromstring(text)  # well-formed
+        assert "PLC" in text and "\x07" not in text
+    Document(io.BytesIO(get(c, eid, "report.docx").content))  # opens
+    assert "\x07" not in get(c, eid, "report.html").text
