@@ -11,7 +11,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'PCAP Network Visualizer',
-  tagline: 'Visualize, classify, and audit network packet captures',
+  tagline: 'Passive OT/ICS assessment from packet captures: assets, Purdue map, zones and client-ready reports',
   favicon: 'img/favicon.ico',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -119,8 +119,8 @@ const config = {
             title: 'Docs',
             items: [
               {
-                label: 'Upload a capture',
-                to: '/docs/upload-and-explore',
+                label: 'Getting started',
+                to: '/docs/getting-started',
               },
             ],
           },

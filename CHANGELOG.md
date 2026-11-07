@@ -8,6 +8,10 @@ Bump the version with `python scripts/bump_version.py <major|minor|patch> "summa
 
 <!-- next-entry -->
 
+## v1.0.0 -- 2026-11-06
+
+- v1.0.0: the rebuilt app (engagements, asset inventory, fingerprinting, Purdue map, zones and conduits, flows and forensics, findings and reports, team server with laptop merge); legacy v1 app retired
+
 ## v0.10.1 -- 2026-11-06
 
 - Security and bug sweep: access-control regression sweep over every API operation, request body caps, packet-inspector concurrency limit, extra security headers

@@ -905,7 +905,7 @@ export interface paths {
         };
         /**
          * Health
-         * @description Liveness probe for container health checks. No auth.
+         * @description Readiness probe for container health checks: the app is up and its database answers. No auth.
          */
         get: operations["health_api_health_get"];
         put?: never;
@@ -5072,6 +5072,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description Database unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

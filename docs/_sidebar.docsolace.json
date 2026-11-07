@@ -2,22 +2,17 @@
   "productPages": [
     "overview",
     "getting-started",
-    "concepts",
-    "configuration",
-    "troubleshooting",
-    "changelog"
+    "concepts"
   ],
-  "sections": [],
-  "unsectionedTours": [
-    "dashboard",
-    "diff-view",
-    "dns-map",
-    "findings-workspace",
-    "graph-view",
-    "ot-log",
-    "ot-map",
-    "table-view",
-    "upload-and-explore",
-    "vlan-graph"
-  ]
+  "sections": [
+    {
+      "label": "Workflow",
+      "tours": ["captures", "assets", "purdue-map", "architecture", "flows", "findings-and-reports"]
+    },
+    {
+      "label": "Running it",
+      "tours": ["configuration", "deployment", "security", "troubleshooting", "changelog"]
+    }
+  ],
+  "unsectionedTours": []
 }

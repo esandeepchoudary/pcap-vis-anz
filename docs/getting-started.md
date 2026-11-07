@@ -2,77 +2,45 @@
 sidebar_position: 2
 sidebar_label: "Getting started"
 title: "Getting started"
-description: "Python 3.8+ and pip."
+description: "Run PCAP Visualizer on a laptop with Docker or natively, then analyse your first capture."
 ---
 
 # Getting started
 
-## Requirements
+## On a laptop with Docker (recommended)
 
-Python 3.8+ and pip.
-
-## Install
-
-Clone the repository and enter it:
+The image contains everything (tshark, the app, the web UI). No internet access is needed once it's loaded.
 
 ```bash
-git clone https://github.com/esandeepchoudary/pcap-vis-anz.git
-cd pcap-vis-anz
+docker build -t pcapvis .            # or: docker load -i pcapvis.tar on an air-gapped machine
+docker run -p 127.0.0.1:8080:8080 -v "$PWD/engagements:/data" pcapvis
 ```
 
-Optionally create a virtual environment:
+Open http://localhost:8080. Laptop mode has no login: you're the only user. Your data lives in the folder you
+mounted (`engagements/`), including the database and the original captures.
+
+## Native install (Linux)
+
+You need Python 3.12+, [uv](https://docs.astral.sh/uv/), Node 22+ (to build the UI once) and **Wireshark 4.0+**
+(`sudo apt install tshark`; answer "No" to letting non-root users capture).
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate        # Linux / macOS
-venv\Scripts\activate           # Windows
+cd frontend && npm ci && npm run build && cd ..
+cd backend && uv sync
+uv run pcapvis check     # confirms tshark is found and new enough
+uv run pcapvis serve     # http://127.0.0.1:8000
 ```
 
-Install dependencies:
+The app refuses to start without a suitable tshark and tells you how to install it.
 
-```bash
-pip install -r requirements.txt
-```
+## Your first engagement
 
-On Kali/Debian systems, if pip complains about an externally managed environment, add `--break-system-packages`:
+1. **Home → New engagement.** Give it a name, client and site.
+2. **Captures → Capture points**: name where you captured (for example "Core switch SPAN Gi0/24").
+3. **Drop pcap/pcapng files** (gzipped is fine). Each is hashed, stored and analysed in the background; the list
+   updates live with progress.
+4. Open **Assets** to see every device found, then work through the stages in the left rail.
 
-```bash
-pip install -r requirements.txt --break-system-packages
-```
+To look at a single capture without an engagement, use **Quick look**; you can turn it into an engagement later.
 
-## Run
-
-Start the app with:
-
-```bash
-python app.py                # localhost only (default, safe)
-python app.py --public       # expose to your local network
-python app.py --port 8080    # use a different port
-```
-
-Then open `http://localhost:5000` in a browser (or your machine's LAN IP if `--public` was used). Upload a capture file (`.pcap`, `.pcapng`, or `.cap`, up to 1 GB) and the graph renders automatically.
-
-The `--public` flag binds the Werkzeug development server to `0.0.0.0`, which is not hardened for production use — anyone on the same network could upload arbitrary files to the process. It should only be used on fully trusted, isolated networks. For long-running or multi-user deployments, the README recommends running behind gunicorn instead:
-
-```bash
-pip install gunicorn
-gunicorn -w 2 -b 0.0.0.0:5000 'app:app'
-```
-
-## Capturing your own traffic
-
-If you don't already have a capture file, one can be created with `tcpdump`:
-
-```bash
-# Capture 60 seconds of traffic on any interface
-sudo tcpdump -i any -w capture.pcap -G 60 -W 1
-
-# Or capture on a specific interface
-sudo tcpdump -i eth0 -w capture.pcap
-```
-
-Sample `.pcap` files are also available from malware-traffic-analysis.net and the Wireshark sample captures page, per the README.
-
-<!-- docsolace:keep -->
-<!-- Notes added here are preserved across regeneration. -->
-<!-- /docsolace:keep -->
+Next: [Concepts](concepts.md).

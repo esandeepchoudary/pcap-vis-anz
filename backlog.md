@@ -493,3 +493,12 @@ headers never had this problem because `renderVlanMatrix()` uses an upward
 - [ ] Report templates and branding (logo, cover page, custom sections)
 - [ ] Diagram export of the architecture (zones/conduits) view, not only the Purdue map
 
+### v2 rebuild: M9 release (2026-11-06, feature/m9-release)
+
+- [x] Merge a bundle into an existing engagement; readiness probe; deployment warnings; export-all backups
+- [x] Flows graph grouped by subnet; flow table with names
+- [x] Legacy app and parity harness retired (tag `legacy-v1-final`); docs and README rewritten for v2
+- [ ] Re-record DocSolace tours against v2 for screenshots in the docs
+- [ ] SSO (Entra ID, Okta, LDAP) behind the existing auth interface (D3)
+- [ ] Optional live capture from a local interface (G13)
+
