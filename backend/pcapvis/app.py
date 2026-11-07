@@ -150,6 +150,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     _stable_openapi(app)
+    from pcapvis.config import deployment_warnings
+
+    for warning in deployment_warnings(settings):
+        log.warning(warning)
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory

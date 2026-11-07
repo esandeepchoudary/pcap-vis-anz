@@ -684,6 +684,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engagements/{engagement_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Into Engagement
+         * @description Merge a .pcapvis bundle (e.g. from a consultant's laptop) into this engagement.
+         */
+        post: operations["merge_into_engagement_api_engagements__engagement_id__merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engagements/{engagement_id}/networks": {
         parameters: {
             query?: never;
@@ -1381,6 +1401,11 @@ export interface components {
         };
         /** Body_import_engagement_api_engagements_import_post */
         Body_import_engagement_api_engagements_import_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_merge_into_engagement_api_engagements__engagement_id__merge_post */
+        Body_merge_into_engagement_api_engagements__engagement_id__merge_post: {
             /** File */
             file: string;
         };
@@ -2194,6 +2219,49 @@ export interface components {
         /** MemberSet */
         MemberSet: {
             role: components["schemas"]["MemberRole"];
+        };
+        /** MergeConflictOut */
+        MergeConflictOut: {
+            /** Asset */
+            asset: string;
+            /** Asset Id */
+            asset_id: number;
+            /** Field */
+            field: string;
+            /**
+             * Imported
+             * @description The value in the bundle (not applied)
+             */
+            imported: string | number | string[] | null;
+            /**
+             * Kept
+             * @description The value already on this server (kept)
+             */
+            kept: string | number | string[] | null;
+        };
+        /** MergeReportOut */
+        MergeReportOut: {
+            /** Assets Created */
+            assets_created: number;
+            /** Assets Updated */
+            assets_updated: number;
+            /** Captures Added */
+            captures_added: number;
+            /**
+             * Captures Skipped
+             * @description Already in this engagement (same SHA-256)
+             */
+            captures_skipped: number;
+            /** Conduits Added */
+            conduits_added: number;
+            /** Conflicts */
+            conflicts: components["schemas"]["MergeConflictOut"][];
+            /** Fields Applied */
+            fields_applied: number;
+            /** Findings Added */
+            findings_added: number;
+            /** Zones Added */
+            zones_added: number;
         };
         /**
          * NetworkOut
@@ -4494,6 +4562,59 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_into_engagement_api_engagements__engagement_id__merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engagement_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_merge_into_engagement_api_engagements__engagement_id__merge_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeReportOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
             };
             /** @description Validation Error */
             422: {

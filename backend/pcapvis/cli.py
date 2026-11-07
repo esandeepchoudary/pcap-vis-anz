@@ -21,7 +21,47 @@ def _cmd_check(args) -> int:
     print(("OK  " if st.ok else "FAIL ") + st.message)
     if not st.ok:
         print("\nInstall it:\n" + install_hint())
+    from pcapvis.config import deployment_warnings
+
+    for w in deployment_warnings(s):
+        print("WARN " + w)
     return 0 if st.ok else 1
+
+
+def _cmd_export_all(args) -> int:
+    """Back up every engagement as a .pcapvis bundle (pair it with a database backup)."""
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from pcapvis.config import get_settings
+    from pcapvis.db.migrate import upgrade_to_head
+    from pcapvis.db.models import Engagement
+    from pcapvis.db.session import make_engine, make_session_factory
+    from pcapvis.engagements.bundle import export_bundle
+    from pcapvis.engagements.storage import Storage
+
+    s = get_settings()
+    upgrade_to_head(s.resolved_database_url)
+    dest = Path(args.dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    engine = make_engine(s.resolved_database_url)
+    store = Storage(s.data_dir)
+    n = 0
+    with make_session_factory(engine)() as db:
+        for eng in db.scalars(
+            select(Engagement).where(Engagement.is_quicklook.is_(False)).order_by(Engagement.id)
+        ):
+            safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in eng.name)[:60]
+            path = dest / f"{eng.id:04d}-{safe}.pcapvis"
+            export_bundle(
+                store, eng, path, include_captures=not args.no_captures, include_files=not args.no_captures
+            )
+            print(f"{path}  ({path.stat().st_size // 1024} KB)")
+            n += 1
+    engine.dispose()
+    print(f"Exported {n} engagement(s) to {dest}")
+    return 0
 
 
 def _cmd_serve(args) -> int:
@@ -270,6 +310,10 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--quiet", action="store_true", help="No output (use with --json)")
     an.set_defaults(func=_cmd_analyze)
     sub.add_parser("openapi", help="Print the OpenAPI schema (JSON)").set_defaults(func=_cmd_openapi)
+    ex = sub.add_parser("export-all", help="Back up every engagement as a .pcapvis bundle")
+    ex.add_argument("dir", help="Folder to write the bundles to")
+    ex.add_argument("--no-captures", action="store_true", help="Leave out original captures (much smaller)")
+    ex.set_defaults(func=_cmd_export_all)
 
     args = p.parse_args(argv)
     return args.func(args)

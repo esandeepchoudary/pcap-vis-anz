@@ -59,3 +59,25 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def deployment_warnings(s: "Settings") -> list[str]:
+    """Risky settings for a team server. Shown at startup and by `pcapvis check`; nothing here is fatal."""
+    out = []
+    if s.mode != "server":
+        return out
+    if not s.cookie_secure:
+        out.append(
+            "PCAPVIS_COOKIE_SECURE is off: session cookies can travel over plain HTTP. Put the server behind "
+            "HTTPS (a reverse proxy) and set PCAPVIS_COOKIE_SECURE=true."
+        )
+    if s.resolved_database_url.startswith("sqlite"):
+        out.append(
+            "Team server on SQLite: fine for a few users on one machine; use PostgreSQL (docker compose) for "
+            "separate workers or more users."
+        )
+    if s.admin_password and len(s.admin_password) < 16:
+        out.append(
+            "PCAPVIS_ADMIN_PASSWORD is short; use 16+ characters (it only sets the first admin's password)."
+        )
+    return out
